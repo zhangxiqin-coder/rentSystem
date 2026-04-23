@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
+from typing import Any, Dict
 
 app = FastAPI(
     title="Rent Management System API",
@@ -20,7 +21,7 @@ app.add_middleware(
 
 # 健康检查端点
 @app.get("/")
-async def health_check():
+async def health_check() -> Dict[str, Any]:
     """基础健康检查端点"""
     try:
         return {"status": "healthy", "message": "Rent Management System API is running"}
@@ -29,7 +30,7 @@ async def health_check():
 
 # 基础路由
 @app.get("/api/v1/health")
-async def api_health_check():
+async def api_health_check() -> Dict[str, Any]:
     """API 健康检查端点"""
     try:
         return {"status": "ok", "version": "1.0.0"}
