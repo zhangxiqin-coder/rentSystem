@@ -53,7 +53,7 @@ const loadPayments = async () => {
       page: 1,
       size: 50,
     })
-    payments.value = response.data.data.items
+    payments.value = response.data.items
   } catch (error: any) {
     ElMessage.error(error.response?.data?.message || 'Failed to load payments')
   } finally {
@@ -68,7 +68,7 @@ const loadUtilityReadings = async () => {
       page: 1,
       size: 50,
     })
-    utilityReadings.value = response.data.data.items
+    utilityReadings.value = response.data.items
   } catch (error: any) {
     ElMessage.error(error.response?.data?.message || 'Failed to load utility readings')
   } finally {

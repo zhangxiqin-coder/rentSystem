@@ -10,7 +10,7 @@ const loadPayments = async () => {
   loading.value = true
   try {
     const response = await paymentApi.getPayments({ page: 1, size: 10 })
-    payments.value = response.data.data.items
+    payments.value = response.data.items
   } catch (error) {
     console.error('Failed to load payments:', error)
   } finally {

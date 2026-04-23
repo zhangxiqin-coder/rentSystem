@@ -1,0 +1,1 @@
+{"message":"登录成功","data":{"access_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImV4cCI6MTc3NzUzODg4OSwiaWF0IjoxNzc2OTM0MDg5fQ.7-ZQEbOvmYF8wMWHS9lwAJOpYXdnEDe6AV_GK5tIgW8","token_type":"bearer","user":{"id":1,"username":"testuser","email":"test@example.com"}}}

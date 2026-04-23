@@ -57,8 +57,8 @@ const loadRooms = async () => {
       page: currentPage.value,
       size: 100,
     })
-    rooms.value = response.data.data.items
-    total.value = response.data.data.total
+    rooms.value = response.data.items
+    total.value = response.data.total
   } catch (error: any) {
     ElMessage.error(error.response?.data?.message || 'Failed to load rooms')
   } finally {
