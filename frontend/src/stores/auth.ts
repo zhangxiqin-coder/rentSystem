@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '@/api/auth'
 import { encryptToken, decryptToken } from '@/utils/crypto'
+import { getErrorMessage } from '@/utils/errors'
 import type { User, LoginRequest, RegisterRequest } from '@/types'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -44,7 +45,7 @@ export const useAuthStore = defineStore('auth', () => {
 
       return true
     } catch (err: unknown) {
-      error.value = err instanceof Error ? err.message : 'Login failed'
+      error.value = getErrorMessage(err)
       return false
     } finally {
       loading.value = false
@@ -59,7 +60,7 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = response.data.data
       return true
     } catch (err: unknown) {
-      error.value = err instanceof Error ? err.message : 'Registration failed'
+      error.value = getErrorMessage(err)
       return false
     } finally {
       loading.value = false
@@ -72,9 +73,13 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await authApi.getCurrentUser()
       user.value = response.data.data
+      // Update stored user data
+      if (user.value) {
+        localStorage.setItem('user', JSON.stringify(user.value))
+      }
       return true
     } catch (err: unknown) {
-      error.value = err instanceof Error ? err.message : 'Failed to get user info'
+      error.value = getErrorMessage(err)
       return false
     } finally {
       loading.value = false
@@ -93,6 +98,7 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = null
       localStorage.removeItem('access_token')
       localStorage.removeItem('user')
+      sessionStorage.removeItem('csrf_token')
       loading.value = false
     }
   }
@@ -116,6 +122,10 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  const clearError = () => {
+    error.value = null
+  }
+
   return {
     // State
     user,
@@ -134,5 +144,6 @@ export const useAuthStore = defineStore('auth', () => {
     getCurrentUser,
     logout,
     initializeAuth,
+    clearError,
   }
 })

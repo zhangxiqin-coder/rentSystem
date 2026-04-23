@@ -18,4 +18,11 @@ export const authApi = {
 
   // Get CSRF token
   getCsrfToken: () => request.get<ApiResponse<{ csrf_token: string }>>('/api/v1/auth/csrf-token'),
+
+  // Refresh token
+  refreshToken: () => request.post<ApiResponse<{ access_token: string }>>('/api/v1/auth/refresh-token'),
+
+  // Change password
+  changePassword: (data: { old_password: string; new_password: string }) =>
+    request.post<ApiResponse<void>>('/api/v1/auth/change-password', data),
 }
