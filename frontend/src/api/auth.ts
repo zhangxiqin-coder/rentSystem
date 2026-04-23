@@ -15,4 +15,7 @@ export const authApi = {
 
   // Logout
   logout: () => request.post<ApiResponse<void>>('/api/v1/auth/logout'),
+
+  // Get CSRF token
+  getCsrfToken: () => request.get<ApiResponse<{ csrf_token: string }>>('/api/v1/auth/csrf-token'),
 }

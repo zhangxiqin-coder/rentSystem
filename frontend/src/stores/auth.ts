@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '@/api/auth'
+import { encryptToken, decryptToken } from '@/utils/crypto'
 import type { User, LoginRequest, RegisterRequest } from '@/types'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -26,9 +27,20 @@ export const useAuthStore = defineStore('auth', () => {
       token.value = response.data.data.access_token
       user.value = response.data.data.user
 
-      // Store in localStorage
-      localStorage.setItem('access_token', token.value)
+      // Store encrypted token in localStorage
+      const encryptedToken = encryptToken(token.value)
+      localStorage.setItem('access_token', encryptedToken)
       localStorage.setItem('user', JSON.stringify(user.value))
+
+      // Fetch and store CSRF token
+      try {
+        const csrfResponse = await authApi.getCsrfToken()
+        if (csrfResponse.data.data.csrf_token) {
+          sessionStorage.setItem('csrf_token', csrfResponse.data.data.csrf_token)
+        }
+      } catch (csrfError) {
+        console.warn('Failed to fetch CSRF token:', csrfError)
+      }
 
       return true
     } catch (err: unknown) {
@@ -90,8 +102,17 @@ export const useAuthStore = defineStore('auth', () => {
     const storedUser = localStorage.getItem('user')
 
     if (storedToken && storedUser) {
-      token.value = storedToken
-      user.value = JSON.parse(storedUser)
+      // Decrypt and validate token
+      const decryptedToken = decryptToken(storedToken)
+      if (decryptedToken) {
+        token.value = decryptedToken
+        user.value = JSON.parse(storedUser)
+      } else {
+        // Token is invalid or expired, clear storage
+        console.warn('Stored token is invalid or expired')
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('user')
+      }
     }
   }
 

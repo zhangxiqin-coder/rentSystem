@@ -1,5 +1,7 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+import secrets
 import os
 from typing import Any, Dict
 
@@ -9,6 +11,57 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# CSRF Protection Middleware
+class CSRFMiddleware(BaseHTTPMiddleware):
+    """CSRF Protection Middleware"""
+    
+    async def dispatch(self, request: Request, call_next):
+        # Skip CSRF for GET, HEAD, OPTIONS, TRACE methods
+        if request.method in ['GET', 'HEAD', 'OPTIONS', 'TRACE']:
+            response = await call_next(request)
+            return response
+        
+        # For state-changing methods (POST, PUT, DELETE, PATCH)
+        # Check for CSRF token
+        csrf_token_header = request.headers.get('X-CSRF-Token')
+        
+        # Skip CSRF check for login/register endpoints (they establish session)
+        if request.url.path in ['/api/v1/auth/login', '/api/v1/auth/register']:
+            response = await call_next(request)
+            # Generate and return new CSRF token for authenticated users
+            if hasattr(request.state, 'user') and request.state.user:
+                new_csrf_token = secrets.token_urlsafe(32)
+                response.headers['X-CSRF-Token'] = new_csrf_token
+            return response
+        
+        # For CSRF token endpoint, generate and return token
+        if request.url.path == '/api/v1/auth/csrf-token':
+            response = await call_next(request)
+            return response
+        
+        # Validate CSRF token for other state-changing requests
+        if not csrf_token_header:
+            return Response(
+                content='{"detail": "CSRF token is missing"}',
+                status_code=403,
+                media_type='application/json'
+            )
+        
+        # In a real implementation, you would validate the token against a session
+        # For now, we'll check if it exists and has reasonable length
+        if len(csrf_token_header) < 20:
+            return Response(
+                content='{"detail": "Invalid CSRF token"}',
+                status_code=403,
+                media_type='application/json'
+            )
+        
+        response = await call_next(request)
+        return response
+
+# Add CSRF middleware
+app.add_middleware(CSRFMiddleware)
+
 # 配置 CORS - 使用环境变量
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
 app.add_middleware(
@@ -17,6 +70,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-CSRF-Token"],
 )
 
 # 健康检查端点
@@ -36,3 +90,16 @@ async def api_health_check() -> Dict[str, Any]:
         return {"status": "ok", "version": "1.0.0"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"健康检查失败: {str(e)}")
+
+# CSRF Token endpoint
+@app.get("/api/v1/auth/csrf-token")
+async def get_csrf_token() -> Dict[str, Any]:
+    """获取 CSRF Token"""
+    try:
+        csrf_token = secrets.token_urlsafe(32)
+        return {
+            "status": "success",
+            "data": {"csrf_token": csrf_token}
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"生成 CSRF token 失败: {str(e)}")

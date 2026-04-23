@@ -5,6 +5,12 @@ import axios, {
   type AxiosResponse,
 } from 'axios'
 import type { ApiResponse } from '@/types'
+import { decryptToken, isTokenValid } from '@/utils/crypto'
+
+// Get CSRF token from sessionStorage
+const getCsrfToken = (): string | null => {
+  return sessionStorage.getItem('csrf_token')
+}
 
 // Create axios instance
 const request: AxiosInstance = axios.create({
@@ -18,14 +24,27 @@ const request: AxiosInstance = axios.create({
 // Request interceptor
 request.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // Get token from localStorage
-    const token = localStorage.getItem('access_token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+    // Get and decrypt token from localStorage
+    const encryptedToken = localStorage.getItem('access_token')
+    if (encryptedToken && isTokenValid(encryptedToken)) {
+      const token = decryptToken(encryptedToken)
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`
+      }
     }
+
+    // Add CSRF token for state-changing requests
+    if (config.method !== 'get' && config.method !== 'head') {
+      const csrfToken = getCsrfToken()
+      if (csrfToken) {
+        config.headers['X-CSRF-Token'] = csrfToken
+      }
+    }
+
     return config
   },
   (error: AxiosError) => {
+    console.error('Request error:', error)
     return Promise.reject(error)
   }
 )
@@ -33,6 +52,11 @@ request.interceptors.request.use(
 // Response interceptor
 request.interceptors.response.use(
   (response: AxiosResponse) => {
+    // Store CSRF token if present in response headers
+    const csrfToken = response.headers['x-csrf-token']
+    if (csrfToken) {
+      sessionStorage.setItem('csrf_token', csrfToken)
+    }
     return response
   },
   (error: AxiosError<ApiResponse<unknown>>) => {
@@ -45,6 +69,7 @@ request.interceptors.response.use(
           // Unauthorized - clear token and redirect to login
           localStorage.removeItem('access_token')
           localStorage.removeItem('user')
+          sessionStorage.removeItem('csrf_token')
           window.location.href = '/login'
           break
         case 403:
