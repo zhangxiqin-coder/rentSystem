@@ -20,7 +20,7 @@ from app.core.security import create_access_token, decode_access_token
 from app.core.deps import get_current_user
 
 
-router = APIRouter(prefix="/api/v1/auth", tags=["认证"])
+router = APIRouter(prefix="/auth", tags=["认证"])
 
 
 # Rate limiting 配置

@@ -122,13 +122,13 @@ class RoomBase(BaseModel):
     room_number: str = Field(..., min_length=1, max_length=50)
     building: Optional[str] = Field(None, max_length=50)
     floor: Optional[int] = Field(None, ge=0)
-    area: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
-    monthly_rent: Decimal = Field(..., gt=0, decimal_places=2)
-    deposit_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
+    area: Optional[Decimal] = Field(None, ge=0)
+    monthly_rent: Decimal = Field(..., gt=0)
+    deposit_amount: Optional[Decimal] = Field(None, ge=0)
     payment_cycle: int = Field(default=1, gt=0, le=12)
     status: Optional[RoomStatus] = Field(default=RoomStatus.AVAILABLE)
     tenant_name: Optional[str] = Field(None, max_length=100)
-    tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\d{9}$')
+    tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\\d{9}$')
     lease_start: Optional[date] = None
     lease_end: Optional[date] = None
     description: Optional[str] = None
@@ -150,13 +150,13 @@ class RoomUpdate(BaseModel):
     """房间更新 schema"""
     building: Optional[str] = Field(None, max_length=50)
     floor: Optional[int] = Field(None, ge=0)
-    area: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
-    monthly_rent: Optional[Decimal] = Field(None, gt=0, decimal_places=2)
-    deposit_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
+    area: Optional[Decimal] = Field(None, ge=0)
+    monthly_rent: Optional[Decimal] = Field(None, gt=0)
+    deposit_amount: Optional[Decimal] = Field(None, ge=0)
     payment_cycle: Optional[int] = Field(None, gt=0, le=12)
     status: Optional[RoomStatus] = None
     tenant_name: Optional[str] = Field(None, max_length=100)
-    tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\d{9}$')
+    tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\\d{9}$')
     lease_start: Optional[date] = None
     lease_end: Optional[date] = None
     description: Optional[str] = None
@@ -185,7 +185,7 @@ class RoomResponse(RoomBase):
 class PaymentBase(BaseModel):
     """支付记录基础 schema"""
     room_id: int = Field(..., gt=0)
-    amount: Optional[Decimal] = Field(None, gt=0, decimal_places=2)
+    amount: Optional[Decimal] = Field(None, gt=0)
     payment_type: PaymentType
     payment_date: Optional[date] = None
     due_date: Optional[date] = None
@@ -202,7 +202,7 @@ class PaymentCreate(PaymentBase):
 
 class PaymentUpdate(BaseModel):
     """支付记录更新 schema"""
-    amount: Optional[Decimal] = Field(None, gt=0, decimal_places=2)
+    amount: Optional[Decimal] = Field(None, gt=0)
     due_date: Optional[date] = None
     status: Optional[PaymentStatus] = None
     payment_method: Optional[PaymentMethod] = None
@@ -226,7 +226,7 @@ class UtilityReadingBase(BaseModel):
     """水电抄表记录基础 schema"""
     room_id: int = Field(..., gt=0)
     utility_type: UtilityType
-    reading: Decimal = Field(..., ge=0, decimal_places=2)
+    reading: Decimal = Field(..., ge=0)
     reading_date: date
     notes: Optional[str] = None
 
@@ -261,7 +261,7 @@ class UtilityReadingResponse(UtilityReadingBase):
 class UtilityRateBase(BaseModel):
     """水电费率基础 schema"""
     utility_type: UtilityType
-    rate_per_unit: Decimal = Field(..., gt=0, decimal_places=4)
+    rate_per_unit: Decimal = Field(..., gt=0)
     effective_date: date
     description: Optional[str] = None
 
@@ -273,7 +273,7 @@ class UtilityRateCreate(UtilityRateBase):
 
 class UtilityRateUpdate(BaseModel):
     """水电费率更新 schema"""
-    rate_per_unit: Optional[Decimal] = Field(None, gt=0, decimal_places=4)
+    rate_per_unit: Optional[Decimal] = Field(None, gt=0)
     effective_date: Optional[date] = None
     is_active: Optional[bool] = None
     description: Optional[str] = None
