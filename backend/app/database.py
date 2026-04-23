@@ -1,6 +1,8 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
+from typing import Generator
+import logging
 
 # SQLite 数据库配置
 SQLALCHEMY_DATABASE_URL = "sqlite:///./rent_management.db"
@@ -18,9 +20,20 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 # 依赖项：获取数据库会话
-def get_db():
+def get_db() -> Generator[Session, None, None]:
+    """获取数据库会话的依赖项。
+    
+    Yields:
+        Session: SQLAlchemy 数据库会话对象
+        
+    Raises:
+        Exception: 数据库连接错误时抛出异常
+    """
     db = SessionLocal()
     try:
         yield db
+    except Exception as e:
+        logging.error(f"数据库错误: {e}")
+        raise
     finally:
         db.close()
