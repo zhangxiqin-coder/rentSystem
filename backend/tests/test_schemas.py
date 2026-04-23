@@ -11,7 +11,8 @@ from app.schemas import (
     RoomCreate, RoomResponse,
     PaymentCreate, PaymentResponse,
     UtilityReadingCreate, UtilityReadingResponse,
-    UtilityRateCreate, UtilityRateResponse
+    UtilityRateCreate, UtilityRateResponse,
+    PaymentMethod
 )
 
 
@@ -44,6 +45,16 @@ class TestUserSchemas:
         assert user_response.id == 1
         assert user_response.username == "testuser"
         assert user_response.email == "test@example.com"
+    
+    def test_user_create_invalid_email(self):
+        """测试 UserCreate schema 无效邮箱"""
+        with pytest.raises(ValidationError):
+            UserCreate(username="testuser", password="password123", email="invalid-email")
+    
+    def test_user_create_short_password(self):
+        """测试 UserCreate schema 密码过短"""
+        with pytest.raises(ValidationError):
+            UserCreate(username="testuser", password="12345", email="test@example.com")
 
 
 class TestRoomSchemas:
@@ -85,6 +96,42 @@ class TestRoomSchemas:
         assert room_response.id == 1
         assert room_response.name == "101"
         assert room_response.tenant_name == "张三"
+    
+    def test_room_create_invalid_phone(self):
+        """测试 RoomCreate schema 无效手机号"""
+        with pytest.raises(ValidationError):
+            RoomCreate(
+                name="101",
+                monthly_rent="1000.00",
+                tenant_phone="12345678901"
+            )
+    
+    def test_room_create_invalid_lease_dates(self):
+        """测试 RoomCreate schema 租约日期无效"""
+        with pytest.raises(ValidationError):
+            RoomCreate(
+                name="101",
+                monthly_rent="1000.00",
+                lease_start=date(2024, 12, 31),
+                lease_end=date(2024, 1, 1)
+            )
+    
+    def test_room_create_negative_rent(self):
+        """测试 RoomCreate schema 租金为负数"""
+        with pytest.raises(ValidationError):
+            RoomCreate(
+                name="101",
+                monthly_rent="-1000.00"
+            )
+    
+    def test_room_create_invalid_payment_cycle(self):
+        """测试 RoomCreate schema 支付周期为0"""
+        with pytest.raises(ValidationError):
+            RoomCreate(
+                name="101",
+                monthly_rent="1000.00",
+                payment_cycle=0
+            )
 
 
 class TestPaymentSchemas:
@@ -111,7 +158,7 @@ class TestPaymentSchemas:
             room_id = 1
             amount = Decimal("1000.00")
             payment_date = date(2024, 1, 15)
-            payment_method = "支付宝"
+            payment_method = PaymentMethod.ALIPAY
             note = "1月房租"
             receipt_image = None
             created_at = datetime(2024, 1, 15, 12, 0, 0)
@@ -120,6 +167,34 @@ class TestPaymentSchemas:
         payment_response = PaymentResponse.model_validate(mock_payment)
         assert payment_response.id == 1
         assert payment_response.amount == Decimal("1000.00")
+    
+    def test_payment_create_invalid_amount(self):
+        """测试 PaymentCreate schema 金额为负数"""
+        with pytest.raises(ValidationError):
+            PaymentCreate(
+                room_id=1,
+                amount="-1000.00",
+                payment_date=date(2024, 1, 15)
+            )
+    
+    def test_payment_create_invalid_room_id(self):
+        """测试 PaymentCreate schema room_id为0"""
+        with pytest.raises(ValidationError):
+            PaymentCreate(
+                room_id=0,
+                amount="1000.00",
+                payment_date=date(2024, 1, 15)
+            )
+    
+    def test_payment_create_invalid_payment_method(self):
+        """测试 PaymentCreate schema 无效支付方式"""
+        with pytest.raises(ValidationError):
+            PaymentCreate(
+                room_id=1,
+                amount="1000.00",
+                payment_date=date(2024, 1, 15),
+                payment_method="invalid_method"
+            )
 
 
 class TestUtilityReadingSchemas:
@@ -154,6 +229,36 @@ class TestUtilityReadingSchemas:
         reading_response = UtilityReadingResponse.model_validate(mock_reading)
         assert reading_response.id == 1
         assert reading_response.utility_type == "electric"
+    
+    def test_utility_reading_create_invalid_type(self):
+        """测试 UtilityReadingCreate schema 无效类型"""
+        with pytest.raises(ValidationError):
+            UtilityReadingCreate(
+                room_id=1,
+                utility_type="gas",
+                reading="100.50",
+                reading_date=date(2024, 1, 1)
+            )
+    
+    def test_utility_reading_create_negative_reading(self):
+        """测试 UtilityReadingCreate schema 读数为负数"""
+        with pytest.raises(ValidationError):
+            UtilityReadingCreate(
+                room_id=1,
+                utility_type="electric",
+                reading="-100.50",
+                reading_date=date(2024, 1, 1)
+            )
+    
+    def test_utility_reading_create_invalid_room_id(self):
+        """测试 UtilityReadingCreate schema room_id为0"""
+        with pytest.raises(ValidationError):
+            UtilityReadingCreate(
+                room_id=0,
+                utility_type="electric",
+                reading="100.50",
+                reading_date=date(2024, 1, 1)
+            )
 
 
 class TestUtilityRateSchemas:
@@ -184,3 +289,30 @@ class TestUtilityRateSchemas:
         assert rate_response.id == 1
         assert rate_response.utility_type == "electric"
         assert rate_response.unit_price == Decimal("0.56")
+    
+    def test_utility_rate_create_invalid_type(self):
+        """测试 UtilityRateCreate schema 无效类型"""
+        with pytest.raises(ValidationError):
+            UtilityRateCreate(
+                utility_type="gas",
+                unit_price="0.56",
+                effective_date=date(2024, 1, 1)
+            )
+    
+    def test_utility_rate_create_negative_price(self):
+        """测试 UtilityRateCreate schema 单价为负数"""
+        with pytest.raises(ValidationError):
+            UtilityRateCreate(
+                utility_type="electric",
+                unit_price="-0.56",
+                effective_date=date(2024, 1, 1)
+            )
+    
+    def test_utility_rate_create_zero_price(self):
+        """测试 UtilityRateCreate schema 单价为0"""
+        with pytest.raises(ValidationError):
+            UtilityRateCreate(
+                utility_type="electric",
+                unit_price="0.00",
+                effective_date=date(2024, 1, 1)
+            )

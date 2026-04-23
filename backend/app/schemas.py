@@ -4,7 +4,16 @@ Pydantic schemas 定义
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, EmailStr, model_validator
+from enum import Enum
+
+
+class PaymentMethod(str, Enum):
+    """支付方式枚举"""
+    CASH = "现金"
+    BANK_TRANSFER = "银行转账"
+    ALIPAY = "支付宝"
+    WECHAT = "微信支付"
 
 
 # ==================== User Schemas ====================
@@ -12,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class UserBase(BaseModel):
     """用户基础 schema"""
     username: str = Field(..., min_length=1, max_length=50)
-    email: Optional[str] = Field(None, max_length=100)
+    email: Optional[EmailStr] = None
 
 
 class UserCreate(UserBase):
@@ -35,7 +44,7 @@ class RoomBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=50)
     monthly_rent: Decimal = Field(..., gt=0, decimal_places=2)
     tenant_name: Optional[str] = Field(None, max_length=100)
-    tenant_phone: Optional[str] = Field(None, max_length=20)
+    tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\d{9}$')
     lease_start: Optional[date] = None
     lease_end: Optional[date] = None
     payment_cycle: int = Field(default=1, gt=0)
@@ -44,6 +53,14 @@ class RoomBase(BaseModel):
 class RoomCreate(RoomBase):
     """房间创建 schema"""
     pass
+    
+    @model_validator(mode='after')
+    def validate_lease_dates(self):
+        """验证租约结束日期必须大于开始日期"""
+        if self.lease_start and self.lease_end:
+            if self.lease_end <= self.lease_start:
+                raise ValueError("lease_end must be greater than lease_start")
+        return self
 
 
 class RoomResponse(RoomBase):
@@ -62,7 +79,7 @@ class PaymentBase(BaseModel):
     room_id: int = Field(..., gt=0)
     amount: Decimal = Field(..., gt=0, decimal_places=2)
     payment_date: date
-    payment_method: Optional[str] = Field(None, max_length=50)
+    payment_method: Optional[PaymentMethod] = None
     note: Optional[str] = None
     receipt_image: Optional[str] = Field(None, max_length=255)
 

@@ -1,12 +1,24 @@
 """
 SQLAlchemy 数据库模型定义
 """
-from sqlalchemy import Column, Integer, String, Text, DECIMAL, Date, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DECIMAL, Date, DateTime, ForeignKey, CheckConstraint, Enum as SQLEnum
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from decimal import Decimal
+from passlib.context import CryptContext
+from enum import Enum
 
 from app.database import Base
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+class PaymentMethod(str, Enum):
+    """支付方式枚举"""
+    CASH = "现金"
+    BANK_TRANSFER = "银行转账"
+    ALIPAY = "支付宝"
+    WECHAT = "微信支付"
 
 
 class User(Base):
@@ -19,6 +31,14 @@ class User(Base):
     email = Column(String(100))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     
+    def set_password(self, password: str) -> None:
+        """设置密码（哈希存储）"""
+        self.password_hash = pwd_context.hash(password)
+    
+    def verify_password(self, password: str) -> bool:
+        """验证密码"""
+        return pwd_context.verify(password, self.password_hash)
+    
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}')>"
 
@@ -26,9 +46,12 @@ class User(Base):
 class Room(Base):
     """房间模型"""
     __tablename__ = "rooms"
+    __table_args__ = (
+        CheckConstraint('lease_end > lease_start', name='check_lease_dates'),
+    )
     
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    name = Column(String(50), nullable=False, index=True)
+    name = Column(String(50), unique=True, nullable=False, index=True)
     monthly_rent = Column(DECIMAL(10, 2), nullable=False)
     tenant_name = Column(String(100))
     tenant_phone = Column(String(20))
@@ -54,7 +77,7 @@ class Payment(Base):
     room_id = Column(Integer, ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False)
     amount = Column(DECIMAL(10, 2), nullable=False)
     payment_date = Column(Date, nullable=False, index=True)
-    payment_method = Column(String(50))
+    payment_method = Column(SQLEnum(PaymentMethod), nullable=True)
     note = Column(Text)
     receipt_image = Column(String(255))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -69,6 +92,9 @@ class Payment(Base):
 class UtilityReading(Base):
     """水电抄表记录模型"""
     __tablename__ = "utility_readings"
+    __table_args__ = (
+        CheckConstraint("utility_type IN ('water', 'electric')", name='check_utility_type'),
+    )
     
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     room_id = Column(Integer, ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False)
