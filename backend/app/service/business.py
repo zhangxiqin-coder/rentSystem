@@ -171,11 +171,14 @@ def create_utility_reading(
         notes=notes
     )
     
-    db.add(utility_reading)
-    db.commit()
-    db.refresh(utility_reading)
-    
-    return utility_reading
+    try:
+        db.add(utility_reading)
+        db.commit()
+        db.refresh(utility_reading)
+        return utility_reading
+    except Exception as e:
+        db.rollback()
+        raise
 
 
 # ==================== 支付状态管理 ====================
@@ -268,16 +271,20 @@ def create_payment(
         receipt_image=receipt_image
     )
     
-    db.add(payment)
-    db.commit()
-    db.refresh(payment)
-    
-    # 更新房间的最后支付日期
-    if payment_type == 'rent' and status == 'completed':
-        room.last_payment_date = payment_date
+    try:
+        db.add(payment)
         db.commit()
-    
-    return payment
+        db.refresh(payment)
+        
+        # 更新房间的最后支付日期
+        if payment_type == 'rent' and status == 'completed':
+            room.last_payment_date = payment_date
+            db.commit()
+        
+        return payment
+    except Exception as e:
+        db.rollback()
+        raise
 
 
 # ==================== 房间状态管理 ====================

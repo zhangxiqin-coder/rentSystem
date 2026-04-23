@@ -47,7 +47,12 @@ def list_utility_rates(
     if is_active is not None:
         query = query.filter(UtilityRate.is_active == is_active)
     
-    # 排序
+    # 排序 - 使用白名单验证
+    ALLOWED_SORT_FIELDS = {
+        'effective_date', 'rate_per_unit', 'utility_type', 'is_active', 'created_at'
+    }
+    if sort_by not in ALLOWED_SORT_FIELDS:
+        sort_by = 'effective_date'
     sort_column = getattr(UtilityRate, sort_by, UtilityRate.effective_date)
     if order == "desc":
         query = query.order_by(sort_column.desc())

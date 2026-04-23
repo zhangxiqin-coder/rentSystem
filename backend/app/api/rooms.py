@@ -59,7 +59,13 @@ def list_rooms(
     if floor is not None:
         query = query.filter(Room.floor == floor)
     
-    # 排序
+    # 排序 - 使用白名单验证
+    ALLOWED_SORT_FIELDS = {
+        'room_number', 'monthly_rent', 'created_at', 'status',
+        'building', 'floor', 'tenant_name', 'lease_start', 'lease_end'
+    }
+    if sort_by not in ALLOWED_SORT_FIELDS:
+        sort_by = 'room_number'
     sort_column = getattr(Room, sort_by, Room.room_number)
     if order == "desc":
         query = query.order_by(sort_column.desc())

@@ -64,7 +64,12 @@ def list_payments(
     if end_date:
         query = query.filter(Payment.payment_date <= end_date)
     
-    # 排序
+    # 排序 - 使用白名单验证
+    ALLOWED_SORT_FIELDS = {
+        'payment_date', 'amount', 'payment_type', 'status', 'due_date', 'created_at'
+    }
+    if sort_by not in ALLOWED_SORT_FIELDS:
+        sort_by = 'payment_date'
     sort_column = getattr(Payment, sort_by, Payment.payment_date)
     if order == "desc":
         query = query.order_by(sort_column.desc())
