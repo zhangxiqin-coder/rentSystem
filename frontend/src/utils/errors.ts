@@ -58,7 +58,12 @@ export const getErrorMessage = (error: any): string => {
     }
   }
 
-  // Handle backend error response format with message in detail
+  // Handle backend error response format with detail in detail
+  if (error?.detail?.detail) {
+    return error.detail.detail
+  }
+
+  // Also check for message field (for compatibility)
   if (error?.detail?.message) {
     return error.detail.message
   }

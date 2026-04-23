@@ -16,11 +16,11 @@ export interface ApiListResponse<T> {
   }
 }
 
-// User types
+// User types（统一前后端）
 export interface User {
   id: number
   username: string
-  email: string
+  email?: string
   full_name?: string
   role: 'admin' | 'landlord' | 'tenant'
   is_active: boolean
@@ -41,23 +41,27 @@ export interface LoginResponse {
 
 export interface RegisterRequest {
   username: string
-  email: string
+  email?: string
   password: string
   full_name?: string
 }
 
-// Room types
+// Room types（统一前后端）
 export interface Room {
   id: number
   room_number: string
   building?: string
   floor?: number
   area?: number
-  rent_amount: number
-  deposit_amount: number
+  monthly_rent: number
+  deposit_amount?: number
+  payment_cycle: number
   status: 'available' | 'occupied' | 'maintenance'
-  tenant_id?: number
-  landlord_id: number
+  tenant_name?: string
+  tenant_phone?: string
+  lease_start?: string
+  lease_end?: string
+  last_payment_date?: string
   description?: string
   created_at: string
   updated_at: string
@@ -68,21 +72,23 @@ export interface CreateRoomRequest {
   building?: string
   floor?: number
   area?: number
-  rent_amount: number
-  deposit_amount: number
+  monthly_rent: number
+  deposit_amount?: number
+  payment_cycle?: number
+  status?: 'available' | 'occupied' | 'maintenance'
+  tenant_name?: string
+  tenant_phone?: string
+  lease_start?: string
+  lease_end?: string
   description?: string
 }
 
-export interface UpdateRoomRequest extends Partial<CreateRoomRequest> {
-  status?: 'available' | 'occupied' | 'maintenance'
-  tenant_id?: number
-}
+export interface UpdateRoomRequest extends Partial<CreateRoomRequest> {}
 
-// Payment types
+// Payment types（统一前后端）
 export interface Payment {
   id: number
   room_id: number
-  tenant_id: number
   amount: number
   payment_type: 'rent' | 'deposit' | 'utility' | 'other'
   payment_date: string
@@ -90,31 +96,35 @@ export interface Payment {
   status: 'pending' | 'completed' | 'overdue' | 'cancelled'
   payment_method?: string
   description?: string
+  receipt_image?: string
   created_at: string
   updated_at: string
 }
 
 export interface CreatePaymentRequest {
   room_id: number
-  amount: number
+  amount?: number  // 租金类型自动计算，其他类型必填
   payment_type: 'rent' | 'deposit' | 'utility' | 'other'
   payment_date?: string
   due_date?: string
+  status?: 'pending' | 'completed' | 'overdue' | 'cancelled'
   payment_method?: string
   description?: string
+  receipt_image?: string
 }
 
-// Utility Reading types
+// Utility Reading types（统一前后端）
 export interface UtilityReading {
   id: number
   room_id: number
   utility_type: 'water' | 'electricity' | 'gas'
+  reading: number
   reading_date: string
-  previous_reading: number
-  current_reading: number
-  usage: number
-  amount: number
-  recorded_by: number
+  previous_reading?: number
+  usage?: number
+  amount?: number
+  rate_used?: number
+  recorded_by?: number
   notes?: string
   created_at: string
   updated_at: string
@@ -123,12 +133,16 @@ export interface UtilityReading {
 export interface CreateUtilityReadingRequest {
   room_id: number
   utility_type: 'water' | 'electricity' | 'gas'
+  reading: number
   reading_date: string
-  current_reading: number
   notes?: string
 }
 
-// Utility Rate types
+export interface UpdateUtilityReadingRequest {
+  notes?: string
+}
+
+// Utility Rate types（统一前后端）
 export interface UtilityRate {
   id: number
   utility_type: 'water' | 'electricity' | 'gas'
@@ -147,6 +161,13 @@ export interface CreateUtilityRateRequest {
   description?: string
 }
 
+export interface UpdateUtilityRateRequest {
+  rate_per_unit?: number
+  effective_date?: string
+  is_active?: boolean
+  description?: string
+}
+
 // Common types
 export interface PaginationParams {
   page?: number
@@ -158,4 +179,46 @@ export interface PaginationParams {
 
 export interface IdParams {
   id: number | string
+}
+
+// Statistics types
+export interface RoomStats {
+  total_rooms: number
+  available_rooms: number
+  occupied_rooms: number
+  maintenance_rooms: number
+  occupancy_rate: number
+}
+
+export interface RevenueStats {
+  total_revenue: number
+  rent_revenue: number
+  utility_revenue: number
+  deposit_revenue: number
+  by_month: { month: string; amount: number }[]
+}
+
+export interface UtilityStats {
+  total_amount: number
+  water_amount: number
+  electricity_amount: number
+  gas_amount: number
+  by_month: { month: string; amount: number; type: string }[]
+}
+
+export interface OverdueInfo {
+  room_id: number
+  room_number: string
+  tenant_name: string
+  due_date: string
+  overdue_days: number
+  amount: number
+}
+
+export interface ExpiringLease {
+  room_id: number
+  room_number: string
+  tenant_name: string
+  lease_end: string
+  days_remaining: number
 }
