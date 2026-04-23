@@ -37,3 +37,10 @@ def get_db() -> Generator[Session, None, None]:
         raise
     finally:
         db.close()
+
+
+def create_tables():
+    """创建所有数据库表"""
+    from app.models import User, Room, Payment, UtilityReading, UtilityRate
+    Base.metadata.create_all(bind=engine)
+    logging.info("数据库表创建成功")
