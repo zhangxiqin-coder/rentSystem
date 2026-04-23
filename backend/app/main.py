@@ -5,6 +5,8 @@ import secrets
 import os
 from typing import Any, Dict
 
+from app.api.auth import router as auth_router
+
 app = FastAPI(
     title="Rent Management System API",
     description="租金管理系统后端 API",
@@ -61,6 +63,9 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
 # Add CSRF middleware
 app.add_middleware(CSRFMiddleware)
+
+# Include routers
+app.include_router(auth_router)
 
 # 配置 CORS - 使用环境变量
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")

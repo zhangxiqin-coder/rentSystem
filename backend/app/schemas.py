@@ -26,7 +26,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     """用户创建 schema"""
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=8)
 
 
 class UserResponse(UserBase):
@@ -35,6 +35,32 @@ class UserResponse(UserBase):
     created_at: datetime
     
     model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== Auth Schemas ====================
+
+class LoginRequest(BaseModel):
+    """登录请求 schema"""
+    username: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=1)
+
+
+class TokenResponse(BaseModel):
+    """Token 响应 schema"""
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+
+
+class ChangePasswordRequest(BaseModel):
+    """修改密码请求 schema"""
+    old_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+
+
+class MessageResponse(BaseModel):
+    """通用消息响应 schema"""
+    message: str
 
 
 # ==================== Room Schemas ====================
