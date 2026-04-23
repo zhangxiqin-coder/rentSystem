@@ -157,7 +157,7 @@ const hasError = (field: string) => {
 
 const isFormValid = computed(() => {
   return form.value.username.trim().length > 0 &&
-         form.value.email.trim().length > 0 &&
+         (form.value.email?.trim()?.length || 0) > 0 &&
          form.value.password.length >= 8 &&
          form.value.confirmPassword === form.value.password &&
          form.value.confirmPassword.length > 0 &&

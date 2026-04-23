@@ -113,6 +113,8 @@ export interface CreatePaymentRequest {
   receipt_image?: string
 }
 
+export interface UpdatePaymentRequest extends Partial<CreatePaymentRequest> {}
+
 // Utility Reading types（统一前后端）
 export interface UtilityReading {
   id: number

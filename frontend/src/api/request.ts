@@ -151,8 +151,8 @@ request.interceptors.response.use(
           const newToken = response.data.data.access_token
 
           // Encrypt and store new token
-          const encryptedToken = encryptToken(newToken)
-          localStorage.setItem('access_token', encryptedToken)
+          const newEncryptedToken = encryptToken(newToken)
+          localStorage.setItem('access_token', newEncryptedToken)
 
           // Update authorization header for current request
           originalRequest.headers.Authorization = `Bearer ${newToken}`
