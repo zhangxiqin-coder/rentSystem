@@ -24,7 +24,7 @@ def check_room_permission(user: User, room: Optional[Room] = None):
     return True
 
 
-@router.get("", response_model=PaginatedResponse)
+@router.get("", response_model=PaginatedResponse[RoomResponse])
 def list_rooms(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
@@ -190,7 +190,7 @@ def delete_room(
     return None
 
 
-@router.get("/{room_id}/payments", response_model=PaginatedResponse)
+@router.get("/{room_id}/payments", response_model=PaginatedResponse[PaymentResponse])
 def get_room_payments(
     room_id: int,
     page: int = Query(1, ge=1),
@@ -219,7 +219,7 @@ def get_room_payments(
     }
 
 
-@router.get("/{room_id}/utility-readings", response_model=PaginatedResponse)
+@router.get("/{room_id}/utility-readings", response_model=PaginatedResponse[UtilityReadingResponse])
 def get_room_utility_readings(
     room_id: int,
     page: int = Query(1, ge=1),

@@ -23,7 +23,7 @@ def check_rate_permission(user: User):
     return True
 
 
-@router.get("", response_model=PaginatedResponse)
+@router.get("", response_model=PaginatedResponse[UtilityRateResponse])
 def list_utility_rates(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),

@@ -3,9 +3,14 @@ Pydantic schemas 定义（统一数据模型）
 """
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, TypeVar, Generic
 from pydantic import BaseModel, ConfigDict, Field, EmailStr, model_validator
 from enum import Enum
+
+
+# ==================== 通用类型变量 ====================
+
+T = TypeVar('T')
 
 
 # ==================== 枚举定义 ====================
@@ -128,7 +133,7 @@ class RoomBase(BaseModel):
     payment_cycle: int = Field(default=1, gt=0, le=12)
     status: Optional[RoomStatus] = Field(default=RoomStatus.AVAILABLE)
     tenant_name: Optional[str] = Field(None, max_length=100)
-    tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\\d{9}$')
+    tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\d{9}$')
     lease_start: Optional[date] = None
     lease_end: Optional[date] = None
     description: Optional[str] = None
@@ -156,7 +161,7 @@ class RoomUpdate(BaseModel):
     payment_cycle: Optional[int] = Field(None, gt=0, le=12)
     status: Optional[RoomStatus] = None
     tenant_name: Optional[str] = Field(None, max_length=100)
-    tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\\d{9}$')
+    tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\d{9}$')
     lease_start: Optional[date] = None
     lease_end: Optional[date] = None
     description: Optional[str] = None
@@ -341,9 +346,9 @@ class PaginationParams(BaseModel):
 
 # ==================== 通用列表响应 ====================
 
-class PaginatedResponse(BaseModel):
+class PaginatedResponse(BaseModel, Generic[T]):
     """分页响应"""
-    items: list
+    items: list[T]
     total: int
     page: int
     size: int

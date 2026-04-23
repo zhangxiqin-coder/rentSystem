@@ -26,7 +26,7 @@ def check_user_permission(current_user: User, target_user_id: Optional[int] = No
     return True
 
 
-@router.get("", response_model=PaginatedResponse)
+@router.get("", response_model=PaginatedResponse[UserResponse])
 def list_users(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),

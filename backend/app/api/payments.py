@@ -24,7 +24,7 @@ def check_payment_permission(user: User):
     return True
 
 
-@router.get("", response_model=PaginatedResponse)
+@router.get("", response_model=PaginatedResponse[PaymentResponse])
 def list_payments(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
