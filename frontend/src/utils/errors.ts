@@ -50,7 +50,20 @@ export const getErrorMessage = (error: any): string => {
     return error
   }
 
-  // Handle error object with error_code
+  // Handle backend error response format: { detail: { error_code: "...", message: "..." } }
+  if (error?.detail?.error_code) {
+    const errorCode = error.detail.error_code as string
+    if (ERROR_MESSAGES[errorCode]) {
+      return ERROR_MESSAGES[errorCode]
+    }
+  }
+
+  // Handle backend error response format with message in detail
+  if (error?.detail?.message) {
+    return error.detail.message
+  }
+
+  // Handle error object with error_code (legacy format)
   if (error?.error_code) {
     const errorCode = error.error_code as string
     if (ERROR_MESSAGES[errorCode]) {
@@ -63,8 +76,8 @@ export const getErrorMessage = (error: any): string => {
     return error.message
   }
 
-  // Handle error object with detail
-  if (error?.detail) {
+  // Handle error object with detail (string)
+  if (typeof error?.detail === 'string') {
     return error.detail
   }
 

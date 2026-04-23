@@ -4,7 +4,18 @@
  * Note: For production, use httpOnly cookies + server-side session management
  */
 
-const ENCRYPTION_KEY = import.meta.env.VITE_ENCRYPTION_KEY || 'rent-mgmt-default-key-2024'
+// Get encryption key from environment variable
+// CRITICAL: This must be set in production. Generate a strong key using: openssl rand -base64 32
+const ENCRYPTION_KEY = import.meta.env.VITE_ENCRYPTION_KEY
+
+if (!ENCRYPTION_KEY) {
+  throw new Error(
+    'VITE_ENCRYPTION_KEY environment variable is not set. ' +
+    'Please generate a strong encryption key (e.g., openssl rand -base64 32) ' +
+    'and add it to your .env file.'
+  )
+}
+
 const ENCRYPTION_VERSION = 'v1'
 
 /**

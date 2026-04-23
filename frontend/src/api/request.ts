@@ -128,12 +128,22 @@ request.interceptors.response.use(
 
         try {
           // Call refresh token endpoint
+          const encryptedToken = localStorage.getItem('access_token')
+          if (!encryptedToken) {
+            throw new Error('No access token found')
+          }
+
+          const currentToken = decryptToken(encryptedToken)
+          if (!currentToken) {
+            throw new Error('Invalid or expired access token')
+          }
+
           const response = await axios.post<ApiResponse<{ access_token: string }>>(
             `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/v1/auth/refresh-token`,
             {},
             {
               headers: {
-                Authorization: `Bearer ${decryptToken(localStorage.getItem('access_token')!)}`,
+                Authorization: `Bearer ${currentToken}`,
               },
             }
           )
