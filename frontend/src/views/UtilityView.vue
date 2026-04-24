@@ -19,6 +19,45 @@ const loading = ref(false)
 // 即将到期的房间
 const expiringRooms = ref<Room[]>([])
 
+// 所有房间（用于计算欠租）
+const allRooms = ref<Room[]>([])
+
+// 欠租房间
+const overdueRooms = computed(() => {
+  const overdue: Array<{
+    room: Room
+    overdueDays: number
+    overdueAmount: number
+    lastPaymentDate: string
+    nextPaymentDate: string
+  }> = []
+
+  allRooms.value.forEach(room => {
+    const nextPaymentDate = getNextPaymentDate(room)
+    const nextPaymentDays = getNextPaymentDays(room)
+
+    // 如果下次收租日期是今天或之前，说明欠租
+    if (nextPaymentDays <= 0) {
+      const overdueDays = Math.abs(nextPaymentDays)
+      const lastPaymentDate = room.last_payment_date || room.lease_start
+
+      // 计算欠租金额（房租 + 估算的水电费）
+      const overdueAmount = room.monthly_rent + 100 // 估算水电费100元
+
+      overdue.push({
+        room,
+        overdueDays,
+        overdueAmount,
+        lastPaymentDate: formatDate(lastPaymentDate),
+        nextPaymentDate: formatDate(nextPaymentDate)
+      })
+    }
+  })
+
+  // 按欠租天数排序（天数越多越靠前）
+  return overdue.sort((a, b) => b.overdueDays - a.overdueDays)
+})
+
 // 收租对话框
 const paymentDialogVisible = ref(false)
 const paymentForm = ref({
@@ -341,6 +380,7 @@ const loadRooms = async () => {
     }
     
     roomOptions.value = allRooms
+    allRooms.value = allRooms // 设置所有房间，用于计算欠租
   } catch (error) {
     console.error('Failed to load rooms:', error)
     ElMessage.error('加载房间列表失败')
@@ -375,6 +415,66 @@ const formatDate = (dateStr: string) => {
     month: 'long',
     day: 'numeric'
   })
+}
+
+// 一键催租
+const sendReminder = async (room: Room, type: 'overdue' | 'upcoming') => {
+  try {
+    const today = new Date().toLocaleDateString('zh-CN')
+    const nextPaymentDate = formatDate(getNextPaymentDate(room))
+    const days = getNextPaymentDays(room)
+
+    let message = ''
+
+    if (type === 'overdue') {
+      const overdueDays = Math.abs(days)
+      message = `【欠租催缴通知】
+
+亲爱的${room.room_number}租客：
+
+您好！温馨提醒您，您的房租已逾期${overdueDays}天。
+
+📋 租赁信息：
+• 房间号：${room.room_number}
+• 房租金额：¥${room.monthly_rent}/月
+• 收租周期：${room.payment_cycle === 1 ? '月付' : room.payment_cycle === 3 ? '季付' : '年付'}
+• 上次交租：${room.last_payment_date ? formatDate(room.last_payment_date) : '未知'}
+• 应交日期：${nextPaymentDate}
+• 逾期天数：${overdueDays}天
+• 欠租金额：约¥${room.monthly_rent + 100}
+
+请您尽快支付房租，避免产生更多滞纳金。如有特殊情况，请及时与我们联系。
+
+感谢您的配合！🙏`
+    } else {
+      message = `【收租温馨提醒】
+
+亲爱的${room.room_number}租客：
+
+您好！温馨提醒您，下次收租日期即将到来。
+
+📋 租赁信息：
+• 房间号：${room.room_number}
+• 房租金额：¥${room.monthly_rent}/月
+• 收租周期：${room.payment_cycle === 1 ? '月付' : room.payment_cycle === 3 ? '季付' : '年付'}
+• 下次收租：${nextPaymentDate}
+• 距离天数：${days}天
+
+请您提前准备好房租，我们将在${days}天内联系您收取。
+
+感谢您的配合！🙏`
+    }
+
+    // 复制到剪贴板
+    await navigator.clipboard.writeText(message)
+    ElMessage.success('催租消息已复制到剪贴板，请发送给租客')
+
+    // 可选：同时发送微信通知（如果集成了微信推送）
+    // await sendWechatNotification(message)
+  } catch (error) {
+    console.error('Failed to send reminder:', error)
+    ElMessage.error('发送催租消息失败')
+  }
 }
 
 // 计算下次收租日期
@@ -899,25 +999,59 @@ onMounted(() => {
     </div>
 
     <!-- 收租提醒 -->
-    <el-card v-if="expiringRooms.length > 0" class="expiring-card" shadow="hover">
+    <el-card v-if="overdueRooms.length > 0 || expiringRooms.length > 0" class="expiring-card" shadow="hover">
       <template #header>
         <div class="card-header">
-          <span class="title">💰 收租提醒（7天内需收租）</span>
-          <el-tag type="warning" size="small">{{ expiringRooms.length }} 个房间</el-tag>
+          <span class="title">💰 收租管理</span>
+          <div class="tags">
+            <el-tag v-if="overdueRooms.length > 0" type="danger" size="small">欠租: {{ overdueRooms.length }} 个</el-tag>
+            <el-tag v-if="expiringRooms.length > 0" type="warning" size="small">即将到期: {{ expiringRooms.length }} 个</el-tag>
+          </div>
         </div>
       </template>
-      <div class="expiring-list">
-        <div v-for="room in expiringRooms" :key="room.id" class="expiring-item">
-          <div class="room-info">
-            <span class="room-number">{{ room.room_number }}</span>
-            <span class="room-rent">¥{{ room.monthly_rent }}/月</span>
-            <el-tag size="small" type="info">{{ room.payment_cycle === 1 ? '月付' : room.payment_cycle === 3 ? '季付' : '年付' }}</el-tag>
+
+      <!-- 欠租房间列表 -->
+      <div v-if="overdueRooms.length > 0" class="reminder-section">
+        <div class="section-header overdue-header">
+          <span class="section-title">🚨 欠租房间（已逾期）</span>
+        </div>
+        <div class="expiring-list">
+          <div v-for="item in overdueRooms" :key="item.room.id" class="expiring-item overdue-item">
+            <div class="room-info">
+              <span class="room-number">{{ item.room.room_number }}</span>
+              <span class="room-rent">¥{{ item.room.monthly_rent }}/月</span>
+              <el-tag size="small" type="danger">逾期{{ item.overdueDays }}天</el-tag>
+            </div>
+            <div class="lease-info">
+              <span class="overdue-amount">欠费约: ¥{{ item.overdueAmount }}</span>
+              <el-button type="danger" size="small" @click="sendReminder(item.room, 'overdue')">
+                📱 催租
+              </el-button>
+            </div>
           </div>
-          <div class="lease-info">
-            <el-tag :type="getNextPaymentDays(room) <= 3 ? 'danger' : 'warning'" size="small">
- {{ getNextPaymentDays(room) }}天后需收租
-            </el-tag>
-            <span class="lease-date">{{ getNextPaymentDate(room) }}</span>
+        </div>
+      </div>
+
+      <!-- 即将到期房间列表 -->
+      <div v-if="expiringRooms.length > 0" class="reminder-section">
+        <div class="section-header upcoming-header">
+          <span class="section-title">📅 即将到期（7天内需收租）</span>
+        </div>
+        <div class="expiring-list">
+          <div v-for="room in expiringRooms" :key="room.id" class="expiring-item">
+            <div class="room-info">
+              <span class="room-number">{{ room.room_number }}</span>
+              <span class="room-rent">¥{{ room.monthly_rent }}/月</span>
+              <el-tag size="small" type="info">{{ room.payment_cycle === 1 ? '月付' : room.payment_cycle === 3 ? '季付' : '年付' }}</el-tag>
+            </div>
+            <div class="lease-info">
+              <el-tag :type="getNextPaymentDays(room) <= 3 ? 'danger' : 'warning'" size="small">
+                {{ getNextPaymentDays(room) }}天后需收租
+              </el-tag>
+              <el-button type="primary" size="small" @click="sendReminder(room, 'upcoming')">
+                📱 提醒
+              </el-button>
+            </div>
           </div>
         </div>
       </div>
@@ -1568,6 +1702,56 @@ onMounted(() => {
 .expiring-card .title {
   font-weight: 600;
   color: #e6a23c;
+}
+
+.expiring-card .tags {
+  display: flex;
+  gap: 8px;
+}
+
+/* 欠租管理区块样式 */
+.reminder-section {
+  margin-bottom: 16px;
+}
+
+.reminder-section:last-child {
+  margin-bottom: 0;
+}
+
+.section-header {
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  background: white;
+  border-left: 4px solid;
+}
+
+.section-header.overdue-header {
+  border-left-color: #f56c6c;
+  background: linear-gradient(135deg, #fef0f0 0%, #ffffff 100%);
+}
+
+.section-header.upcoming-header {
+  border-left-color: #e6a23c;
+  background: linear-gradient(135deg, #fff7e6 0%, #ffffff 100%);
+}
+
+.section-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #606266;
+}
+
+.overdue-item {
+  background: linear-gradient(135deg, #fef0f0 0%, #ffffff 100%);
+  border-color: #fbc4c4;
+}
+
+.overdue-amount {
+  font-size: 13px;
+  color: #f56c6c;
+  font-weight: 600;
+  margin-right: 8px;
 }
 
 .expiring-list {
