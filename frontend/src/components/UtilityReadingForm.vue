@@ -424,7 +424,11 @@ loadRooms()
     <el-form :model="formData" label-width="140px" @submit.prevent="submitForm">
       <!-- 房间选择 -->
       <el-form-item label="选择房间" required>
+        <div v-if="props.roomId" style="padding: 8px 12px; background: #f5f7fa; border-radius: 4px; color: #606266; font-weight: 500;">
+          {{ rooms.find(r => r.id === props.roomId)?.room_number || '加载中...' }} - {{ rooms.find(r => r.id === props.roomId)?.tenant_name || '空房' }}
+        </div>
         <el-select
+          v-else
           v-model="formData.room_id"
           placeholder="请选择房间（支持输入搜索）"
           filterable
@@ -455,10 +459,6 @@ loadRooms()
             </div>
           </el-option>
         </el-select>
-        <!-- 当房号固定时显示提示 -->
-        <div v-if="props.roomId" style="margin-top: 8px; color: #409eff; font-size: 13px;">
-          🔒 已自动选择房间：{{ rooms.find(r => r.id === props.roomId)?.room_number || '加载中...' }} - {{ rooms.find(r => r.id === props.roomId)?.tenant_name || '空房' }}
-        </div>
         <div v-if="formData.room_id && !props.roomId" class="room-hint">
           <span
             v-if="roomReadingStatus[activeRooms.find(r => r.id === formData.room_id)!]"
