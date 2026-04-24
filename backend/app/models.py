@@ -113,6 +113,7 @@ class Room(Base):
     lease_end = Column(Date)
     last_payment_date = Column(Date)
     description = Column(Text)
+    owner_id = Column(Integer, nullable=True, index=True)  # 用户隔离字段
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -143,6 +144,7 @@ class Payment(Base):
     payment_method = Column(String(50))
     description = Column(Text)
     receipt_image = Column(String(255))
+    owner_id = Column(Integer, nullable=True, index=True)  # 用户隔离字段
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -172,6 +174,7 @@ class UtilityReading(Base):
     rate_used = Column(DECIMAL(10, 4))
     recorded_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     notes = Column(Text)
+    owner_id = Column(Integer, nullable=True, index=True)  # 用户隔离字段
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

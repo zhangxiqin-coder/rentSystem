@@ -120,11 +120,12 @@ def create_utility_reading(
     reading: Decimal,
     reading_date: date,
     recorded_by: Optional[int] = None,
-    notes: Optional[str] = None
+    notes: Optional[str] = None,
+    owner_id: Optional[int] = None
 ) -> UtilityReading:
     """
     创建水电抄表记录（自动计算用量和费用）
-    
+
     Args:
         db: 数据库会话
         room_id: 房间ID
@@ -133,10 +134,11 @@ def create_utility_reading(
         reading_date: 抄表日期
         recorded_by: 记录人ID
         notes: 备注
-    
+        owner_id: 所有者ID（用户隔离）
+
     Returns:
         创建的抄表记录
-    
+
     Raises:
         ValueError: 业务规则验证失败
     """
@@ -144,19 +146,19 @@ def create_utility_reading(
     previous_reading = get_previous_reading(db, room_id, utility_type, reading_date)
     if previous_reading is None:
         previous_reading = Decimal('0')
-    
+
     # 2. 验证当前读数
     if reading < previous_reading:
         raise ValueError("当前读数不能小于上次读数")
-    
+
     # 3. 获取有效费率
     rate = get_active_rate(db, utility_type, reading_date)
     if rate is None:
         raise ValueError(f"未找到有效的{utility_type}费率")
-    
+
     # 4. 计算用量和费用
     usage, amount = calculate_utility_cost(reading, previous_reading, rate.rate_per_unit)
-    
+
     # 5. 创建记录
     utility_reading = UtilityReading(
         room_id=room_id,
@@ -168,7 +170,8 @@ def create_utility_reading(
         amount=amount,
         rate_used=rate.rate_per_unit,
         recorded_by=recorded_by,
-        notes=notes
+        notes=notes,
+        owner_id=owner_id
     )
     
     try:
@@ -222,11 +225,12 @@ def create_payment(
     status: str = 'completed',
     payment_method: Optional[str] = None,
     description: Optional[str] = None,
-    receipt_image: Optional[str] = None
+    receipt_image: Optional[str] = None,
+    owner_id: Optional[int] = None
 ) -> Payment:
     """
     创建支付记录（自动计算租金）
-    
+
     Args:
         db: 数据库会话
         room_id: 房间ID
@@ -238,10 +242,11 @@ def create_payment(
         payment_method: 支付方式
         description: 描述
         receipt_image: 收据图片
-    
+        owner_id: 所有者ID（用户隔离）
+
     Returns:
         创建的支付记录
-    
+
     Raises:
         ValueError: 业务规则验证失败
     """
@@ -249,15 +254,15 @@ def create_payment(
     room = db.query(Room).filter(Room.id == room_id).first()
     if not room:
         raise ValueError("房间不存在")
-    
+
     # 如果是租金类型且未指定金额，自动计算
     if payment_type == 'rent' and amount is None:
         amount = calculate_rent(room.monthly_rent, room.payment_cycle)
-    
+
     # 如果金额仍为空，验证
     if amount is None:
         raise ValueError("必须指定支付金额")
-    
+
     # 创建支付记录
     payment = Payment(
         room_id=room_id,
@@ -268,7 +273,8 @@ def create_payment(
         status=status,
         payment_method=payment_method,
         description=description,
-        receipt_image=receipt_image
+        receipt_image=receipt_image,
+        owner_id=owner_id
     )
     
     try:

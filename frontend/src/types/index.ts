@@ -6,14 +6,10 @@ export interface ApiResponse<T> {
 }
 
 export interface ApiListResponse<T> {
-  code: number
-  message: string
-  data: {
-    items: T[]
-    total: number
-    page: number
-    size: number
-  }
+  items: T[]
+  total: number
+  page: number
+  size: number
 }
 
 // User types（统一前后端）
@@ -141,6 +137,7 @@ export interface CreateUtilityReadingRequest {
   utility_type: 'water' | 'electricity' | 'gas'
   reading: number
   reading_date: string
+  previous_reading?: number
   notes?: string
 }
 
@@ -181,6 +178,10 @@ export interface PaginationParams {
   search?: string
   sort_by?: string
   order?: 'asc' | 'desc'
+  utility_type?: 'water' | 'electricity' | 'gas'
+  room_id?: number
+  start_date?: string
+  end_date?: string
 }
 
 export interface IdParams {

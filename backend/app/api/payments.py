@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 
 from app.core.deps import get_db, get_current_user
+from app.core.permissions import apply_payment_filter
 from app.models import User, Payment, Room
 from app.schemas import (
     PaymentCreate, PaymentUpdate, PaymentResponse, PaginatedResponse,
@@ -41,18 +42,17 @@ def list_payments(
 ):
     """
     获取支付记录列表
-    
+
     支持分页、筛选和排序
     """
     # 自动检查逾期
     check_overdue_payments(db)
-    
+
     query = db.query(Payment)
-    
-    # 租客只能查看自己房间的支付
-    if current_user.role == "tenant":
-        query = query.join(Room).filter(Room.tenant_name == current_user.full_name)
-    
+
+    # 用户权限过滤（房东姐姐可以看到所有，其他房东只能看到自己的）
+    query = apply_payment_filter(query, current_user)
+
     # 筛选
     if room_id:
         query = query.filter(Payment.room_id == room_id)
@@ -154,11 +154,11 @@ def create_payment_record(
 ):
     """
     创建支付记录
-    
+
     - 如果是租金类型且未指定金额，会自动计算（月租金 × 支付周期）
     """
     check_payment_permission(current_user)
-    
+
     try:
         payment = create_payment(
             db,
@@ -170,7 +170,8 @@ def create_payment_record(
             status=payment_data.status,
             payment_method=payment_data.payment_method,
             description=payment_data.description,
-            receipt_image=payment_data.receipt_image
+            receipt_image=payment_data.receipt_image,
+            owner_id=current_user.id  # 设置owner_id为当前用户
         )
         return payment
     except ValueError as e:

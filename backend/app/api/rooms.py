@@ -5,8 +5,10 @@ from typing import Optional
 from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from dateutil.relativedelta import relativedelta
 
 from app.core.deps import get_db, get_current_user
+from app.core.permissions import apply_room_filter
 from app.models import User, Room, Payment, UtilityReading
 from app.schemas import (
     RoomCreate, RoomUpdate, RoomResponse, PaginatedResponse,
@@ -39,11 +41,14 @@ def list_rooms(
 ):
     """
     获取房间列表
-    
+
     支持分页、搜索、筛选和排序
     """
     query = db.query(Room)
-    
+
+    # 用户权限过滤
+    query = apply_room_filter(query, current_user)
+
     # 搜索
     if search:
         query = query.filter(
@@ -85,7 +90,7 @@ def list_rooms(
     }
 
 
-@router.get("/expiring-soon", response_model=list[RoomResponse])
+@router.get("/expiring-soon")
 def get_expiring_rooms(
     days: int = Query(7, ge=1, le=30, description="查询天数"),
     db: Session = Depends(get_db),
@@ -96,41 +101,89 @@ def get_expiring_rooms(
     """
     today = date.today()
     end_date = today + timedelta(days=days)
-    
+
     # 获取所有在租房间
     rooms = db.query(Room).filter(Room.status == "occupied").all()
-    
+
+    # 用户权限过滤
+    filtered_rooms = []
+    for room in rooms:
+        # 检查用户是否有权限查看这个房间
+        if current_user.role == "admin" or current_user.username == "testuser3":
+            filtered_rooms.append(room)
+        elif current_user.role == "landlord" and room.owner_id == current_user.id:
+            filtered_rooms.append(room)
+
     # 计算每个房间的下次收租日期
     expiring_rooms = []
-    for room in rooms:
-        # 使用 last_payment_date 或 lease_start 作为起点
-        last_payment = room.last_payment_date or room.lease_start
+    for room in filtered_rooms:
+        # 计算下次收租日期
+        # 始终使用lease_start的日（day of month）来确保付款日期一致
         
-        # 计算下次收租日期：起点 + 付款周期（月）
-        # 计算方法：起点日期的月份 + payment_cycle
-        year = last_payment.year
-        month = last_payment.month + room.payment_cycle
-        while month > 12:
-            month -= 12
-            year += 1
+        # 确定起点：如果有last_payment_date，使用它；否则使用lease_start
+        base_date = room.last_payment_date or room.lease_start
         
-        # 处理日期溢出（比如1月31日加1个月）
-        # 重要：使用 lease_start 的日期（day），而不是 last_payment 的日期
-        # 这样可以确保付款日期与租约开始日期一致
-        days_in_month = [31, 29 if (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
-        day = min(room.lease_start.day, days_in_month)
-        next_payment = date(year, month, day)
+        # 计算下次付款：base_date + payment_cycle个月
+        next_payment = base_date + relativedelta(months=room.payment_cycle)
+        
+        # 重要：修正付款日为lease_start的日
+        # 例如：lease_start是8-23，last_payment是4-17，则下次付款应该是5-23（不是5-17）
+        # 但如果base_date已经是正确的日（比如4-23），则保持不变
+        lease_start_day = room.lease_start.day
+        
+        # 检查next_payment的日是否正确
+        # 如果不正确，需要调整到正确的日
+        if next_payment.day != lease_start_day:
+            # 重新计算：从base_date的年月开始，使用lease_start的日
+            import calendar
+            year = next_payment.year
+            month = next_payment.month
+            
+            # 确保日期有效（比如2月30日会变成2月28日）
+            max_day = calendar.monthrange(year, month)[1]
+            day = min(lease_start_day, max_day)
+            
+            # 如果调整后的日期 <= base_date，说明需要加一个月
+            adjusted = date(year, month, day)
+            if adjusted <= base_date:
+                adjusted = adjusted + relativedelta(months=1)
+                # 重新检查日
+                max_day = calendar.monthrange(adjusted.year, adjusted.month)[1]
+                day = min(lease_start_day, max_day)
+                adjusted = date(adjusted.year, adjusted.month, day)
+            
+            next_payment = adjusted
         
         # 检查是否在未来N天内需要收租
         if today <= next_payment <= end_date:
-            expiring_rooms.append(room)
+            # 将Room对象转换为字典并添加next_payment_date
+            room_dict = {
+                "id": room.id,
+                "room_number": room.room_number,
+                "building": room.building,
+                "floor": room.floor,
+                "area": str(room.area) if room.area else None,
+                "monthly_rent": str(room.monthly_rent),
+                "deposit_amount": str(room.deposit_amount) if room.deposit_amount else None,
+                "payment_cycle": room.payment_cycle,
+                "water_rate": str(room.water_rate) if room.water_rate else None,
+                "electricity_rate": str(room.electricity_rate) if room.electricity_rate else None,
+                "status": room.status,
+                "tenant_name": room.tenant_name,
+                "tenant_phone": room.tenant_phone,
+                "lease_start": str(room.lease_start),
+                "lease_end": str(room.lease_end),
+                "last_payment_date": str(room.last_payment_date) if room.last_payment_date else None,
+                "description": room.description,
+                "created_at": room.created_at.isoformat() if room.created_at else None,
+                "updated_at": room.updated_at.isoformat() if room.updated_at else None,
+                "next_payment_date": str(next_payment),  # 添加计算的下次付款日期
+                "days_until_payment": (next_payment - today).days  # 添加距离天数
+            }
+            expiring_rooms.append(room_dict)
     
     # 按下次收租日期排序
-    expiring_rooms.sort(key=lambda r: (
-        (r.last_payment_date or r.lease_start).year,
-        (r.last_payment_date or r.lease_start).month,
-        (r.last_payment_date or r.lease_start).day
-    ))
+    expiring_rooms.sort(key=lambda r: r["next_payment_date"])
     
     return expiring_rooms
 
@@ -161,22 +214,24 @@ def create_room(
     创建房间
     """
     check_room_permission(current_user)
-    
+
     # 检查房间号是否已存在
     existing = db.query(Room).filter(Room.room_number == room_data.room_number).first()
     if existing:
         raise HTTPException(status_code=400, detail="房间号已存在")
-    
-    # 创建房间
-    room = Room(**room_data.model_dump())
-    
+
+    # 创建房间，设置owner_id为当前用户
+    room_data_dict = room_data.model_dump()
+    room_data_dict['owner_id'] = current_user.id
+    room = Room(**room_data_dict)
+
     # 自动设置状态
     update_room_status(room)
-    
+
     db.add(room)
     db.commit()
     db.refresh(room)
-    
+
     return room
 
 

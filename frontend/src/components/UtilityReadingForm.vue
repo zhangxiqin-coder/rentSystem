@@ -3,14 +3,14 @@ import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { roomApi } from '@/api/room'
 import { utilityApi } from '@/api/utility'
-import type { Room, UtilityReading } from '@/types'
+import type { Room } from '@/types'
 
 const props = defineProps<{
   roomId?: number
 }>()
 
 const emit = defineEmits<{
-  success: []
+  success: [result: any]
   cancel: []
 }>()
 
@@ -42,6 +42,21 @@ const previousReadings = ref<{
   electric: null,
 })
 
+// 当前选中房间
+const selectedRoom = computed(() => {
+  if (!formData.value.room_id) return null
+  return rooms.value.find(r => r.id === formData.value.room_id) || null
+})
+
+// 检查房间是否支持水电费率（2501系列房间费率可为0或None）
+const isZeroRateRoom = computed(() => {
+  const room = selectedRoom.value
+  if (!room) return false
+  const waterRate = room.water_rate === null || room.water_rate === 0
+  const electricRate = room.electricity_rate === null || room.electricity_rate === 0
+  return waterRate || electricRate
+})
+
 // 计算结果
 const calculations = ref<{
   water: { usage: number; amount: number; rate: number } | null
@@ -57,10 +72,10 @@ const getNextPaymentDays = (room: Room): number => {
 
   const lastPayment = room.last_payment_date
     ? new Date(room.last_payment_date)
-    : new Date(room.lease_start)
+    : room.lease_start ? new Date(room.lease_start) : new Date()
 
   // 使用租约开始日的日期作为付款日
-  const paymentDay = new Date(room.lease_start).getDate()
+  const paymentDay = room.lease_start ? new Date(room.lease_start).getDate() : 1
   const now = new Date()
   const currentMonth = now.getMonth()
   const currentYear = now.getFullYear()
@@ -111,17 +126,10 @@ const hasThisMonthReading = async (roomId: number): Promise<boolean> => {
 // 房间本月是否已有记录的缓存
 const roomReadingStatus = ref<Record<number, boolean>>({})
 
-// 当前选中的房间
-const currentRoom = computed(() => {
-  if (props.roomId) {
-    return rooms.value.find(r => r.id === props.roomId)
-  }
-  return rooms.value.find(r => r.id === formData.value.room_id)
-})
-
-// 房间列表（过滤掉已删除的房间，按房号字母序排序）
+// 房间列表（按房号字母序排序）
 const activeRooms = computed(() => {
-  const active = rooms.value.filter(r => r.status !== 'deleted')
+  // 所有房间都是活跃的（软删除的房间不会从API返回）
+  const active = rooms.value
 
   // 按房号字母序排序
   return active.sort((a, b) => {
@@ -234,11 +242,18 @@ const calculateCosts = () => {
   const roomId = formData.value.room_id
   if (!roomId) return
 
+  const room = selectedRoom.value
+  if (!room) return
+
   // 水费计算
   const prevWater = displayedPreviousWater.value
   if (prevWater !== null && formData.value.water_reading >= 0) {
     const usage = formData.value.water_reading - prevWater
-    const rate = 5 // 默认水费费率（应该从API获取）
+    // 优先使用房间费率，如果费率为0或null（2501系列房间），则使用0
+    // 只有当费率为null且不是0费率房间时，才使用默认费率
+    const rate = room.water_rate !== null && room.water_rate !== undefined
+      ? Number(room.water_rate)
+      : (isZeroRateRoom.value ? 0 : 5) // 默认5元/吨
     calculations.value.water = {
       usage: Math.max(0, usage),
       amount: Math.max(0, usage) * rate,
@@ -252,7 +267,11 @@ const calculateCosts = () => {
   const prevElectric = displayedPreviousElectric.value
   if (prevElectric !== null && formData.value.electric_reading >= 0) {
     const usage = formData.value.electric_reading - prevElectric
-    const rate = 1 // 默认电费费率（应该从API获取）
+    // 优先使用房间费率，如果费率为0或null（2501系列房间），则使用0
+    // 只有当费率为null且不是0费率房间时，才使用默认费率
+    const rate = room.electricity_rate !== null && room.electricity_rate !== undefined
+      ? Number(room.electricity_rate)
+      : (isZeroRateRoom.value ? 0 : 1) // 默认1元/度
     calculations.value.electric = {
       usage: Math.max(0, usage),
       amount: Math.max(0, usage) * rate,
@@ -274,9 +293,14 @@ const submitForm = async () => {
     ElMessage.error('请选择抄表日期')
     return
   }
-  if (formData.value.water_reading === 0 && formData.value.electric_reading === 0) {
-    ElMessage.error('请至少录入水表或电表读数')
-    return
+
+  // 2501系列房间（费率为0或None）允许创建0读数记录
+  // 其他房间至少需要录入水表或电表读数
+  if (!isZeroRateRoom.value) {
+    if (formData.value.water_reading === 0 && formData.value.electric_reading === 0) {
+      ElMessage.error('请至少录入水表或电表读数')
+      return
+    }
   }
 
   // 验证水表读数
@@ -302,7 +326,8 @@ const submitForm = async () => {
     // 分别创建水和电的记录
     const promises: Promise<any>[] = []
 
-    if (formData.value.water_reading > 0) {
+    // 2501系列房间：如果费率为0或None，创建0读数记录
+    if (formData.value.water_reading > 0 || (isZeroRateRoom.value && selectedRoom.value?.water_rate === 0)) {
       promises.push(
         utilityApi.createReading({
           room_id: formData.value.room_id,
@@ -315,7 +340,7 @@ const submitForm = async () => {
       )
     }
 
-    if (formData.value.electric_reading > 0) {
+    if (formData.value.electric_reading > 0 || (isZeroRateRoom.value && selectedRoom.value?.electricity_rate === 0)) {
       promises.push(
         utilityApi.createReading({
           room_id: formData.value.room_id,
@@ -441,6 +466,7 @@ loadRooms()
             v-for="room in activeRooms"
             :key="room.id"
             :value="room.id"
+            :label="`${room.room_number} - ${room.tenant_name || '空房'}`"
           >
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
               <span>{{ room.room_number }} - {{ room.tenant_name || '空房' }}</span>
@@ -461,7 +487,7 @@ loadRooms()
         </el-select>
         <div v-if="formData.room_id && !props.roomId" class="room-hint">
           <span
-            v-if="roomReadingStatus[activeRooms.find(r => r.id === formData.room_id)!]"
+            v-if="roomReadingStatus[formData.room_id]"
             style="color: #909399;"
           >
             ℹ️ 该房间本月已录入过水电记录

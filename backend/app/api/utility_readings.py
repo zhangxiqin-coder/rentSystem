@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 
 from app.core.deps import get_db, get_current_user
+from app.core.permissions import apply_utility_reading_filter
 from app.models import User, UtilityReading, Room
 from app.schemas import (
     UtilityReadingCreate, UtilityReadingUpdate, UtilityReadingResponse, PaginatedResponse
@@ -46,9 +47,8 @@ def list_utility_readings(
     """
     query = db.query(UtilityReading)
 
-    # 租客只能查看自己房间的抄表
-    if current_user.role == "tenant":
-        query = query.join(Room).filter(Room.tenant_name == current_user.full_name)
+    # 用户权限过滤（房东姐姐可以看到所有，其他房东只能看到自己的）
+    query = apply_utility_reading_filter(query, current_user)
 
     # 筛选
     if room_id:
@@ -132,7 +132,8 @@ async def create_utility_reading_record(
             reading=reading_data.reading,
             reading_date=reading_data.reading_date,
             recorded_by=current_user.id,
-            notes=reading_data.notes
+            notes=reading_data.notes,
+            owner_id=current_user.id  # 设置owner_id为当前用户
         )
 
         # 获取房间信息

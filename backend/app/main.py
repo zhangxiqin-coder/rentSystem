@@ -28,7 +28,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         csrf_token_header = request.headers.get('X-CSRF-Token')
         
         # Skip CSRF check for login/register endpoints (they establish session)
-        if request.url.path in ['/api/v1/auth/login', '/api/v1/auth/register']:
+        if request.url.path in ['/api/auth/login', '/api/auth/register', '/api/v1/auth/login', '/api/v1/auth/register']:
             response = await call_next(request)
             # Generate and return new CSRF token for authenticated users
             if hasattr(request.state, 'user') and request.state.user:
@@ -37,7 +37,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             return response
         
         # For CSRF token endpoint, generate and return token
-        if request.url.path == '/api/v1/auth/csrf-token':
+        if request.url.path in ['/api/auth/csrf-token', '/api/v1/auth/csrf-token']:
             response = await call_next(request)
             return response
         

@@ -131,8 +131,8 @@ class RoomBase(BaseModel):
     monthly_rent: Decimal = Field(..., gt=0)
     deposit_amount: Optional[Decimal] = Field(None, ge=0)
     payment_cycle: int = Field(default=1, gt=0, le=12)
-    water_rate: Decimal = Field(default=5.00, gt=0)
-    electricity_rate: Decimal = Field(default=1.00, gt=0)
+    water_rate: Optional[Decimal] = Field(None, ge=0)  # 允许为None或0（针对2501系列房间）
+    electricity_rate: Optional[Decimal] = Field(None, ge=0)  # 允许为None或0（针对2501系列房间）
     status: Optional[RoomStatus] = Field(default=RoomStatus.AVAILABLE)
     tenant_name: Optional[str] = Field(None, max_length=100)
     tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\d{9}$')
@@ -161,8 +161,8 @@ class RoomUpdate(BaseModel):
     monthly_rent: Optional[Decimal] = Field(None, gt=0)
     deposit_amount: Optional[Decimal] = Field(None, ge=0)
     payment_cycle: Optional[int] = Field(None, gt=0, le=12)
-    water_rate: Optional[Decimal] = Field(None, gt=0)
-    electricity_rate: Optional[Decimal] = Field(None, gt=0)
+    water_rate: Optional[Decimal] = Field(None, ge=0)  # 允许为None或0（针对2501系列房间）
+    electricity_rate: Optional[Decimal] = Field(None, ge=0)  # 允许为None或0（针对2501系列房间）
     status: Optional[RoomStatus] = None
     tenant_name: Optional[str] = Field(None, max_length=100)
     tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\d{9}$')
