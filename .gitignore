@@ -60,7 +60,6 @@ htmlcov/
 
 # Backend specific
 backend/venv/
-backend/rent_management.db
 backend/.env
 backend/__pycache__/
 
