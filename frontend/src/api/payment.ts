@@ -1,32 +1,43 @@
 import request from './request'
-import type {
-  Payment,
-  CreatePaymentRequest,
-  ApiResponse,
-  ApiListResponse,
-  PaginationParams,
-} from '@/types'
+
+export interface UtilityPaymentItem {
+  utility_type: 'water' | 'electricity'
+  amount: number
+  original_amount: number
+  discount: number
+}
+
+export interface BulkPaymentCreate {
+  room_id: number
+  reading_date: string
+  rent_amount: number
+  rent_original: number
+  water_charge?: UtilityPaymentItem
+  electricity_charge?: UtilityPaymentItem
+  payment_date?: string
+  payment_method?: string
+  notes?: string
+}
+
+export interface BulkPaymentResponse {
+  success: boolean
+  message: string
+  payments: any[]
+  total_original: number
+  total_actual: number
+  total_discount: number
+}
 
 export const paymentApi = {
-  // Get all payments with pagination
-  getPayments: (params?: PaginationParams) =>
-    request.get<ApiListResponse<Payment>>('/api/v1/payments', { params }),
+  // 批量创建收租记录
+  createBulkPayment: (data: BulkPaymentCreate) =>
+    request.post<BulkPaymentResponse>('/api/v1/payments/bulk', data),
 
-  // Get payment by id
-  getPayment: (id: number) => request.get<ApiResponse<Payment>>(`/api/v1/payments/${id}`),
+  // 获取年度统计
+  getYearlyStats: (year?: number) =>
+    request.get('/api/v1/payments/stats/yearly', { params: { year } }),
 
-  // Create payment
-  createPayment: (data: CreatePaymentRequest) =>
-    request.post<ApiResponse<Payment>>('/api/v1/payments', data),
-
-  // Update payment
-  updatePayment: (id: number, data: Partial<CreatePaymentRequest>) =>
-    request.put<ApiResponse<Payment>>(`/api/v1/payments/${id}`, data),
-
-  // Delete payment
-  deletePayment: (id: number) => request.delete<ApiResponse<void>>(`/api/v1/payments/${id}`),
-
-  // Get payments by room
-  getPaymentsByRoom: (roomId: number, params?: PaginationParams) =>
-    request.get<ApiListResponse<Payment>>(`/api/v1/rooms/${roomId}/payments`, { params }),
+  // 获取房间账单
+  getRoomBilling: (roomId: number, year?: number) =>
+    request.get(`/api/v1/payments/stats/room/${roomId}`, { params: { year } })
 }

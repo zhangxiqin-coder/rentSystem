@@ -104,6 +104,8 @@ class Room(Base):
     monthly_rent = Column(DECIMAL(10, 2), nullable=False)
     deposit_amount = Column(DECIMAL(10, 2))
     payment_cycle = Column(Integer, default=1, nullable=False)
+    water_rate = Column(DECIMAL(10, 2), default=5.00, nullable=False)
+    electricity_rate = Column(DECIMAL(10, 2), default=1.00, nullable=False)
     status = Column(String(20), nullable=False, default="available")
     tenant_name = Column(String(100))
     tenant_phone = Column(String(20))

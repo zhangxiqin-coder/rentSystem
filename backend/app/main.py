@@ -5,7 +5,7 @@ import secrets
 import os
 from typing import Any, Dict
 
-from app.api import auth, rooms, payments, utility_readings, utility_rates, users, statistics
+from app.api import auth, rooms, payments, utility_readings, utility_rates, users, statistics, reminders, export
 
 app = FastAPI(
     title="Rent Management System API",
@@ -61,7 +61,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         return response
 
-# Add CSRF middleware
+# Add CSRF middleware FIRST (so it executes AFTER CORS)
 app.add_middleware(CSRFMiddleware)
 
 # Include routers
@@ -74,12 +74,17 @@ app.include_router(utility_readings.router, prefix=api_v1_prefix)
 app.include_router(utility_rates.router, prefix=api_v1_prefix)
 app.include_router(users.router, prefix=api_v1_prefix)
 app.include_router(statistics.router, prefix=api_v1_prefix)
+app.include_router(reminders.router, prefix=api_v1_prefix)
+app.include_router(export.router, prefix=api_v1_prefix)
 
-# 配置 CORS - 使用环境变量
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+# 配置 CORS - 固定配置
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://43.134.40.91:5173",
+        "http://127.0.0.1:5173"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

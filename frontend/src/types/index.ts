@@ -56,6 +56,8 @@ export interface Room {
   monthly_rent: number
   deposit_amount?: number
   payment_cycle: number
+  water_rate: number
+  electricity_rate: number
   status: 'available' | 'occupied' | 'maintenance'
   tenant_name?: string
   tenant_phone?: string
@@ -75,6 +77,8 @@ export interface CreateRoomRequest {
   monthly_rent: number
   deposit_amount?: number
   payment_cycle?: number
+  water_rate?: number
+  electricity_rate?: number
   status?: 'available' | 'occupied' | 'maintenance'
   tenant_name?: string
   tenant_phone?: string

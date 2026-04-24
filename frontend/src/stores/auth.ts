@@ -23,28 +23,39 @@ export const useAuthStore = defineStore('auth', () => {
   const login = async (credentials: LoginRequest) => {
     loading.value = true
     error.value = null
+    console.log('🔐 [Auth] Starting login...', credentials.username)
+
     try {
+      console.log('📡 [Auth] Sending login request to API...')
       const response = await authApi.login(credentials)
+      console.log('✅ [Auth] Login API response received:', response)
+
       token.value = response.data.data.access_token
       user.value = response.data.data.user
+      console.log('🎫 [Auth] Token extracted:', token.value?.substring(0, 20) + '...')
 
       // Store encrypted token in localStorage
       const encryptedToken = encryptToken(token.value)
       localStorage.setItem('access_token', encryptedToken)
       localStorage.setItem('user', JSON.stringify(user.value))
+      console.log('💾 [Auth] Token and user saved to localStorage')
 
       // Fetch and store CSRF token
       try {
+        console.log('🔒 [Auth] Fetching CSRF token...')
         const csrfResponse = await authApi.getCsrfToken()
         if (csrfResponse.data.data.csrf_token) {
           sessionStorage.setItem('csrf_token', csrfResponse.data.data.csrf_token)
+          console.log('✅ [Auth] CSRF token saved')
         }
       } catch (csrfError) {
-        console.warn('Failed to fetch CSRF token:', csrfError)
+        console.warn('⚠️ [Auth] Failed to fetch CSRF token:', csrfError)
       }
 
+      console.log('🎉 [Auth] Login completed successfully!')
       return true
     } catch (err: unknown) {
+      console.error('❌ [Auth] Login failed:', err)
       error.value = getErrorMessage(err)
       return false
     } finally {

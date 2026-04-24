@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Network Debug</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #d4d4d4; }
+    h1 { color: #4ec9b0; }
+    .test { margin: 20px 0; padding: 15px; border: 1px solid #333; border-radius: 5px; }
+    .success { border-left: 4px solid #4ec9b0; background: #1e3a2f; }
+    .error { border-left: 4px solid #f48771; background: #3a1e1e; }
+    button { padding: 10px 20px; margin: 5px; cursor: pointer; background: #007acc; color: white; border: none; border-radius: 3px; }
+    button:hover { background: #005a9e; }
+    pre { white-space: pre-wrap; word-wrap: break-word; }
+  </style>
+</head>
+<body>
+  <h1>🔍 网络连接诊断工具</h1>
+
+  <div class="test" id="env-test">
+    <h3>1. 环境变量检查</h3>
+    <pre id="env-result">检查中...</pre>
+  </div>
+
+  <div class="test" id="cors-test">
+    <h3>2. CORS 预检测试</h3>
+    <button onclick="testCORS()">测试 CORS</button>
+    <pre id="cors-result">等待测试...</pre>
+  </div>
+
+  <div class="test" id="login-test">
+    <h3>3. 登录 API 测试</h3>
+    <button onclick="testLogin()">测试登录</button>
+    <pre id="login-result">等待测试...</pre>
+  </div>
+
+  <div class="test" id="storage-test">
+    <h3>4. LocalStorage 检查</h3>
+    <button onclick="checkStorage()">检查存储</button>
+    <pre id="storage-result">等待检查...</pre>
+  </div>
+
+  <script>
+    const API_BASE_URL = 'http://43.134.40.91:8000';
+
+    // 1. 检查环境
+    async function testCORS() {
+      const result = document.getElementById('cors-result');
+      result.textContent = '测试中...';
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/health`, {
+          method: 'GET',
+          mode: 'cors'
+        });
+
+        const data = await response.json();
+        result.textContent = `✅ 成功！\n状态码: ${response.status}\n响应: ${JSON.stringify(data, null, 2)}`;
+        result.parentElement.className = 'test success';
+      } catch (error) {
+        result.textContent = `❌ 失败！\n错误: ${error.message}\n\n可能原因:\n1. 浏览器阻止了跨域请求\n2. 后端服务未运行\n3. 网络连接问题`;
+        result.parentElement.className = 'test error';
+      }
+    }
+
+    // 2. 测试登录
+    async function testLogin() {
+      const result = document.getElementById('login-result');
+      result.textContent = '测试中...';
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+          method: 'POST',
+          mode: 'cors',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            username: 'testuser3',
+            password: 'Test123456!'
+          })
+        });
+
+        const data = await response.json();
+        result.textContent = `✅ 成功！\n状态码: ${response.status}\n响应: ${JSON.stringify(data, null, 2)}`;
+
+        if (data.data && data.data.access_token) {
+          result.textContent += `\n\n✅ 获得 Token: ${data.data.access_token.substring(0, 20)}...`;
+        }
+        result.parentElement.className = 'test success';
+      } catch (error) {
+        result.textContent = `❌ 失败！\n错误: ${error.message}\n\n详细错误:\n${error.stack || 'No stack trace'}`;
+        result.parentElement.className = 'test error';
+      }
+    }
+
+    // 3. 检查存储
+    function checkStorage() {
+      const result = document.getElementById('storage-result');
+
+      const token = localStorage.getItem('access_token');
+      const user = localStorage.getItem('user');
+
+      if (token) {
+        result.textContent = `✅ Token 存在\n长度: ${token.length}\n前缀: ${token.substring(0, 30)}...\n\n用户信息:\n${user || '无'}`;
+        result.parentElement.className = 'test success';
+      } else {
+        result.textContent = `⚠️ 没有 Token\n\nLocalStorage 内容:\n${JSON.stringify(localStorage, null, 2)}`;
+        result.parentElement.className = 'test error';
+      }
+    }
+
+    // 页面加载时自动运行 CORS 测试
+    window.onload = () => {
+      document.getElementById('env-result').textContent = `API 地址: ${API_BASE_URL}\n当前页面: ${window.location.href}`;
+      testCORS();
+    };
+  </script>
+</body>
+</html>

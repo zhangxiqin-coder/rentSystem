@@ -51,12 +51,15 @@ const clearAuthData = () => {
 // Request interceptor
 request.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    console.log('📤 [Request]', config.method?.toUpperCase(), config.url)
+
     // Get and decrypt token from localStorage
     const encryptedToken = localStorage.getItem('access_token')
     if (encryptedToken && isTokenValid(encryptedToken)) {
       const token = decryptToken(encryptedToken)
       if (token) {
         config.headers.Authorization = `Bearer ${token}`
+        console.log('🎫 [Request] Token added to headers')
       }
     }
 
@@ -65,13 +68,15 @@ request.interceptors.request.use(
       const csrfToken = getCsrfToken()
       if (csrfToken) {
         config.headers['X-CSRF-Token'] = csrfToken
+        console.log('🔒 [Request] CSRF token added')
       }
     }
 
+    console.log('📋 [Request] Headers:', JSON.stringify(config.headers, null, 2))
     return config
   },
   (error: AxiosError) => {
-    console.error('Request error:', error)
+    console.error('❌ [Request] Error:', error)
     return Promise.reject(error)
   }
 )
@@ -79,14 +84,27 @@ request.interceptors.request.use(
 // Response interceptor
 request.interceptors.response.use(
   (response: AxiosResponse) => {
+    console.log('✅ [Response]', response.config.method?.toUpperCase(), response.config.url, 'Status:', response.status)
+
     // Store CSRF token if present in response headers
     const csrfToken = response.headers['x-csrf-token']
     if (csrfToken) {
       sessionStorage.setItem('csrf_token', csrfToken)
+      console.log('🔒 [Response] CSRF token updated')
     }
     return response
   },
   async (error: AxiosError<ApiResponse<unknown>>) => {
+    console.error('❌ [Response] Error:', error.config?.method?.toUpperCase(), error.config?.url)
+    console.error('❌ [Response] Error details:', {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      data: error.response?.data,
+      hasRequest: !!error.request,
+      hasResponse: !!error.response
+    })
+
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
 
     if (error.response) {

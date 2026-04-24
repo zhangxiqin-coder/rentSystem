@@ -178,7 +178,7 @@ const handleSubmitUtilityReading = async (data: any) => {
   }
 }
 
-const getStatusType = (status: string) => {
+const get状态Type = (status: string) => {
   const types: Record<string, any> = {
     pending: 'warning',
     completed: 'success',
@@ -207,6 +207,16 @@ const getUtilityTypeLabel = (type: string) => {
   return labels[type] || type
 }
 
+const getPaymentCycleLabel = (cycle: number | null | undefined) => {
+  if (!cycle) return '1个月'
+  const cycleNum = Number(cycle)
+  if (cycleNum === 1) return '1个月'
+  if (cycleNum === 3) return '3个月（季付）'
+  if (cycleNum === 6) return '6个月（半年）'
+  if (cycleNum === 12) return '12个月（年付）'
+  return `${cycleNum}个月`
+}
+
 onMounted(async () => {
   await loadRoom()
   if (room.value) {
@@ -220,7 +230,7 @@ onMounted(async () => {
   <div class="room-detail-view" v-loading="loading">
     <el-page-header @back="router.back()" class="page-header">
       <template #content>
-        <span class="title">{{ room?.room_number }} - Room Details</span>
+        <span class="title">{{ room?.room_number }} - 房间详情</span>
       </template>
       <template #extra>
         <el-button type="primary" @click="() => router.push(`/rooms/${roomId}/edit`)">
@@ -234,42 +244,42 @@ onMounted(async () => {
       <el-tab-pane label="Details" name="details">
         <el-card>
           <el-descriptions :column="2" border>
-            <el-descriptions-item label="Room Number">
+            <el-descriptions-item label="房间号">
               {{ room?.room_number }}
             </el-descriptions-item>
-            <el-descriptions-item label="Building">
+            <el-descriptions-item label="楼栋">
               {{ room?.building || 'N/A' }}
             </el-descriptions-item>
-            <el-descriptions-item label="Floor">
+            <el-descriptions-item label="楼层">
               {{ room?.floor || 'N/A' }}
             </el-descriptions-item>
-            <el-descriptions-item label="Area">
+            <el-descriptions-item label="面积">
               {{ room?.area || 'N/A' }} m²
             </el-descriptions-item>
-            <el-descriptions-item label="Monthly Rent">
-              ${{ room?.monthly_rent?.toFixed(2) || '0.00' }}
+            <el-descriptions-item label="月租金">
+              ${{ Number(room?.monthly_rent || 0).toFixed(2) }}
             </el-descriptions-item>
             <el-descriptions-item label="Deposit">
-              ${{ room?.deposit_amount?.toFixed(2) || '0.00' }}
+              ${{ Number(room?.deposit_amount || 0).toFixed(2) }}
             </el-descriptions-item>
-            <el-descriptions-item label="Payment Cycle">
-              {{ room?.payment_cycle || 1 }} month(s)
+            <el-descriptions-item label="付款周期">
+              {{ getPaymentCycleLabel(room?.payment_cycle) }}
             </el-descriptions-item>
-            <el-descriptions-item label="Status">
+            <el-descriptions-item label="状态">
               <el-tag :type="room?.status === 'available' ? 'success' : room?.status === 'occupied' ? 'warning' : 'danger'">
                 {{ room?.status }}
               </el-tag>
             </el-descriptions-item>
-            <el-descriptions-item label="Tenant Name">
+            <el-descriptions-item label="租客姓名">
               {{ room?.tenant_name || 'N/A' }}
             </el-descriptions-item>
-            <el-descriptions-item label="Tenant Phone">
+            <el-descriptions-item label="租客电话">
               {{ room?.tenant_phone || 'N/A' }}
             </el-descriptions-item>
-            <el-descriptions-item label="Lease Start">
+            <el-descriptions-item label="租期开始">
               {{ room?.lease_start ? room.lease_start.split('T')[0] : 'N/A' }}
             </el-descriptions-item>
-            <el-descriptions-item label="Lease End">
+            <el-descriptions-item label="租期结束">
               {{ room?.lease_end ? room.lease_end.split('T')[0] : 'N/A' }}
             </el-descriptions-item>
             <el-descriptions-item label="Description" :span="2">
@@ -304,12 +314,12 @@ onMounted(async () => {
             </el-table-column>
             <el-table-column prop="amount" label="Amount" width="120">
               <template #default="{ row }">
-                ${{ row.amount.toFixed(2) }}
+                ${{ Number(row.amount || 0).toFixed(2) }}
               </template>
             </el-table-column>
-            <el-table-column prop="status" label="Status" width="100">
+            <el-table-column prop="status" label="状态" width="100">
               <template #default="{ row }">
-                <el-tag :type="getStatusType(row.status)">
+                <el-tag :type="get状态Type(row.status)">
                   {{ row.status }}
                 </el-tag>
               </template>
@@ -370,7 +380,7 @@ onMounted(async () => {
             <el-table-column prop="usage" label="Usage" width="100" />
             <el-table-column prop="amount" label="Amount" width="120">
               <template #default="{ row }">
-                ${{ row.amount?.toFixed(2) || '0.00' }}
+                ${{ Number(row.amount || 0).toFixed(2) }}
               </template>
             </el-table-column>
             <el-table-column prop="notes" label="Notes" show-overflow-tooltip />

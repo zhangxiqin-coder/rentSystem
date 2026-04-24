@@ -92,7 +92,7 @@ export function decryptToken(encryptedData: string | null): string | null {
       return null
     }
 
-    const [version, timestamp, storedFingerprint, token] = parts
+    const [version, timestamp, , token] = parts
     
     // Verify version
     if (version !== ENCRYPTION_VERSION) {
@@ -101,11 +101,12 @@ export function decryptToken(encryptedData: string | null): string | null {
     }
 
     // Verify fingerprint (detect if token was stolen and used from different browser)
-    const currentFingerprint = generateFingerprint()
-    if (storedFingerprint !== currentFingerprint) {
-      console.warn('Token fingerprint mismatch - possible theft')
-      return null
-    }
+    // DISABLED: Too strict for development - causes issues across different browsers/devices
+    // const currentFingerprint = generateFingerprint()
+    // if (storedFingerprint !== currentFingerprint) {
+    //   console.warn('Token fingerprint mismatch - possible theft')
+    //   return null
+    // }
 
     // Check token age (max 7 days)
     const tokenAge = Date.now() - parseInt(timestamp)

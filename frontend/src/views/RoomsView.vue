@@ -71,25 +71,35 @@ const handleCreate = () => {
   dialogVisible.value = true
 }
 
-const handleEdit = (room: Room) => {
-  editingRoom.value = room
+const handle编辑 = (room: Room) => {
+  // Convert string numbers to actual numbers for form input
+  editingRoom.value = {
+    ...room,
+    area: Number(room.area) || 0,
+    monthly_rent: Number(room.monthly_rent) || 0,
+    deposit_amount: Number(room.deposit_amount) || 0,
+    floor: Number(room.floor) || 0,
+    payment_cycle: Number(room.payment_cycle) || 1,
+    water_rate: Number(room.water_rate) || 5,
+    electricity_rate: Number(room.electricity_rate) || 1,
+  }
   dialogVisible.value = true
 }
 
-const handleDelete = async (room: Room) => {
+const handle删除 = async (room: Room) => {
   try {
     await ElMessageBox.confirm(
       `Are you sure you want to delete room ${room.room_number}?`,
-      'Confirm Delete',
+      '确认删除',
       {
-        confirmButtonText: 'Delete',
-        cancelButtonText: 'Cancel',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
         type: 'warning',
       },
     )
 
     await roomApi.deleteRoom(room.id)
-    ElMessage.success('Room deleted successfully')
+    ElMessage.success('房间删除成功')
     await loadRooms()
   } catch (error: any) {
     if (error !== 'cancel') {
@@ -101,17 +111,35 @@ const handleDelete = async (room: Room) => {
 const handleSubmit = async (data: CreateRoomRequest | UpdateRoomRequest) => {
   submitting.value = true
   try {
+    // Clean up empty strings to null for optional fields
+    const cleanedData: any = { ...data }
+    const optionalStringFields = ['tenant_name', 'tenant_phone', 'building', 'description']
+    optionalStringFields.forEach(field => {
+      if (cleanedData[field] === '') {
+        cleanedData[field] = null
+      }
+    })
+
+    console.log('📤 Submitting room data:', JSON.stringify(cleanedData, null, 2))
+
     if (editingRoom.value) {
-      await roomApi.updateRoom(editingRoom.value.id, data)
-      ElMessage.success('Room updated successfully')
+      console.log('📝 Updating room ID:', editingRoom.value.id)
+      // Remove room_number from update data as it's not allowed in RoomUpdate schema
+      const { room_number, ...updateData } = cleanedData
+      console.log('📝 Update data without room_number:', JSON.stringify(updateData, null, 2))
+      await roomApi.updateRoom(editingRoom.value.id, updateData)
+      ElMessage.success('房间更新成功')
     } else {
-      await roomApi.createRoom(data as CreateRoomRequest)
-      ElMessage.success('Room created successfully')
+      await roomApi.createRoom(cleanedData as CreateRoomRequest)
+      ElMessage.success('房间创建成功')
     }
     dialogVisible.value = false
     await loadRooms()
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || 'Failed to save room')
+    console.error('❌ Save error:', error)
+    console.error('❌ Error response:', error.response)
+    console.error('❌ Error data:', error.response?.data)
+    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || 'Failed to save room')
   } finally {
     submitting.value = false
   }
@@ -137,11 +165,21 @@ const getStatusType = (status: string) => {
 
 const getStatusLabel = (status: string) => {
   const labels: Record<string, string> = {
-    available: 'Available',
-    occupied: 'Occupied',
-    maintenance: 'Maintenance',
+    available: '空置',
+    occupied: '已出租',
+    maintenance: '维修中',
   }
   return labels[status] || status
+}
+
+const getPaymentCycleLabel = (cycle: number | null | undefined) => {
+  if (!cycle) return '-'
+  const cycleNum = Number(cycle)
+  if (cycleNum === 1) return '1个月'
+  if (cycleNum === 3) return '3个月（季付）'
+  if (cycleNum === 6) return '6个月（半年）'
+  if (cycleNum === 12) return '12个月（年付）'
+  return `${cycleNum}个月`
 }
 
 onMounted(() => {
@@ -154,12 +192,12 @@ onMounted(() => {
     <el-card class="header-card">
       <div class="header-content">
         <div class="title-section">
-          <h2>Room Management</h2>
-          <p>Manage your rental rooms and tenants</p>
+          <h2>房间管理</h2>
+          <p>管理您的租赁房间和租客</p>
         </div>
         <el-button type="primary" size="large" @click="handleCreate">
           <el-icon><Plus /></el-icon>
-          Add Room
+          添加房间
         </el-button>
       </div>
     </el-card>
@@ -169,7 +207,7 @@ onMounted(() => {
       <div class="filters">
         <el-input
           v-model="searchQuery"
-          placeholder="Search by room number, building, or tenant..."
+          placeholder="按房间号、楼栋或租客搜索..."
           clearable
           style="width: 300px"
         >
@@ -179,9 +217,9 @@ onMounted(() => {
         </el-input>
 
         <el-checkbox-group v-model="statusFilters">
-          <el-checkbox label="available">Available</el-checkbox>
-          <el-checkbox label="occupied">Occupied</el-checkbox>
-          <el-checkbox label="maintenance">Maintenance</el-checkbox>
+          <el-checkbox label="available">空置</el-checkbox>
+          <el-checkbox label="occupied">已出租</el-checkbox>
+          <el-checkbox label="maintenance">维修中</el-checkbox>
         </el-checkbox-group>
       </div>
 
@@ -196,16 +234,14 @@ onMounted(() => {
         style="width: 100%"
         @row-click="(row: Room) => viewRoomDetail(row.id)"
       >
-        <el-table-column prop="room_number" label="Room Number" width="120" />
-        <el-table-column prop="building" label="Building" width="100" />
-        <el-table-column prop="floor" label="Floor" width="80" />
-        <el-table-column prop="area" label="Area (m²)" width="100" />
+        <el-table-column prop="room_number" label="房间号" width="120" />
+        <el-table-column prop="building" label="楼栋" width="100" />
         <el-table-column prop="monthly_rent" label="Monthly Rent" width="120">
           <template #default="{ row }">
-            ${{ row.monthly_rent?.toFixed(2) || '0.00' }}
+            ${{ Number(row.monthly_rent || 0).toFixed(2) }}
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="Status" width="120">
+        <el-table-column prop="status" label="状态" width="120">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)">
               {{ getStatusLabel(row.status) }}
@@ -222,21 +258,36 @@ onMounted(() => {
             {{ row.lease_end ? row.lease_end.split('T')[0] : '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="Actions" width="200" fixed="right">
+        <el-table-column prop="water_rate" label="水费率 (元/吨)" width="120">
+          <template #default="{ row }">
+            {{ Number(row.water_rate || 5).toFixed(2) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="electricity_rate" label="电费率 (元/度)" width="120">
+          <template #default="{ row }">
+            {{ Number(row.electricity_rate || 1).toFixed(2) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="payment_cycle" label="付款周期" width="120">
+          <template #default="{ row }">
+            {{ getPaymentCycleLabel(row.payment_cycle) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button
               type="primary"
               size="small"
-              @click.stop="handleEdit(row)"
+              @click.stop="handle编辑(row)"
             >
-              Edit
+              编辑
             </el-button>
             <el-button
               type="danger"
               size="small"
-              @click.stop="handleDelete(row)"
+              @click.stop="handle删除(row)"
             >
-              Delete
+              删除
             </el-button>
           </template>
         </el-table-column>
@@ -257,7 +308,7 @@ onMounted(() => {
     <!-- Room Form Dialog -->
     <el-dialog
       v-model="dialogVisible"
-      :title="editingRoom ? 'Edit Room' : 'Create Room'"
+      :title="editingRoom ? '编辑 Room' : 'Create Room'"
       width="600px"
       @close="handleDialogClose"
     >

@@ -2,7 +2,7 @@
 房间管理 API 路由
 """
 from typing import Optional
-from datetime import date
+from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -85,6 +85,54 @@ def list_rooms(
     }
 
 
+@router.get("/expiring-soon", response_model=list[RoomResponse])
+def get_expiring_rooms(
+    days: int = Query(7, ge=1, le=30, description="查询天数"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    获取即将需要收租的房间（根据上次付款日期 + 付款周期计算）
+    """
+    today = date.today()
+    end_date = today + timedelta(days=days)
+    
+    # 获取所有在租房间
+    rooms = db.query(Room).filter(Room.status == "occupied").all()
+    
+    # 计算每个房间的下次收租日期
+    expiring_rooms = []
+    for room in rooms:
+        # 使用 last_payment_date 或 lease_start 作为起点
+        last_payment = room.last_payment_date or room.lease_start
+        
+        # 计算下次收租日期：起点 + 付款周期（月）
+        # 计算方法：起点日期的月份 + payment_cycle
+        year = last_payment.year
+        month = last_payment.month + room.payment_cycle
+        while month > 12:
+            month -= 12
+            year += 1
+        
+        # 处理日期溢出（比如1月31日加1个月）
+        days_in_month = [31, 29 if (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+        day = min(last_payment.day, days_in_month)
+        next_payment = date(year, month, day)
+        
+        # 检查是否在未来N天内需要收租
+        if today <= next_payment <= end_date:
+            expiring_rooms.append(room)
+    
+    # 按下次收租日期排序
+    expiring_rooms.sort(key=lambda r: (
+        (r.last_payment_date or r.lease_start).year,
+        (r.last_payment_date or r.lease_start).month,
+        (r.last_payment_date or r.lease_start).day
+    ))
+    
+    return expiring_rooms
+
+
 @router.get("/{room_id}", response_model=RoomResponse)
 def get_room(
     room_id: int,
@@ -146,22 +194,14 @@ def update_room(
     if not room:
         raise HTTPException(status_code=404, detail="房间不存在")
     
-    # 检查房间号是否被其他房间使用
-    if room_data.room_number and room_data.room_number != room.room_number:
-        existing = db.query(Room).filter(
-            Room.room_number == room_data.room_number,
-            Room.id != room_id
-        ).first()
-        if existing:
-            raise HTTPException(status_code=400, detail="房间号已存在")
-    
-    # 更新字段
+    # 更新字段（注意：RoomUpdate schema 不包含 room_number，所以房间号不会被修改）
     update_data = room_data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(room, key, value)
     
-    # 自动更新状态
-    update_room_status(room)
+    # 只有在用户没有明确设置状态时，才根据租客信息自动更新状态
+    if 'status' not in update_data:
+        update_room_status(room)
     
     db.commit()
     db.refresh(room)
@@ -224,6 +264,7 @@ def get_room_utility_readings(
     room_id: int,
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
+    utility_type: Optional[str] = Query(None, description="水电类型: water 或 electricity"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -236,8 +277,12 @@ def get_room_utility_readings(
     
     query = db.query(UtilityReading).filter(UtilityReading.room_id == room_id)
     
+    # 根据水电类型过滤
+    if utility_type:
+        query = query.filter(UtilityReading.utility_type == utility_type)
+    
     total = query.count()
-    items = query.order_by(UtilityReading.reading_date.desc()).offset((page - 1) * size).limit(size).all()
+    items = query.order_by(UtilityReading.created_at.desc()).offset((page - 1) * size).limit(size).all()
     
     return {
         "items": items,
@@ -246,3 +291,4 @@ def get_room_utility_readings(
         "size": size,
         "pages": (total + size - 1) // size
     }
+

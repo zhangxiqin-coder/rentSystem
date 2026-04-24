@@ -2,12 +2,12 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import type { RegisterRequest } from '@/types'
+import type { 注册Request } from '@/types'
 
 const router = useRouter()
 const authStore = useAuthStore()
 
-const form = ref<RegisterRequest & { confirmPassword: string }>({
+const form = ref<注册Request & { confirmPassword: string }>({
   username: '',
   email: '',
   password: '',
@@ -80,7 +80,7 @@ const validateField = (field: string): string | null => {
         return 'Username is required'
       }
       if (value.length < 3) {
-        return 'Username must be at least 3 characters'
+        return '用户名至少3个字符'
       }
       if (!/^[a-zA-Z0-9_]+$/.test(value)) {
         return 'Username can only contain letters, numbers, and underscores'
@@ -114,7 +114,7 @@ const validateField = (field: string): string | null => {
         return 'Please confirm your password'
       }
       if (value !== form.value.password) {
-        return 'Passwords do not match'
+        return '两次密码不一致'
       }
       break
 
@@ -176,7 +176,7 @@ watch(() => form.value.password, () => {
   }
 })
 
-const handleRegister = async () => {
+const handle注册 = async () => {
   // Mark all fields as touched
   touched.value = {
     username: true,
@@ -210,15 +210,15 @@ const handleRegister = async () => {
 <template>
   <div class="register-container">
     <div class="register-card">
-      <h1>Create Account</h1>
-      <form @submit.prevent="handleRegister" novalidate>
+      <h1>创建账户</h1>
+      <form @submit.prevent="handle注册" novalidate>
         <div class="form-group" :class="{ 'has-error': hasError('username') }">
           <label for="username">Username *</label>
           <input
             id="username"
             v-model="form.username"
             type="text"
-            placeholder="Choose a username"
+            placeholder="选择用户名"
             @blur="handleBlur('username')"
             :disabled="loading"
             autocomplete="username"
@@ -234,7 +234,7 @@ const handleRegister = async () => {
             id="email"
             v-model="form.email"
             type="email"
-            placeholder="Enter your email"
+            placeholder="请输入邮箱"
             @blur="handleBlur('email')"
             :disabled="loading"
             autocomplete="email"
@@ -312,7 +312,7 @@ const handleRegister = async () => {
             id="confirmPassword"
             v-model="form.confirmPassword"
             type="password"
-            placeholder="Confirm your password"
+            placeholder="确认密码"
             @blur="handleBlur('confirmPassword')"
             :disabled="loading"
             autocomplete="new-password"
@@ -328,12 +328,12 @@ const handleRegister = async () => {
 
         <button type="submit" :disabled="loading || !isFormValid" class="submit-btn">
           <span v-if="loading" class="loading-spinner"></span>
-          {{ loading ? 'Creating account...' : 'Create Account' }}
+          {{ loading ? 'Creating account...' : '创建账户' }}
         </button>
       </form>
 
       <p class="login-link">
-        Already have an account? <router-link to="/login">Login</router-link>
+        已有账户？ <router-link to="/login">Login</router-link>
       </p>
     </div>
   </div>

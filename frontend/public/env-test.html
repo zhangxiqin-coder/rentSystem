@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Environment Test</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #d4d4d4; }
+    .info { margin: 10px 0; padding: 10px; background: #2d2d2d; border-radius: 5px; }
+    .error { color: #f48771; }
+    .success { color: #4ec9b0; }
+  </style>
+</head>
+<body>
+  <h1>🔧 环境变量测试</h1>
+  <div class="info">
+    <h3>当前页面地址:</h3>
+    <span id="page-url"></span>
+  </div>
+  <div class="info">
+    <h3>期望的 API 地址:</h3>
+    <span class="success">http://43.134.40.91:8000</span>
+  </div>
+  <div class="info">
+    <h3>测试 API 连接:</h3>
+    <button onclick="testAPI()">测试连接</button>
+    <div id="api-result"></div>
+  </div>
+  <div class="info">
+    <h3>LocalStorage 内容:</h3>
+    <button onclick="showStorage()">显示存储</button>
+    <pre id="storage-result"></pre>
+  </div>
+
+  <script>
+    document.getElementById('page-url').textContent = window.location.href;
+
+    async function testAPI() {
+      const result = document.getElementById('api-result');
+      result.innerHTML = '测试中...';
+      
+      const API_URL = 'http://43.134.40.91:8000/api/v1/health';
+      
+      try {
+        const response = await fetch(API_URL, {
+          method: 'GET',
+          mode: 'cors'
+        });
+        
+        const data = await response.json();
+        result.innerHTML = `<span class="success">✅ 连接成功！</span><br>` +
+          `状态码: ${response.status}<br>` +
+          `响应: ${JSON.stringify(data)}`;
+      } catch (error) {
+        result.innerHTML = `<span class="error">❌ 连接失败！</span><br>` +
+          `错误: ${error.message}<br>` +
+          `请求地址: ${API_URL}`;
+      }
+    }
+
+    function showStorage() {
+      const result = document.getElementById('storage-result');
+      result.textContent = JSON.stringify(localStorage, null, 2);
+    }
+  </script>
+</body>
+</html>

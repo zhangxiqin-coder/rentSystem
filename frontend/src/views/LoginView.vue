@@ -75,7 +75,7 @@ const isFormValid = computed(() => {
          Object.keys(errors.value).length === 0
 })
 
-const handleLogin = async () => {
+const handle登录 = async () => {
   // Mark all fields as touched
   touched.value = { username: true, password: true }
 
@@ -99,7 +99,7 @@ import { watch } from 'vue'
 watch(() => authStore.error, (newError) => {
   if (newError) {
     // Could add field-specific error parsing here
-    console.error('Login error:', newError)
+    console.error('登录 error:', newError)
   }
 })
 </script>
@@ -107,15 +107,15 @@ watch(() => authStore.error, (newError) => {
 <template>
   <div class="login-container">
     <div class="login-card">
-      <h1>Login</h1>
-      <form @submit.prevent="handleLogin" novalidate>
+      <h1>登录</h1>
+      <form @submit.prevent="handle登录" novalidate>
         <div class="form-group" :class="{ 'has-error': hasError('username') }">
           <label for="username">Username</label>
           <input
             id="username"
             v-model="form.username"
             type="text"
-            placeholder="Enter your username"
+            placeholder="请输入用户名"
             @blur="handleBlur('username')"
             :disabled="loading"
             autocomplete="username"
@@ -131,7 +131,7 @@ watch(() => authStore.error, (newError) => {
             id="password"
             v-model="form.password"
             type="password"
-            placeholder="Enter your password"
+            placeholder="请输入密码"
             @blur="handleBlur('password')"
             :disabled="loading"
             autocomplete="current-password"
@@ -147,12 +147,12 @@ watch(() => authStore.error, (newError) => {
 
         <button type="submit" :disabled="loading || !isFormValid" class="submit-btn">
           <span v-if="loading" class="loading-spinner"></span>
-          {{ loading ? 'Logging in...' : 'Login' }}
+          {{ loading ? 'Logging in...' : '登录' }}
         </button>
       </form>
 
       <p class="register-link">
-        Don't have an account? <router-link to="/register">Register</router-link>
+        还没有账户？ <router-link to="/register">Register</router-link>
       </p>
     </div>
   </div>

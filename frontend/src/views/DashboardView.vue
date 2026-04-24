@@ -14,31 +14,35 @@ const handleLogout = async () => {
 <template>
   <div class="dashboard">
     <header class="dashboard-header">
-      <h1>Dashboard</h1>
+      <h1>租赁管理系统</h1>
       <div class="user-info">
-        <span>Welcome, {{ authStore.user?.full_name || authStore.user?.username }}</span>
-        <button @click="handleLogout">Logout</button>
+        <span>欢迎，{{ authStore.user?.full_name || authStore.user?.username }}</span>
+        <button @click="handleLogout">退出登录</button>
       </div>
     </header>
 
     <main class="dashboard-content">
       <div class="welcome-card">
-        <h2>Welcome to Rent Management System</h2>
-        <p>Your role: {{ authStore.userRole }}</p>
+        <h2>欢迎使用租金管理系统</h2>
+        <p>您的角色：{{ authStore.userRole }}</p>
       </div>
 
       <nav class="quick-nav">
         <router-link to="/rooms" class="nav-card">
-          <h3>Rooms</h3>
-          <p>Manage your rooms</p>
+          <h3>房间管理</h3>
+          <p>管理您的房间信息</p>
         </router-link>
         <router-link to="/payments" class="nav-card">
-          <h3>Payments</h3>
-          <p>View payment history</p>
+          <h3>交租记录</h3>
+          <p>查看交租历史</p>
         </router-link>
         <router-link to="/utility" class="nav-card">
-          <h3>Utilities</h3>
-          <p>Utility readings and rates</p>
+          <h3>水电管理</h3>
+          <p>水电读数和费率</p>
+        </router-link>
+        <router-link to="/reports" class="nav-card">
+          <h3>📊 收租报表</h3>
+          <p>年度统计和账单分析</p>
         </router-link>
       </nav>
     </main>

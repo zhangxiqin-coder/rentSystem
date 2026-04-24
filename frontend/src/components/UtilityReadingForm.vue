@@ -1,196 +1,547 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import type { FormInstance, FormRules } from 'element-plus'
-import type {
-  UtilityReading,
-  CreateUtilityReadingRequest,
-  UpdateUtilityReadingRequest,
-} from '@/types'
+import { roomApi } from '@/api/room'
+import { utilityApi } from '@/api/utility'
+import type { Room, UtilityReading } from '@/types'
 
-interface Props {
-  reading?: UtilityReading
+const props = defineProps<{
   roomId?: number
-  previousReading?: number
-  loading?: boolean
-}
+}>()
 
-interface Emits {
-  (e: 'submit', data: CreateUtilityReadingRequest | UpdateUtilityReadingRequest): void
-  (e: 'cancel'): void
-}
+const emit = defineEmits<{
+  success: []
+  cancel: []
+}>()
 
-const props = withDefaults(defineProps<Props>(), {
-  loading: false,
-})
-
-const emit = defineEmits<Emits>()
-
-const formRef = ref<FormInstance>()
-const formData = ref<CreateUtilityReadingRequest>({
+// 表单数据
+const formData = ref({
   room_id: props.roomId || 0,
-  utility_type: 'electricity',
-  reading: 0,
   reading_date: new Date().toISOString().split('T')[0],
+  water_reading: 0,
+  electric_reading: 0,
+  manual_previous_water: null as number | null,
+  manual_previous_electric: null as number | null,
+  use_manual_water: false,
+  use_manual_electric: false,
   notes: '',
 })
 
-const rules: FormRules<CreateUtilityReadingRequest> = {
-  room_id: [
-    { required: true, message: 'Room is required', trigger: 'blur' },
-  ],
-  utility_type: [
-    { required: true, message: 'Please select utility type', trigger: 'change' },
-  ],
-  reading: [
-    { required: true, message: 'Please enter reading value', trigger: 'blur' },
-    { type: 'number', min: 0, message: 'Reading must be non-negative', trigger: 'blur' },
-  ],
-  reading_date: [
-    { required: true, message: 'Please select reading date', trigger: 'change' },
-  ],
+// 加载状态
+const loading = ref(false)
+const roomsLoading = ref(false)
+const loadingHistory = ref(false)
+
+// 数据
+const rooms = ref<Room[]>([])
+const previousReadings = ref<{
+  water: number | null
+  electric: number | null
+}>({
+  water: null,
+  electric: null,
+})
+
+// 计算结果
+const calculations = ref<{
+  water: { usage: number; amount: number; rate: number } | null
+  electric: { usage: number; amount: number; rate: number } | null
+}>({
+  water: null,
+  electric: null,
+})
+
+// 房间列表（过滤掉已删除的房间）
+const activeRooms = computed(() => rooms.value.filter(r => r.status !== 'deleted'))
+
+// 总费用
+const totalAmount = computed(() => {
+  let total = 0
+  if (calculations.value.water) total += calculations.value.water.amount
+  if (calculations.value.electric) total += calculations.value.electric.amount
+  return total.toFixed(2)
+})
+
+// 显示的上次水表读数（优先使用手动输入，否则使用历史记录）
+const displayedPreviousWater = computed(() => {
+  if (formData.value.use_manual_water) {
+    return formData.value.manual_previous_water
+  }
+  return previousReadings.value.water
+})
+
+// 显示的上次电表读数（优先使用手动输入，否则使用历史记录）
+const displayedPreviousElectric = computed(() => {
+  if (formData.value.use_manual_electric) {
+    return formData.value.manual_previous_electric
+  }
+  return previousReadings.value.electric
+})
+
+// 加载房间列表
+const loadRooms = async () => {
+  roomsLoading.value = true
+  try {
+    // 后端API限制size最大为100，需要分页加载
+    let allRooms: Room[] = []
+    let page = 1
+    let hasMore = true
+    
+    while (hasMore) {
+      const res = await roomApi.getRooms({ page, size: 100 })
+      const items = res.data.items || []
+      allRooms = [...allRooms, ...items]
+      
+      // 如果返回的数据少于100条，说明没有更多数据了
+      hasMore = items.length === 100
+      page++
+    }
+    
+    rooms.value = allRooms
+  } catch (error) {
+    console.error('Failed to load rooms:', error)
+    ElMessage.error('加载房间列表失败')
+  } finally {
+    roomsLoading.value = false
+  }
 }
 
-const estimatedUsage = computed(() => {
-  if (props.previousReading !== undefined && formData.value.reading >= props.previousReading) {
-    return formData.value.reading - props.previousReading
-  }
-  return 0
-})
+// 加载上次读数
+const loadPreviousReadings = async (roomId: number) => {
+  if (!roomId) return
 
-const utilityTypeLabel = computed(() => {
-  const labels: Record<string, string> = {
-    water: 'm³',
-    electricity: 'kWh',
-    gas: 'm³',
-  }
-  return labels[formData.value.utility_type] || 'units'
-})
+  loadingHistory.value = true
+  try {
+    // 分别获取水和电的最后一条记录
+    const [waterRes, electricRes] = await Promise.allSettled([
+      utilityApi.getReadingsByRoom(roomId, { page: 1, size: 1, utility_type: 'water' }),
+      utilityApi.getReadingsByRoom(roomId, { page: 1, size: 1, utility_type: 'electricity' }),
+    ])
 
-// Watch for reading prop changes to populate form
-watch(
-  () => props.reading,
-  (newReading) => {
-    if (newReading) {
-      formData.value = {
-        room_id: newReading.room_id,
-        utility_type: newReading.utility_type,
-        reading: newReading.reading,
-        reading_date: newReading.reading_date.split('T')[0],
-        notes: newReading.notes || '',
-      }
-    }
-  },
-  { immediate: true },
-)
-
-watch(
-  () => props.roomId,
-  (newRoomId) => {
-    if (newRoomId && !props.reading) {
-      formData.value.room_id = newRoomId
-    }
-  },
-  { immediate: true },
-)
-
-const handleSubmit = async () => {
-  if (!formRef.value) return
-
-  await formRef.value.validate((valid) => {
-    if (valid) {
-      emit('submit', formData.value)
+    if (waterRes.status === 'fulfilled' && waterRes.value.data.items.length > 0) {
+      const lastWater = waterRes.value.data.items[0]
+      previousReadings.value.water = lastWater.reading
     } else {
-      ElMessage.error('Please fix the form errors')
+      previousReadings.value.water = null
     }
-  })
+
+    if (electricRes.status === 'fulfilled' && electricRes.value.data.items.length > 0) {
+      const lastElectric = electricRes.value.data.items[0]
+      previousReadings.value.electric = lastElectric.reading
+    } else {
+      previousReadings.value.electric = null
+    }
+
+    // 触发计算
+    calculateCosts()
+  } catch (error) {
+    console.error('Failed to load previous readings:', error)
+  } finally {
+    loadingHistory.value = false
+  }
 }
 
+// 实时计算用量和费用
+const calculateCosts = () => {
+  const roomId = formData.value.room_id
+  if (!roomId) return
+
+  // 水费计算
+  const prevWater = displayedPreviousWater.value
+  if (prevWater !== null && formData.value.water_reading >= 0) {
+    const usage = formData.value.water_reading - prevWater
+    const rate = 5 // 默认水费费率（应该从API获取）
+    calculations.value.water = {
+      usage: Math.max(0, usage),
+      amount: Math.max(0, usage) * rate,
+      rate,
+    }
+  } else {
+    calculations.value.water = null
+  }
+
+  // 电费计算
+  const prevElectric = displayedPreviousElectric.value
+  if (prevElectric !== null && formData.value.electric_reading >= 0) {
+    const usage = formData.value.electric_reading - prevElectric
+    const rate = 1 // 默认电费费率（应该从API获取）
+    calculations.value.electric = {
+      usage: Math.max(0, usage),
+      amount: Math.max(0, usage) * rate,
+      rate,
+    }
+  } else {
+    calculations.value.electric = null
+  }
+}
+
+// 提交表单
+const submitForm = async () => {
+  // 验证必填字段
+  if (!formData.value.room_id) {
+    ElMessage.error('请选择房间')
+    return
+  }
+  if (!formData.value.reading_date) {
+    ElMessage.error('请选择抄表日期')
+    return
+  }
+  if (formData.value.water_reading === 0 && formData.value.electric_reading === 0) {
+    ElMessage.error('请至少录入水表或电表读数')
+    return
+  }
+
+  // 验证水表读数
+  const prevWater = displayedPreviousWater.value
+  if (prevWater !== null && formData.value.water_reading > 0) {
+    if (formData.value.water_reading < prevWater) {
+      ElMessage.error('水表读数不能小于上次读数')
+      return
+    }
+  }
+
+  // 验证电表读数
+  const prevElectric = displayedPreviousElectric.value
+  if (prevElectric !== null && formData.value.electric_reading > 0) {
+    if (formData.value.electric_reading < prevElectric) {
+      ElMessage.error('电表读数不能小于上次读数')
+      return
+    }
+  }
+
+  loading.value = true
+  try {
+    // 分别创建水和电的记录
+    const promises: Promise<any>[] = []
+
+    if (formData.value.water_reading > 0) {
+      promises.push(
+        utilityApi.createReading({
+          room_id: formData.value.room_id,
+          utility_type: 'water',
+          reading: formData.value.water_reading,
+          reading_date: formData.value.reading_date,
+          previous_reading: displayedPreviousWater.value || undefined,
+          notes: formData.value.notes,
+        }),
+      )
+    }
+
+    if (formData.value.electric_reading > 0) {
+      promises.push(
+        utilityApi.createReading({
+          room_id: formData.value.room_id,
+          utility_type: 'electricity',
+          reading: formData.value.electric_reading,
+          reading_date: formData.value.reading_date,
+          previous_reading: displayedPreviousElectric.value || undefined,
+          notes: formData.value.notes,
+        }),
+      )
+    }
+
+    await Promise.all(promises)
+
+    ElMessage.success('水电录入成功')
+
+    // 返回创建的记录信息，以便父组件发送微信通知
+    const result = {
+      room_id: formData.value.room_id,
+      reading_date: formData.value.reading_date,
+      water_reading: formData.value.water_reading,
+      electric_reading: formData.value.electric_reading,
+      notes: formData.value.notes,
+    }
+    emit('success', result)
+  } catch (error: any) {
+    console.error('Failed to create utility readings:', error)
+    const errorMsg = error.response?.data?.detail || '录入失败，请重试'
+    ElMessage.error(errorMsg)
+  } finally {
+    loading.value = false
+  }
+}
+
+// 重置表单
+const resetForm = () => {
+  formData.value = {
+    room_id: props.roomId || 0,
+    reading_date: new Date().toISOString().split('T')[0],
+    water_reading: 0,
+    electric_reading: 0,
+    manual_previous_water: null,
+    manual_previous_electric: null,
+    use_manual_water: false,
+    use_manual_electric: false,
+    notes: '',
+  }
+  previousReadings.value = {
+    water: null,
+    electric: null,
+  }
+  calculations.value = {
+    water: null,
+    electric: null,
+  }
+}
+
+// 取消
 const handleCancel = () => {
+  resetForm()
   emit('cancel')
 }
 
-const resetForm = () => {
-  formRef.value?.resetFields()
+// 监听房间变化，自动加载历史记录
+watch(
+  () => formData.value.room_id,
+  (newRoomId) => {
+    if (newRoomId) {
+      loadPreviousReadings(newRoomId)
+    } else {
+      previousReadings.value = { water: null, electric: null }
+      calculations.value = { water: null, electric: null }
+    }
+  }
+)
+
+// 监听手动输入模式切换，重置计算
+watch(
+  () => [formData.value.use_manual_water, formData.value.use_manual_electric],
+  () => {
+    calculateCosts()
+  }
+)
+
+// 初始化
+if (!props.roomId) {
+  loadRooms()
 }
 </script>
 
 <template>
-  <el-form
-    ref="formRef"
-    :model="formData"
-    :rules="rules"
-    label-width="160px"
-    label-position="right"
-  >
-    <el-divider content-position="left">Reading Information</el-divider>
+  <div class="utility-reading-form">
+    <el-form :model="formData" label-width="140px" @submit.prevent="submitForm">
+      <!-- 房间选择 -->
+      <el-form-item label="选择房间" required>
+        <el-select
+          v-model="formData.room_id"
+          placeholder="请选择房间"
+          filterable
+          :loading="roomsLoading"
+          style="width: 100%"
+          @change="loadPreviousReadings"
+        >
+          <el-option
+            v-for="room in activeRooms"
+            :key="room.id"
+            :label="`${room.room_number} - ${room.tenant_name || '空房'}`"
+            :value="room.id"
+          />
+        </el-select>
+      </el-form-item>
 
-    <el-form-item label="Utility Type" prop="utility_type">
-      <el-select v-model="formData.utility_type" placeholder="Select utility type">
-        <el-option label="Water" value="water" />
-        <el-option label="Electricity" value="electricity" />
-        <el-option label="Gas" value="gas" />
-      </el-select>
-    </el-form-item>
+      <!-- 抄表日期 -->
+      <el-form-item label="抄表日期" required>
+        <el-date-picker
+          v-model="formData.reading_date"
+          type="date"
+          placeholder="选择日期"
+          format="YYYY-MM-DD"
+          value-format="YYYY-MM-DD"
+          style="width: 100%"
+        />
+      </el-form-item>
 
-    <el-form-item label="Current Reading" prop="reading">
-      <el-input-number
-        v-model="formData.reading"
-        :min="0"
-        :precision="2"
-        placeholder="Enter current reading"
-      />
-      <span class="unit-label">{{ utilityTypeLabel }}</span>
-    </el-form-item>
+      <!-- 水表读数 -->
+      <el-divider content-position="left">💧 水表录入</el-divider>
 
-    <el-form-item v-if="previousReading !== undefined" label="Previous Reading">
-      <el-input :value="previousReading" disabled />
-      <span class="unit-label">{{ utilityTypeLabel }}</span>
-    </el-form-item>
+      <el-form-item label="上次读数来源">
+        <el-radio-group v-model="formData.use_manual_water">
+          <el-radio :label="false">自动查找历史记录</el-radio>
+          <el-radio :label="true">手动输入</el-radio>
+        </el-radio-group>
+      </el-form-item>
 
-    <el-form-item v-if="previousReading !== undefined" label="Usage">
-      <el-input :value="estimatedUsage" disabled />
-      <span class="unit-label">{{ utilityTypeLabel }}</span>
-    </el-form-item>
+      <el-form-item v-if="!formData.use_manual_water" label="上次水表读数">
+        <el-input 
+          :value="previousReadings.water !== null ? previousReadings.water : '无历史记录'" 
+          disabled
+          placeholder="加载中..."
+        >
+          <template #append>吨</template>
+        </el-input>
+        <div v-if="previousReadings.water !== null" class="history-hint">
+          ✓ 已从历史记录自动加载
+        </div>
+      </el-form-item>
 
-    <el-form-item label="Reading Date" prop="reading_date">
-      <el-date-picker
-        v-model="formData.reading_date"
-        type="date"
-        placeholder="Select reading date"
-        value-format="YYYY-MM-DD"
-      />
-    </el-form-item>
+      <el-form-item v-else label="上次水表读数" required>
+        <el-input-number
+          v-model="formData.manual_previous_water"
+          :min="0"
+          :precision="2"
+          :step="0.01"
+          style="width: 100%"
+          controls-position="right"
+          placeholder="请输入上次读数"
+          @change="calculateCosts"
+        />
+        <template #append>吨</template>
+        <div class="manual-hint">
+          ℹ️ 请手动输入上次水表读数
+        </div>
+      </el-form-item>
 
-    <el-divider content-position="left">Additional Information</el-divider>
+      <el-form-item label="本次水表读数" required>
+        <el-input-number
+          v-model="formData.water_reading"
+          :min="0"
+          :precision="2"
+          :step="0.01"
+          style="width: 100%"
+          controls-position="right"
+          placeholder="请输入本次读数"
+          @change="calculateCosts"
+        />
+      </el-form-item>
 
-    <el-form-item label="Notes" prop="notes">
-      <el-input
-        v-model="formData.notes"
-        type="textarea"
-        :rows="3"
-        placeholder="Additional notes or observations"
-      />
-    </el-form-item>
+      <el-form-item v-if="calculations.water" label="水费计算">
+        <div class="calculation-result">
+          <span>用量：{{ calculations.water.usage.toFixed(2) }} 吨</span>
+          <span>费率：¥{{ calculations.water.rate }}/吨</span>
+          <span class="amount">费用：¥{{ calculations.water.amount.toFixed(2) }}</span>
+        </div>
+      </el-form-item>
 
-    <el-form-item>
-      <el-button type="primary" :loading="loading" @click="handleSubmit">
-        {{ reading ? 'Update' : 'Record' }} Reading
-      </el-button>
-      <el-button @click="handleCancel">Cancel</el-button>
-      <el-button v-if="!reading" @click="resetForm">Reset</el-button>
-    </el-form-item>
-  </el-form>
+      <!-- 电表读数 -->
+      <el-divider content-position="left">⚡ 电表录入</el-divider>
+
+      <el-form-item label="上次读数来源">
+        <el-radio-group v-model="formData.use_manual_electric">
+          <el-radio :label="false">自动查找历史记录</el-radio>
+          <el-radio :label="true">手动输入</el-radio>
+        </el-radio-group>
+      </el-form-item>
+
+      <el-form-item v-if="!formData.use_manual_electric" label="上次电表读数">
+        <el-input 
+          :value="previousReadings.electric !== null ? previousReadings.electric : '无历史记录'" 
+          disabled
+          placeholder="加载中..."
+        >
+          <template #append>度</template>
+        </el-input>
+        <div v-if="previousReadings.electric !== null" class="history-hint">
+          ✓ 已从历史记录自动加载
+        </div>
+      </el-form-item>
+
+      <el-form-item v-else label="上次电表读数" required>
+        <el-input-number
+          v-model="formData.manual_previous_electric"
+          :min="0"
+          :precision="2"
+          :step="1"
+          style="width: 100%"
+          controls-position="right"
+          placeholder="请输入上次读数"
+          @change="calculateCosts"
+        />
+        <template #append>度</template>
+        <div class="manual-hint">
+          ℹ️ 请手动输入上次电表读数
+        </div>
+      </el-form-item>
+
+      <el-form-item label="本次电表读数" required>
+        <el-input-number
+          v-model="formData.electric_reading"
+          :min="0"
+          :precision="2"
+          :step="1"
+          style="width: 100%"
+          controls-position="right"
+          placeholder="请输入本次读数"
+          @change="calculateCosts"
+        />
+      </el-form-item>
+
+      <el-form-item v-if="calculations.electric" label="电费计算">
+        <div class="calculation-result">
+          <span>用量：{{ calculations.electric.usage.toFixed(2) }} 度</span>
+          <span>费率：¥{{ calculations.electric.rate }}/度</span>
+          <span class="amount">费用：¥{{ calculations.electric.amount.toFixed(2) }}</span>
+        </div>
+      </el-form-item>
+
+      <!-- 总费用 -->
+      <el-divider content-position="left">💰 费用汇总</el-divider>
+
+      <el-form-item label="总费用">
+        <div class="total-amount">¥{{ totalAmount }}</div>
+      </el-form-item>
+
+      <!-- 备注 -->
+      <el-form-item label="备注">
+        <el-input
+          v-model="formData.notes"
+          type="textarea"
+          :rows="3"
+          placeholder="请输入备注信息（可选）"
+        />
+      </el-form-item>
+
+      <!-- 操作按钮 -->
+      <el-form-item>
+        <el-button type="primary" :loading="loading" @click="submitForm">
+          保存记录
+        </el-button>
+        <el-button @click="handleCancel">取消</el-button>
+      </el-form-item>
+    </el-form>
+  </div>
 </template>
 
 <style scoped>
-.el-divider {
-  margin: 20px 0;
+.utility-reading-form {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.unit-label {
-  margin-left: 10px;
+.calculation-result {
+  display: flex;
+  gap: 1rem;
+  padding: 0.75rem;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.calculation-result .amount {
+  margin-left: auto;
+  font-weight: bold;
+  color: #e74c3c;
+}
+
+.total-amount {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #e74c3c;
+}
+
+.history-hint {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #67c23a;
+}
+
+.manual-hint {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
   color: #909399;
-  font-size: 13px;
 }
 </style>

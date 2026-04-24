@@ -131,6 +131,8 @@ class RoomBase(BaseModel):
     monthly_rent: Decimal = Field(..., gt=0)
     deposit_amount: Optional[Decimal] = Field(None, ge=0)
     payment_cycle: int = Field(default=1, gt=0, le=12)
+    water_rate: Decimal = Field(default=5.00, gt=0)
+    electricity_rate: Decimal = Field(default=1.00, gt=0)
     status: Optional[RoomStatus] = Field(default=RoomStatus.AVAILABLE)
     tenant_name: Optional[str] = Field(None, max_length=100)
     tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\d{9}$')
@@ -159,6 +161,8 @@ class RoomUpdate(BaseModel):
     monthly_rent: Optional[Decimal] = Field(None, gt=0)
     deposit_amount: Optional[Decimal] = Field(None, ge=0)
     payment_cycle: Optional[int] = Field(None, gt=0, le=12)
+    water_rate: Optional[Decimal] = Field(None, gt=0)
+    electricity_rate: Optional[Decimal] = Field(None, gt=0)
     status: Optional[RoomStatus] = None
     tenant_name: Optional[str] = Field(None, max_length=100)
     tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\d{9}$')
@@ -225,6 +229,37 @@ class PaymentResponse(PaymentBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class UtilityPaymentItem(BaseModel):
+    """水电费用明细"""
+    utility_type: str  # 'water' 或 'electricity'
+    amount: Decimal
+    original_amount: Decimal  # 原始金额（打折前）
+    discount: Decimal = Decimal('0')  # 折扣金额
+
+
+class BulkPaymentCreate(BaseModel):
+    """批量收租创建 schema"""
+    room_id: int
+    reading_date: date  # 水电抄表日期
+    rent_amount: Decimal  # 房租（可打折）
+    rent_original: Decimal  # 房租原始金额
+    water_charge: Optional[UtilityPaymentItem] = None  # 水费明细
+    electricity_charge: Optional[UtilityPaymentItem] = None  # 电费明细
+    payment_date: date = Field(default_factory=date.today)
+    payment_method: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class BulkPaymentResponse(BaseModel):
+    """批量收租响应"""
+    success: bool
+    message: str
+    payments: list[PaymentResponse]
+    total_original: Decimal  # 原始总额
+    total_actual: Decimal  # 实收总额
+    total_discount: Decimal  # 总折扣
+
+
 # ==================== UtilityReading Schemas ====================
 
 class UtilityReadingBase(BaseModel):
@@ -243,8 +278,8 @@ class UtilityReadingCreate(UtilityReadingBase):
 
 class UtilityReadingUpdate(BaseModel):
     """水电抄表记录更新 schema"""
-    notes: Optional[str] = None
-    # 其他字段不允许修改
+    reading: Optional[Decimal] = None  # 允许修改读数
+    notes: Optional[str] = None  # 允许修改备注
 
 
 class UtilityReadingResponse(UtilityReadingBase):
@@ -352,4 +387,26 @@ class PaginatedResponse(BaseModel, Generic[T]):
     total: int
     page: int
     size: int
+
+
+# ==================== 提醒相关 ====================
+
+class ReminderItem(BaseModel):
+    """提醒项"""
+    room_id: int
+    room_number: str
+    reminder_type: str  # lease_expiry, lease_overdue, payment_due, payment_overdue
+    reminder_date: date
+    days_left: int
+    amount: float
+    tenant_name: Optional[str] = None
+    breakdown: Optional[dict] = None  # 费用明细
+    message: str
+
+
+class ReminderResponse(BaseModel):
+    """提醒列表响应"""
+    total: int
+    reminders: list[ReminderItem]
+    as_of_date: date
     pages: int
