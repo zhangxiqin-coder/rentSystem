@@ -111,33 +111,23 @@ const hasThisMonthReading = async (roomId: number): Promise<boolean> => {
 // 房间本月是否已有记录的缓存
 const roomReadingStatus = ref<Record<number, boolean>>({})
 
-// 房间列表（过滤掉已删除的房间，本月未录入的排前面）
+// 当前选中的房间
+const currentRoom = computed(() => {
+  if (props.roomId) {
+    return rooms.value.find(r => r.id === props.roomId)
+  }
+  return rooms.value.find(r => r.id === formData.value.room_id)
+})
+
+// 房间列表（过滤掉已删除的房间，按房号字母序排序）
 const activeRooms = computed(() => {
   const active = rooms.value.filter(r => r.status !== 'deleted')
 
-  // 按以下优先级排序：
-  // 1. 本月未录入 + 7天内到期
-  // 2. 本月未录入 + 其他
-  // 3. 本月已录入 + 7天内到期
-  // 4. 本月已录入 + 其他
+  // 按房号字母序排序
   return active.sort((a, b) => {
-    const hasReadingA = roomReadingStatus.value[a.id] || false
-    const hasReadingB = roomReadingStatus.value[b.id] || false
-    const daysA = getNextPaymentDays(a)
-    const daysB = getNextPaymentDays(b)
-    const isExpiringA = daysA <= 7
-    const isExpiringB = daysB <= 7
-
-    // 本月未录入的排前面
-    if (!hasReadingA && hasReadingB) return -1
-    if (hasReadingA && !hasReadingB) return 1
-
-    // 同是未录入或已录入，7天内到期的排前面
-    if (isExpiringA && !isExpiringB) return -1
-    if (!isExpiringA && isExpiringB) return 1
-
-    // 同是即将到期或都不是，按天数排序
-    return daysA - daysB
+    const numA = a.room_number
+    const numB = b.room_number
+    return numA.localeCompare(numB, 'zh-CN')
   })
 })
 
@@ -428,6 +418,7 @@ if (!props.roomId) {
           v-model="formData.room_id"
           placeholder="请选择房间（支持输入搜索）"
           filterable
+          :disabled="!!props.roomId"
           :loading="roomsLoading"
           style="width: 100%"
           @change="loadPreviousReadings"
@@ -454,7 +445,11 @@ if (!props.roomId) {
             </div>
           </el-option>
         </el-select>
-        <div v-if="formData.room_id" class="room-hint">
+        <!-- 当房号固定时显示提示 -->
+        <div v-if="props.roomId && currentRoom" style="margin-top: 8px; color: #409eff; font-size: 13px;">
+          🔒 已自动选择房间：{{ currentRoom.room_number }} - {{ currentRoom.tenant_name || '空房' }}
+        </div>
+        <div v-if="formData.room_id && !props.roomId" class="room-hint">
           <span
             v-if="roomReadingStatus[activeRooms.find(r => r.id === formData.room_id)!]"
             style="color: #909399;"

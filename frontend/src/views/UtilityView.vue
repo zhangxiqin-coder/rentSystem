@@ -329,6 +329,13 @@ const filters = ref({
 // 表单对话框
 const showFormDialog = ref(false)
 const formSuccess = ref(false)
+const selectedRoomId = ref<number | undefined>(undefined)
+
+// 打开录入水电对话框（可传入固定房间ID）
+const openUtilityForm = (roomId?: number) => {
+  selectedRoomId.value = roomId
+  showFormDialog.value = true
+}
 
 // 加载水电记录列表
 const loadReadings = async () => {
@@ -551,14 +558,14 @@ const getRoom = (roomId: number) => {
 
 // 显示录入表单
 const showAddForm = () => {
-  formSuccess.value = false
-  showFormDialog.value = true
+  openUtilityForm() // 不传roomId，让用户自由选择
 }
 
 // 表单成功回调
 const handleFormSuccess = async (result: any) => {
   formSuccess.value = true
   showFormDialog.value = false
+  selectedRoomId.value = undefined
   await loadReadings()
 
   // 自动生成并发送微信消息
@@ -1051,8 +1058,8 @@ onMounted(() => {
               <el-tag :type="getNextPaymentDays(room) <= 3 ? 'danger' : 'warning'" size="small">
                 {{ getNextPaymentDays(room) }}天后需收租
               </el-tag>
-              <el-button type="primary" size="small" @click="sendReminder(room, 'upcoming')">
-                📱 提醒
+              <el-button type="primary" size="small" @click="openUtilityForm(room.id)">
+                💧 录入水电
               </el-button>
             </div>
           </div>
@@ -1262,12 +1269,13 @@ onMounted(() => {
       title="录入水电表读数"
       width="600px"
       :close-on-click-modal="false"
-      @close="showFormDialog = false"
+      @close="showFormDialog = false; selectedRoomId = undefined"
     >
       <UtilityReadingForm
         v-if="showFormDialog"
+        :room-id="selectedRoomId"
         @success="handleFormSuccess"
-        @cancel="showFormDialog = false"
+        @cancel="showFormDialog = false; selectedRoomId = undefined"
       />
     </el-dialog>
 
