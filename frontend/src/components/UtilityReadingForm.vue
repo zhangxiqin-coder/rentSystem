@@ -446,8 +446,8 @@ if (!props.roomId) {
           </el-option>
         </el-select>
         <!-- 当房号固定时显示提示 -->
-        <div v-if="props.roomId && currentRoom" style="margin-top: 8px; color: #409eff; font-size: 13px;">
-          🔒 已自动选择房间：{{ currentRoom.room_number }} - {{ currentRoom.tenant_name || '空房' }}
+        <div v-if="props.roomId" style="margin-top: 8px; color: #409eff; font-size: 13px;">
+          🔒 已自动选择房间：{{ rooms.find(r => r.id === props.roomId)?.room_number || '加载中...' }} - {{ rooms.find(r => r.id === props.roomId)?.tenant_name || '空房' }}
         </div>
         <div v-if="formData.room_id && !props.roomId" class="room-hint">
           <span
