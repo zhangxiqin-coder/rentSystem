@@ -83,19 +83,56 @@ const getNextPaymentDays = (room: Room): number => {
   return diffDays
 }
 
-// 房间列表（过滤掉已删除的房间，即将到期的排前面）
+// 检查房间本月是否已有水电记录
+const hasThisMonthReading = async (roomId: number): Promise<boolean> => {
+  try {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = now.getMonth() + 1
+    const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
+    const monthEnd = `${year}-${String(month).padStart(2, '0')}-31`
+
+    // 检查水和电是否都有本月记录
+    const [waterRes, electricRes] = await Promise.allSettled([
+      utilityApi.getReadingsByRoom(roomId, { page: 1, size: 1, utility_type: 'water', start_date: monthStart, end_date: monthEnd }),
+      utilityApi.getReadingsByRoom(roomId, { page: 1, size: 1, utility_type: 'electricity', start_date: monthStart, end_date: monthEnd })
+    ])
+
+    // 如果水和电都有记录，说明本月已录入
+    const hasWater = waterRes.status === 'fulfilled' && waterRes.value.data.items.length > 0
+    const hasElectric = electricRes.status === 'fulfilled' && electricRes.value.data.items.length > 0
+
+    return hasWater || hasElectric // 至少有其一就算已录入
+  } catch {
+    return false
+  }
+}
+
+// 房间本月是否已有记录的缓存
+const roomReadingStatus = ref<Record<number, boolean>>({})
+
+// 房间列表（过滤掉已删除的房间，本月未录入的排前面）
 const activeRooms = computed(() => {
   const active = rooms.value.filter(r => r.status !== 'deleted')
 
-  // 按是否即将到期排序（7天内到期的排前面）
+  // 按以下优先级排序：
+  // 1. 本月未录入 + 7天内到期
+  // 2. 本月未录入 + 其他
+  // 3. 本月已录入 + 7天内到期
+  // 4. 本月已录入 + 其他
   return active.sort((a, b) => {
+    const hasReadingA = roomReadingStatus.value[a.id] || false
+    const hasReadingB = roomReadingStatus.value[b.id] || false
     const daysA = getNextPaymentDays(a)
     const daysB = getNextPaymentDays(b)
-
-    // 7天内到期的排最前面
     const isExpiringA = daysA <= 7
     const isExpiringB = daysB <= 7
 
+    // 本月未录入的排前面
+    if (!hasReadingA && hasReadingB) return -1
+    if (hasReadingA && !hasReadingB) return 1
+
+    // 同是未录入或已录入，7天内到期的排前面
     if (isExpiringA && !isExpiringB) return -1
     if (!isExpiringA && isExpiringB) return 1
 
@@ -136,18 +173,29 @@ const loadRooms = async () => {
     let allRooms: Room[] = []
     let page = 1
     let hasMore = true
-    
+
     while (hasMore) {
       const res = await roomApi.getRooms({ page, size: 100 })
       const items = res.data.items || []
       allRooms = [...allRooms, ...items]
-      
+
       // 如果返回的数据少于100条，说明没有更多数据了
       hasMore = items.length === 100
       page++
     }
-    
+
     rooms.value = allRooms
+
+    // 检查每个房间本月是否已有水电记录
+    const statusPromises = allRooms.map(async (room) => {
+      const hasReading = await hasThisMonthReading(room.id)
+      return { roomId: room.id, hasReading }
+    })
+
+    const statuses = await Promise.all(statusPromises)
+    roomReadingStatus.value = Object.fromEntries(
+      statuses.map(s => [s.roomId, s.hasReading])
+    )
   } catch (error) {
     console.error('Failed to load rooms:', error)
     ElMessage.error('加载房间列表失败')
@@ -294,6 +342,9 @@ const submitForm = async () => {
 
     ElMessage.success('水电录入成功')
 
+    // 更新该房间的录入状态
+    roomReadingStatus.value[formData.value.room_id] = true
+
     // 返回创建的记录信息，以便父组件发送微信通知
     const result = {
       room_id: formData.value.room_id,
@@ -388,8 +439,14 @@ if (!props.roomId) {
           >
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
               <span>{{ room.room_number }} - {{ room.tenant_name || '空房' }}</span>
-              <span 
-                v-if="getNextPaymentDays(room) <= 7"
+              <span
+                v-if="roomReadingStatus[room.id]"
+                style="color: #909399; font-size: 12px;"
+              >
+                本月已录入
+              </span>
+              <span
+                v-else-if="getNextPaymentDays(room) <= 7"
                 style="color: #f56c6c; font-size: 12px; font-weight: bold;"
               >
                 {{ getNextPaymentDays(room) <= 0 ? '已逾期' : `${getNextPaymentDays(room)}天后到期` }}
@@ -398,7 +455,16 @@ if (!props.roomId) {
           </el-option>
         </el-select>
         <div v-if="formData.room_id" class="room-hint">
-          <span v-if="getNextPaymentDays(activeRooms.find(r => r.id === formData.room_id)!) <= 7" style="color: #f56c6c;">
+          <span
+            v-if="roomReadingStatus[activeRooms.find(r => r.id === formData.room_id)!]"
+            style="color: #909399;"
+          >
+            ℹ️ 该房间本月已录入过水电记录
+          </span>
+          <span
+            v-else-if="getNextPaymentDays(activeRooms.find(r => r.id === formData.room_id)!) <= 7"
+            style="color: #f56c6c;"
+          >
             ⚠️ {{ getNextPaymentDays(activeRooms.find(r => r.id === formData.room_id)!) <= 0 ? '该房间已逾期' : `该房间${getNextPaymentDays(activeRooms.find(r => r.id === formData.room_id)!)}天后到期` }}
           </span>
         </div>
