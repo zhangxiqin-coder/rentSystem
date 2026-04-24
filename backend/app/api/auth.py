@@ -269,7 +269,9 @@ async def login(
             "user": {
                 "id": user.id,
                 "username": user.username,
-                "email": user.email
+                "email": user.email,
+                "full_name": user.full_name,
+                "role": user.role
             }
         }
     }
@@ -294,6 +296,8 @@ async def get_current_user_info(
                 "id": current_user.id,
                 "username": current_user.username,
                 "email": current_user.email,
+                "full_name": current_user.full_name,
+                "role": current_user.role,
                 "created_at": current_user.created_at.isoformat()
             }
         }

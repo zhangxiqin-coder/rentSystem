@@ -528,7 +528,7 @@ const getNextPaymentDays = (room: Room) => {
   nextDate.setHours(0, 0, 0, 0)
 
   const diff = Math.ceil((nextDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-  return Math.max(0, diff)
+  return diff  // 返回实际天数差，可以是负数（表示逾期）
 }
 
 // 获取房间号
@@ -998,24 +998,24 @@ onMounted(() => {
       </el-button>
     </div>
 
-    <!-- 收租提醒 -->
-    <el-card v-if="overdueRooms.length > 0 || expiringRooms.length > 0" class="expiring-card" shadow="hover">
+    <!-- 收租提醒 - 始终显示 -->
+    <el-card class="expiring-card" shadow="hover">
       <template #header>
         <div class="card-header">
           <span class="title">💰 收租管理</span>
           <div class="tags">
-            <el-tag v-if="overdueRooms.length > 0" type="danger" size="small">欠租: {{ overdueRooms.length }} 个</el-tag>
-            <el-tag v-if="expiringRooms.length > 0" type="warning" size="small">即将到期: {{ expiringRooms.length }} 个</el-tag>
+            <el-tag type="danger" size="small">欠租: {{ overdueRooms.length }} 个</el-tag>
+            <el-tag type="warning" size="small">即将到期: {{ expiringRooms.length }} 个</el-tag>
           </div>
         </div>
       </template>
 
       <!-- 欠租房间列表 -->
-      <div v-if="overdueRooms.length > 0" class="reminder-section">
+      <div class="reminder-section">
         <div class="section-header overdue-header">
           <span class="section-title">🚨 欠租房间（已逾期）</span>
         </div>
-        <div class="expiring-list">
+        <div v-if="overdueRooms.length > 0" class="expiring-list">
           <div v-for="item in overdueRooms" :key="item.room.id" class="expiring-item overdue-item">
             <div class="room-info">
               <span class="room-number">{{ item.room.room_number }}</span>
@@ -1030,14 +1030,17 @@ onMounted(() => {
             </div>
           </div>
         </div>
+        <div v-else class="empty-state">
+          <el-text type="info">✅ 暂无欠租房间</el-text>
+        </div>
       </div>
 
       <!-- 即将到期房间列表 -->
-      <div v-if="expiringRooms.length > 0" class="reminder-section">
+      <div class="reminder-section">
         <div class="section-header upcoming-header">
           <span class="section-title">📅 即将到期（7天内需收租）</span>
         </div>
-        <div class="expiring-list">
+        <div v-if="expiringRooms.length > 0" class="expiring-list">
           <div v-for="room in expiringRooms" :key="room.id" class="expiring-item">
             <div class="room-info">
               <span class="room-number">{{ room.room_number }}</span>
@@ -1053,6 +1056,9 @@ onMounted(() => {
               </el-button>
             </div>
           </div>
+        </div>
+        <div v-else class="empty-state">
+          <el-text type="info">✅ 暂无即将到期房间</el-text>
         </div>
       </div>
     </el-card>
@@ -1758,6 +1764,14 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 12px;
+}
+
+.empty-state {
+  padding: 24px;
+  text-align: center;
+  background: #f9f9f9;
+  border-radius: 6px;
+  border: 1px dashed #dcdfe6;
 }
 
 .expiring-item {
