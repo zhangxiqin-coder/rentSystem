@@ -33,7 +33,7 @@ def get_db() -> Generator[Session, None, None]:
     try:
         yield db
     except Exception as e:
-        logging.error(f"数据库错误: {e}")
+        logging.error(f"数据库错误: {type(e).__name__}: {str(e)}", exc_info=True)
         raise
     finally:
         db.close()
