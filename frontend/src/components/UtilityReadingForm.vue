@@ -294,7 +294,7 @@ const submitForm = async () => {
     return
   }
 
-  // 2501系列房间（费率为0或None）允许创建0读数记录
+  // 2501系列房间（费率为0或null）不需要验证水电表，直接创建0读数记录
   // 其他房间至少需要录入水表或电表读数
   if (!isZeroRateRoom.value) {
     if (formData.value.water_reading === 0 && formData.value.electric_reading === 0) {
@@ -303,21 +303,24 @@ const submitForm = async () => {
     }
   }
 
-  // 验证水表读数
-  const prevWater = displayedPreviousWater.value
-  if (prevWater !== null && formData.value.water_reading > 0) {
-    if (formData.value.water_reading < prevWater) {
-      ElMessage.error('水表读数不能小于上次读数')
-      return
+  // 2501系列房间跳过水电表读数验证
+  if (!isZeroRateRoom.value) {
+    // 验证水表读数
+    const prevWater = displayedPreviousWater.value
+    if (prevWater !== null && formData.value.water_reading > 0) {
+      if (formData.value.water_reading < prevWater) {
+        ElMessage.error('水表读数不能小于上次读数')
+        return
+      }
     }
-  }
 
-  // 验证电表读数
-  const prevElectric = displayedPreviousElectric.value
-  if (prevElectric !== null && formData.value.electric_reading > 0) {
-    if (formData.value.electric_reading < prevElectric) {
-      ElMessage.error('电表读数不能小于上次读数')
-      return
+    // 验证电表读数
+    const prevElectric = displayedPreviousElectric.value
+    if (prevElectric !== null && formData.value.electric_reading > 0) {
+      if (formData.value.electric_reading < prevElectric) {
+        ElMessage.error('电表读数不能小于上次读数')
+        return
+      }
     }
   }
 
@@ -326,31 +329,57 @@ const submitForm = async () => {
     // 分别创建水和电的记录
     const promises: Promise<any>[] = []
 
-    // 2501系列房间：如果费率为0或None，创建0读数记录
-    if (formData.value.water_reading > 0 || (isZeroRateRoom.value && selectedRoom.value?.water_rate === 0)) {
+    // 2501系列房间：总是创建0读数记录（用于记录房租）
+    // 其他房间：只有读数>0时才创建记录
+    if (isZeroRateRoom.value) {
+      // 2501系列房间，创建水和电的0读数记录
       promises.push(
         utilityApi.createReading({
           room_id: formData.value.room_id,
           utility_type: 'water',
-          reading: formData.value.water_reading,
+          reading: 0,
           reading_date: formData.value.reading_date,
-          previous_reading: displayedPreviousWater.value || undefined,
-          notes: formData.value.notes,
+          previous_reading: 0,
+          notes: formData.value.notes || '2501系列房间，无水电费',
         }),
       )
-    }
-
-    if (formData.value.electric_reading > 0 || (isZeroRateRoom.value && selectedRoom.value?.electricity_rate === 0)) {
       promises.push(
         utilityApi.createReading({
           room_id: formData.value.room_id,
           utility_type: 'electricity',
-          reading: formData.value.electric_reading,
+          reading: 0,
           reading_date: formData.value.reading_date,
-          previous_reading: displayedPreviousElectric.value || undefined,
-          notes: formData.value.notes,
+          previous_reading: 0,
+          notes: formData.value.notes || '2501系列房间，无水电费',
         }),
       )
+    } else {
+      // 其他房间，按读数创建记录
+      if (formData.value.water_reading > 0) {
+        promises.push(
+          utilityApi.createReading({
+            room_id: formData.value.room_id,
+            utility_type: 'water',
+            reading: formData.value.water_reading,
+            reading_date: formData.value.reading_date,
+            previous_reading: displayedPreviousWater.value || undefined,
+            notes: formData.value.notes,
+          }),
+        )
+      }
+
+      if (formData.value.electric_reading > 0) {
+        promises.push(
+          utilityApi.createReading({
+            room_id: formData.value.room_id,
+            utility_type: 'electricity',
+            reading: formData.value.electric_reading,
+            reading_date: formData.value.reading_date,
+            previous_reading: displayedPreviousElectric.value || undefined,
+            notes: formData.value.notes,
+          }),
+        )
+      }
     }
 
     await Promise.all(promises)
