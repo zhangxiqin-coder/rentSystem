@@ -403,10 +403,20 @@ watch(
   }
 )
 
-// 初始化
-if (!props.roomId) {
-  loadRooms()
-}
+// 监听props.roomId变化，自动设置room_id并加载历史记录
+watch(
+  () => props.roomId,
+  (newRoomId) => {
+    if (newRoomId) {
+      formData.value.room_id = newRoomId
+      loadPreviousReadings(newRoomId)
+    }
+  },
+  { immediate: true } // 立即执行一次
+)
+
+// 初始化 - 始终加载rooms数据
+loadRooms()
 </script>
 
 <template>
