@@ -29,6 +29,10 @@ export interface BulkPaymentResponse {
 }
 
 export const paymentApi = {
+  // 获取支付记录列表
+  getPayments: (params?: { page?: number; size?: number; room_id?: number; payment_type?: string; status?: string }) =>
+    request.get('/api/v1/payments', { params }),
+
   // 批量创建收租记录
   createBulkPayment: (data: BulkPaymentCreate) =>
     request.post<BulkPaymentResponse>('/api/v1/payments/bulk', data),

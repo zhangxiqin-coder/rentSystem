@@ -277,7 +277,7 @@ def create_bulk_payment(
         water_payment = Payment(
             room_id=payment_data.room_id,
             amount=water.amount,
-            payment_type="water",
+            payment_type="utility",
             payment_date=payment_data.payment_date,
             payment_method=payment_data.payment_method,
             description=f"水费 {water.original_amount}吨/度",  # 简化显示，原为用水量
@@ -297,7 +297,7 @@ def create_bulk_payment(
         electricity_payment = Payment(
             room_id=payment_data.room_id,
             amount=electricity.amount,
-            payment_type="electricity",
+            payment_type="utility",
             payment_date=payment_data.payment_date,
             payment_method=payment_data.payment_method,
             description=f"电费 {electricity.original_amount}度",
@@ -320,10 +320,27 @@ def create_bulk_payment(
     for p in created_payments:
         db.refresh(p)
     
+    # Convert Payment objects to PaymentResponse
+    payment_responses = [
+        PaymentResponse(
+            id=p.id,
+            room_id=p.room_id,
+            amount=p.amount,
+            payment_type=p.payment_type,
+            payment_date=p.payment_date,
+            payment_method=p.payment_method,
+            description=p.description,
+            status=p.status,
+            created_at=p.created_at,
+            updated_at=p.updated_at
+        )
+        for p in created_payments
+    ]
+    
     return BulkPaymentResponse(
         success=True,
         message="收租记录创建成功",
-        payments=created_payments,
+        payments=payment_responses,
         total_original=total_original,
         total_actual=total_actual,
         total_discount=total_discount

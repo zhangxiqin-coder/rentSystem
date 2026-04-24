@@ -61,23 +61,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         return response
 
-# Add CSRF middleware FIRST (so it executes AFTER CORS)
+# 添加中间件 - 注意：FastAPI中间件执行顺序是LIFO（后进先出）
+# 所以最后添加的中间件最先执行
+# CORSMiddleware必须在最后添加，这样它会最先执行（处理OPTIONS预检请求）
 app.add_middleware(CSRFMiddleware)
 
-# Include routers
-# API v1 routers
-api_v1_prefix = "/api/v1"
-app.include_router(auth.router, prefix=api_v1_prefix)
-app.include_router(rooms.router, prefix=api_v1_prefix)
-app.include_router(payments.router, prefix=api_v1_prefix)
-app.include_router(utility_readings.router, prefix=api_v1_prefix)
-app.include_router(utility_rates.router, prefix=api_v1_prefix)
-app.include_router(users.router, prefix=api_v1_prefix)
-app.include_router(statistics.router, prefix=api_v1_prefix)
-app.include_router(reminders.router, prefix=api_v1_prefix)
-app.include_router(export.router, prefix=api_v1_prefix)
-
-# 配置 CORS - 固定配置
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -90,6 +78,17 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-CSRF-Token"],
 )
+# API v1 routers
+api_v1_prefix = "/api/v1"
+app.include_router(auth.router, prefix=api_v1_prefix)
+app.include_router(rooms.router, prefix=api_v1_prefix)
+app.include_router(payments.router, prefix=api_v1_prefix)
+app.include_router(utility_readings.router, prefix=api_v1_prefix)
+app.include_router(utility_rates.router, prefix=api_v1_prefix)
+app.include_router(users.router, prefix=api_v1_prefix)
+app.include_router(statistics.router, prefix=api_v1_prefix)
+app.include_router(reminders.router, prefix=api_v1_prefix)
+app.include_router(export.router, prefix=api_v1_prefix)
 
 # 健康检查端点
 @app.get("/")

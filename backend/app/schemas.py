@@ -246,7 +246,7 @@ class BulkPaymentCreate(BaseModel):
     water_charge: Optional[UtilityPaymentItem] = None  # 水费明细
     electricity_charge: Optional[UtilityPaymentItem] = None  # 电费明细
     payment_date: date = Field(default_factory=date.today)
-    payment_method: Optional[str] = None
+    payment_method: PaymentMethod = PaymentMethod.CASH
     notes: Optional[str] = None
 
 

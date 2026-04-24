@@ -352,21 +352,7 @@ const loadRooms = async () => {
 // 加载即将到期的房间
 const loadExpiringRooms = async () => {
   try {
-    // 从localStorage读取加密的token并解密
-    const encryptedToken = localStorage.getItem('access_token')
-    if (!encryptedToken) {
-      console.warn('No token found in localStorage')
-      return
-    }
-    
-    // 使用与request.ts相同的方式解密token
-    const token = atob(encryptedToken)
-    
-    const response = await axios.get('http://43.134.40.91:8000/api/v1/rooms/expiring-soon?days=7', {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
+    const response = await roomApi.getExpiringSoon(7)
     expiringRooms.value = response.data || []
   } catch (error) {
     console.error('Failed to load expiring rooms:', error)
@@ -395,12 +381,14 @@ const formatDate = (dateStr: string) => {
 const getNextPaymentDate = (room: Room) => {
   const lastPayment = room.last_payment_date || room.lease_start
   const lastDate = new Date(lastPayment)
-  
+
   // 计算下次收租日期：lastDate + payment_cycle个月
   const nextDate = new Date(lastDate)
+  // 先设置日期为1，避免溢出（比如1月31日加1个月会变成3月）
+  nextDate.setDate(1)
   nextDate.setMonth(nextDate.getMonth() + room.payment_cycle)
-  
-  // 处理日期溢出（比如1月31日加1个月）
+
+  // 恢复原始日期，处理月份天数不足的情况
   const lastDay = lastDate.getDate()
   const daysInMonth = new Date(nextDate.getFullYear(), nextDate.getMonth() + 1, 0).getDate()
   if (lastDay > daysInMonth) {
@@ -408,7 +396,7 @@ const getNextPaymentDate = (room: Room) => {
   } else {
     nextDate.setDate(lastDay)
   }
-  
+
   return nextDate.toLocaleDateString('zh-CN', {
     year: 'numeric',
     month: 'long',
@@ -420,11 +408,13 @@ const getNextPaymentDate = (room: Room) => {
 const getNextPaymentDays = (room: Room) => {
   const lastPayment = room.last_payment_date || room.lease_start
   const lastDate = new Date(lastPayment)
-  
+
   // 计算下次收租日期
   const nextDate = new Date(lastDate)
+  // 先设置日期为1，避免溢出
+  nextDate.setDate(1)
   nextDate.setMonth(nextDate.getMonth() + room.payment_cycle)
-  
+
   const lastDay = lastDate.getDate()
   const daysInMonth = new Date(nextDate.getFullYear(), nextDate.getMonth() + 1, 0).getDate()
   if (lastDay > daysInMonth) {
@@ -432,8 +422,11 @@ const getNextPaymentDays = (room: Room) => {
   } else {
     nextDate.setDate(lastDay)
   }
-  
+
   const today = new Date()
+  today.setHours(0, 0, 0, 0)  // 清除时分秒，确保准确计算天数
+  nextDate.setHours(0, 0, 0, 0)
+
   const diff = Math.ceil((nextDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
   return Math.max(0, diff)
 }
@@ -580,9 +573,9 @@ const saveEdit = async () => {
 
 // 打开收租对话框
 const showPaymentDialog = (row: MergedReading) => {
-  const water_amount = row.water_reading?.amount || 0
-  const electricity_amount = row.electricity_reading?.amount || 0
-  const rent_amount = row.monthly_rent || 0
+  const water_amount = Number(row.water_reading?.amount || 0)
+  const electricity_amount = Number(row.electricity_reading?.amount || 0)
+  const rent_amount = Number(row.monthly_rent || 0)
   
   paymentForm.value = {
     room_id: row.room_id,
@@ -661,9 +654,9 @@ const clearSelection = () => {
 // 显示批量收租对话框
 const showBatchPaymentDialog = () => {
   batchPayments.value = selectedRows.value.map(row => {
-    const water_amount = row.water_reading?.amount || 0
-    const electricity_amount = row.electricity_reading?.amount || 0
-    const rent_amount = row.monthly_rent || 0
+    const water_amount = Number(row.water_reading?.amount || 0)
+    const electricity_amount = Number(row.electricity_reading?.amount || 0)
+    const rent_amount = Number(row.monthly_rent || 0)
 
     return {
       room_id: row.room_id,
@@ -1121,16 +1114,6 @@ onMounted(() => {
           />
         </div>
       </el-tab-pane>
-
-      <el-tab-pane label="费率设置" name="rates">
-        <el-alert
-          title="费率管理功能"
-          type="info"
-          description="水电费率管理功能正在开发中，敬请期待。"
-          show-icon
-          :closable="false"
-        />
-      </el-tab-pane>
     </el-tabs>
 
     <!-- 录入表单对话框 -->
@@ -1236,7 +1219,7 @@ onMounted(() => {
         <el-form-item label="收款方式">
           <el-select v-model="paymentForm.payment_method">
             <el-option label="现金" value="现金" />
-            <el-option label="微信" value="微信" />
+            <el-option label="微信支付" value="微信支付" />
             <el-option label="支付宝" value="支付宝" />
             <el-option label="银行转账" value="银行转账" />
           </el-select>
@@ -1414,7 +1397,7 @@ onMounted(() => {
           <template #default="{ row }">
             <el-select v-model="row.payment_method" size="small">
               <el-option label="现金" value="现金" />
-              <el-option label="微信" value="微信" />
+              <el-option label="微信支付" value="微信支付" />
               <el-option label="支付宝" value="支付宝" />
               <el-option label="银行转账" value="银行转账" />
             </el-select>
