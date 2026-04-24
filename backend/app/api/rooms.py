@@ -115,8 +115,10 @@ def get_expiring_rooms(
             year += 1
         
         # 处理日期溢出（比如1月31日加1个月）
+        # 重要：使用 lease_start 的日期（day），而不是 last_payment 的日期
+        # 这样可以确保付款日期与租约开始日期一致
         days_in_month = [31, 29 if (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
-        day = min(last_payment.day, days_in_month)
+        day = min(room.lease_start.day, days_in_month)
         next_payment = date(year, month, day)
         
         # 检查是否在未来N天内需要收租

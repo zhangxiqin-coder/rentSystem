@@ -51,8 +51,58 @@ const calculations = ref<{
   electric: null,
 })
 
-// 房间列表（过滤掉已删除的房间）
-const activeRooms = computed(() => rooms.value.filter(r => r.status !== 'deleted'))
+// 计算下次付款天数
+const getNextPaymentDays = (room: Room): number => {
+  if (!room.last_payment_date && !room.lease_start) return 999
+
+  const lastPayment = room.last_payment_date
+    ? new Date(room.last_payment_date)
+    : new Date(room.lease_start)
+
+  // 使用租约开始日的日期作为付款日
+  const paymentDay = new Date(room.lease_start).getDate()
+  const now = new Date()
+  const currentMonth = now.getMonth()
+  const currentYear = now.getFullYear()
+
+  // 计算本月付款日期
+  let nextPayment = new Date(currentYear, currentMonth, paymentDay)
+
+  // 如果本月付款日期已过，则使用下个月
+  if (nextPayment <= lastPayment) {
+    nextPayment = new Date(currentYear, currentMonth + 1, paymentDay)
+  }
+
+  // 如果计算出的付款日期还在今天之前，说明是下个月的
+  if (nextPayment < now) {
+    nextPayment = new Date(currentYear, currentMonth + 1, paymentDay)
+  }
+
+  const diffTime = nextPayment.getTime() - now.getTime()
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  return diffDays
+}
+
+// 房间列表（过滤掉已删除的房间，即将到期的排前面）
+const activeRooms = computed(() => {
+  const active = rooms.value.filter(r => r.status !== 'deleted')
+
+  // 按是否即将到期排序（7天内到期的排前面）
+  return active.sort((a, b) => {
+    const daysA = getNextPaymentDays(a)
+    const daysB = getNextPaymentDays(b)
+
+    // 7天内到期的排最前面
+    const isExpiringA = daysA <= 7
+    const isExpiringB = daysB <= 7
+
+    if (isExpiringA && !isExpiringB) return -1
+    if (!isExpiringA && isExpiringB) return 1
+
+    // 同是即将到期或都不是，按天数排序
+    return daysA - daysB
+  })
+})
 
 // 总费用
 const totalAmount = computed(() => {
@@ -325,7 +375,7 @@ if (!props.roomId) {
       <el-form-item label="选择房间" required>
         <el-select
           v-model="formData.room_id"
-          placeholder="请选择房间"
+          placeholder="请选择房间（支持输入搜索）"
           filterable
           :loading="roomsLoading"
           style="width: 100%"
@@ -334,10 +384,24 @@ if (!props.roomId) {
           <el-option
             v-for="room in activeRooms"
             :key="room.id"
-            :label="`${room.room_number} - ${room.tenant_name || '空房'}`"
             :value="room.id"
-          />
+          >
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+              <span>{{ room.room_number }} - {{ room.tenant_name || '空房' }}</span>
+              <span 
+                v-if="getNextPaymentDays(room) <= 7"
+                style="color: #f56c6c; font-size: 12px; font-weight: bold;"
+              >
+                {{ getNextPaymentDays(room) <= 0 ? '已逾期' : `${getNextPaymentDays(room)}天后到期` }}
+              </span>
+            </div>
+          </el-option>
         </el-select>
+        <div v-if="formData.room_id" class="room-hint">
+          <span v-if="getNextPaymentDays(activeRooms.find(r => r.id === formData.room_id)!) <= 7" style="color: #f56c6c;">
+            ⚠️ {{ getNextPaymentDays(activeRooms.find(r => r.id === formData.room_id)!) <= 0 ? '该房间已逾期' : `该房间${getNextPaymentDays(activeRooms.find(r => r.id === formData.room_id)!)}天后到期` }}
+          </span>
+        </div>
       </el-form-item>
 
       <!-- 抄表日期 -->
@@ -543,5 +607,11 @@ if (!props.roomId) {
   margin-top: 0.5rem;
   font-size: 0.85rem;
   color: #909399;
+}
+
+.room-hint {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
 }
 </style>
