@@ -4,6 +4,26 @@ import { paymentApi } from '@/api/payment'
 import { roomApi } from '@/api/room'
 import type { Payment } from '@/types'
 import type { Room } from '@/types'
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { BarChart, LineChart } from 'echarts/charts'
+import {
+  TitleComponent,
+  TooltipComponent,
+  LegendComponent,
+  GridComponent
+} from 'echarts/components'
+
+use([
+  CanvasRenderer,
+  BarChart,
+  LineChart,
+  TitleComponent,
+  TooltipComponent,
+  LegendComponent,
+  GridComponent
+])
 
 const payments = ref<Payment[]>([])
 const rooms = ref<Room[]>([])
@@ -113,6 +133,123 @@ const missedPaymentWarnings = computed(() => {
   return warnings
 })
 
+// 月度统计数据
+const monthlyStats = computed(() => {
+  const stats: { [key: string]: { rent: number; water: number; electricity: number; total: number } } = {}
+
+  payments.value.forEach(payment => {
+    const date = new Date(payment.payment_date)
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+
+    if (!stats[monthKey]) {
+      stats[monthKey] = { rent: 0, water: 0, electricity: 0, total: 0 }
+    }
+
+    const amount = Number(payment.amount) || 0
+
+    if (payment.payment_type === 'rent') {
+      stats[monthKey].rent += amount
+    } else if (payment.payment_type === 'utility') {
+      const desc = (payment.description || '').toLowerCase()
+      if (desc.includes('水') || desc.includes('water')) {
+        stats[monthKey].water += amount
+      } else if (desc.includes('电') || desc.includes('electricity')) {
+        stats[monthKey].electricity += amount
+      } else {
+        if (amount < 50) {
+          stats[monthKey].water += amount
+        } else {
+          stats[monthKey].electricity += amount
+        }
+      }
+    }
+
+    stats[monthKey].total += amount
+  })
+
+  // 转为数组并按月份排序
+  return Object.entries(stats)
+    .map(([month, data]) => ({ month, ...data }))
+    .sort((a, b) => a.month.localeCompare(b.month))
+})
+
+// 图表配置
+const chartOption = computed(() => {
+  const months = monthlyStats.value.map(s => s.month)
+  const rentData = monthlyStats.value.map(s => s.rent)
+  const waterData = monthlyStats.value.map(s => s.water)
+  const electricityData = monthlyStats.value.map(s => s.electricity)
+  const totalData = monthlyStats.value.map(s => s.total)
+
+  return {
+    title: {
+      text: '月度收租统计',
+      left: 'center',
+      textStyle: { fontSize: 18 }
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: (params: any) => {
+        let result = `${params[0].axisValue}<br/>`
+        params.forEach((param: any) => {
+          result += `${param.marker} ${param.seriesName}: ¥${param.value.toFixed(2)}<br/>`
+        })
+        return result
+      }
+    },
+    legend: {
+      data: ['房租', '水费', '电费', '合计'],
+      top: 30
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: months,
+      axisLabel: { rotate: 45 }
+    },
+    yAxis: {
+      type: 'value',
+      name: '金额 (元)',
+      axisLabel: {
+        formatter: (value: number) => `¥${value}`
+      }
+    },
+    series: [
+      {
+        name: '房租',
+        type: 'bar',
+        data: rentData,
+        itemStyle: { color: '#409eff' }
+      },
+      {
+        name: '水费',
+        type: 'bar',
+        data: waterData,
+        itemStyle: { color: '#67c23a' }
+      },
+      {
+        name: '电费',
+        type: 'bar',
+        data: electricityData,
+        itemStyle: { color: '#e6a23c' }
+      },
+      {
+        name: '合计',
+        type: 'line',
+        data: totalData,
+        itemStyle: { color: '#f56c6c' },
+        lineStyle: { width: 3 }
+      }
+    ]
+  }
+})
+
 const loadPayments = async () => {
   loading.value = true
   try {
@@ -167,6 +304,11 @@ onMounted(() => {
           已选择：{{ rooms.find(r => r.id === selectedRoomId)?.room_number }}
           <button @click="selectedRoomId = null" class="clear-btn">清除</button>
         </span>
+      </div>
+
+      <!-- 月度统计图表 -->
+      <div v-if="monthlyStats.length > 0" class="chart-container">
+        <v-chart :option="chartOption" style="height: 400px" autoresize />
       </div>
 
       <div v-if="loading" class="loading">Loading...</div>
@@ -377,5 +519,14 @@ td {
 
 .clear-btn:hover {
   background: #66b1ff;
+}
+
+/* 图表容器样式 */
+.chart-container {
+  background: white;
+  border-radius: 8px;
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 </style>
