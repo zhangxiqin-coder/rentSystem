@@ -16,6 +16,9 @@ const activeTab = ref('readings')
 const readings = ref<UtilityReading[]>([])
 const loading = ref(false)
 
+// 支付记录（用于判断是否已收租）
+const payments = ref<Payment[]>([])
+
 // 即将到期的房间
 const expiringRooms = ref<Room[]>([])
 
@@ -259,6 +262,7 @@ interface MergedReading {
   monthly_rent?: number  // 月租金
   total_amount: number
   notes: string
+  is_paid?: boolean  // 是否已收租
 }
 
 const mergedReadings = computed(() => {
@@ -294,7 +298,18 @@ const mergedReadings = computed(() => {
     }
   })
 
-  return Array.from(map.values()).sort((a, b) => 
+  // 检查每条记录是否已收租
+  const result = Array.from(map.values())
+  result.forEach(merged => {
+    // 查找对应的支付记录（同房间、同月份）
+    const hasPayment = payments.value.some(p => 
+      p.room_id === merged.room_id && 
+      p.payment_date.startsWith(merged.reading_date.substring(0, 7))  // 比较年月
+    )
+    merged.is_paid = hasPayment
+  })
+
+  return result.sort((a, b) => 
     new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime()
   )
 })
@@ -359,6 +374,10 @@ const loadReadings = async () => {
     const res = await utilityApi.getReadings(params)
     readings.value = res.data.items || []
     pagination.value.total = res.data.total || 0
+    
+    // 同时加载支付记录，用于判断是否已收租
+    const paymentsRes = await paymentApi.getPayments({ size: 1000 })
+    payments.value = paymentsRes.data.items || []
   } catch (error) {
     console.error('Failed to load readings:', error)
     ElMessage.error('加载水电记录失败')
@@ -1170,17 +1189,23 @@ onMounted(() => {
           <el-table-column label="💧 水表" width="200">
             <template #default="{ row }">
               <div v-if="row.water_reading" class="reading-cell">
-                <div class="reading-row">
-                  <span class="label">上次:</span>
-                  <span>{{ row.water_reading.previous_reading }}</span>
+                <!-- 如果水费为0，说明是无水电费房间 -->
+                <div v-if="row.water_reading.amount === 0 || row.water_reading.amount === '0'" class="no-data">
+                  无水电费
                 </div>
-                <div class="reading-row">
-                  <span class="label">本次:</span>
-                  <span>{{ row.water_reading.reading }}</span>
-                </div>
-                <div class="reading-row highlight">
-                  <span class="label">用量:</span>
-                  <span>{{ row.water_reading.usage }}</span>
+                <div v-else>
+                  <div class="reading-row">
+                    <span class="label">上次:</span>
+                    <span>{{ row.water_reading.previous_reading }}</span>
+                  </div>
+                  <div class="reading-row">
+                    <span class="label">本次:</span>
+                    <span>{{ row.water_reading.reading }}</span>
+                  </div>
+                  <div class="reading-row highlight">
+                    <span class="label">用量:</span>
+                    <span>{{ row.water_reading.usage }}</span>
+                  </div>
                 </div>
               </div>
               <span v-else class="no-data">未录入</span>
@@ -1190,17 +1215,23 @@ onMounted(() => {
           <el-table-column label="⚡ 电表" width="200">
             <template #default="{ row }">
               <div v-if="row.electricity_reading" class="reading-cell">
-                <div class="reading-row">
-                  <span class="label">上次:</span>
-                  <span>{{ row.electricity_reading.previous_reading }}</span>
+                <!-- 如果电费为0，说明是无水电费房间 -->
+                <div v-if="row.electricity_reading.amount === 0 || row.electricity_reading.amount === '0'" class="no-data">
+                  无水电费
                 </div>
-                <div class="reading-row">
-                  <span class="label">本次:</span>
-                  <span>{{ row.electricity_reading.reading }}</span>
-                </div>
-                <div class="reading-row highlight">
-                  <span class="label">用量:</span>
-                  <span>{{ row.electricity_reading.usage }}</span>
+                <div v-else>
+                  <div class="reading-row">
+                    <span class="label">上次:</span>
+                    <span>{{ row.electricity_reading.previous_reading }}</span>
+                  </div>
+                  <div class="reading-row">
+                    <span class="label">本次:</span>
+                    <span>{{ row.electricity_reading.reading }}</span>
+                  </div>
+                  <div class="reading-row highlight">
+                    <span class="label">用量:</span>
+                    <span>{{ row.electricity_reading.usage }}</span>
+                  </div>
                 </div>
               </div>
               <span v-else class="no-data">未录入</span>
@@ -1240,9 +1271,10 @@ onMounted(() => {
               <el-button
                 type="success"
                 size="small"
+                :disabled="row.is_paid"
                 @click="showPaymentDialog(row)"
               >
-                标记已收
+                {{ row.is_paid ? '已收租' : '标记已收' }}
               </el-button>
             </template>
           </el-table-column>
