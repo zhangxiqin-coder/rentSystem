@@ -81,8 +81,29 @@ def list_payments(
     total = query.count()
     items = query.offset((page - 1) * size).limit(size).all()
     
+    # 为每个payment添加room_number（从关联的room对象获取）
+    result_items = []
+    for item in items:
+        # 将SQLAlchemy对象转换为dict并添加room_number
+        item_dict = {
+            "id": item.id,
+            "room_id": item.room_id,
+            "room_number": item.room.room_number if item.room else None,
+            "amount": item.amount,
+            "payment_type": item.payment_type,
+            "payment_date": item.payment_date,
+            "due_date": item.due_date,
+            "status": item.status,
+            "payment_method": item.payment_method,
+            "description": item.description,
+            "receipt_image": item.receipt_image,
+            "created_at": item.created_at,
+            "updated_at": item.updated_at
+        }
+        result_items.append(item_dict)
+    
     return {
-        "items": items,
+        "items": result_items,
         "total": total,
         "page": page,
         "size": size,

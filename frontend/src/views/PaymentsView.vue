@@ -43,10 +43,13 @@ const groupedPayments = computed(() => {
     const key = `${payment.room_id}_${payment.payment_date}`
     
     if (!groups[key]) {
-      const room = rooms.value.find(r => r.id === payment.room_id)
+      // 优先使用API返回的room_number，如果没有才从rooms数组查找
+      const roomNumber = payment.room_number || 
+                        rooms.value.find(r => r.id === payment.room_id)?.room_number || 
+                        `Room ${payment.room_id}`
       groups[key] = {
         room_id: payment.room_id,
-        room_number: room?.room_number || `Room ${payment.room_id}`,
+        room_number: roomNumber,
         payment_date: payment.payment_date,
         status: payment.status,
         rent: 0,

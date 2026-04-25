@@ -225,6 +225,7 @@ class PaymentResponse(PaymentBase):
     payment_date: date
     created_at: datetime
     updated_at: datetime
+    room_number: Optional[str] = None  # 添加房间号字段
 
     model_config = ConfigDict(from_attributes=True)
 
