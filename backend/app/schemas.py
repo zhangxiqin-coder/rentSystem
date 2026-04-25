@@ -42,6 +42,7 @@ class PaymentType(str, Enum):
     RENT = "rent"
     DEPOSIT = "deposit"
     UTILITY = "utility"
+    REFUND = "refund"  # 退租退款
     OTHER = "other"
 
 
@@ -187,6 +188,50 @@ class RoomResponse(RoomBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== Check-in/Check-out Schemas ====================
+
+class CheckoutRequest(BaseModel):
+    """退租请求 schema"""
+    refund_amount: Decimal = Field(..., ge=0, description="退款金额（退还押金/房租）")
+    refund_date: date = Field(default_factory=date.today, description="退款日期")
+    refund_reason: Optional[str] = Field(None, max_length=500, description="退租原因")
+    payment_method: Optional[PaymentMethod] = Field(None, description="退款方式")
+
+
+class CheckinRequest(BaseModel):
+    """入住请求 schema"""
+    tenant_name: str = Field(..., min_length=1, max_length=100, description="租客姓名")
+    tenant_phone: str = Field(..., pattern=r'^1[3-9]\d{9}$', description="租客电话")
+    lease_start: date = Field(..., description="租约开始日期")
+    lease_end: date = Field(..., description="租约结束日期")
+    deposit_amount: Optional[Decimal] = Field(None, ge=0, description="押金金额")
+    payment_cycle: Optional[int] = Field(1, gt=0, le=12, description="付款周期（月）")
+
+    @model_validator(mode='after')
+    def validate_lease_dates(self):
+        """验证租约结束日期必须大于开始日期"""
+        if self.lease_end <= self.lease_start:
+            raise ValueError("租约结束日期必须大于开始日期")
+        return self
+
+
+class CheckoutResponse(BaseModel):
+    """退租响应 schema"""
+    message: str
+    room_id: int
+    refund_payment_id: int
+    checkout_date: date
+
+
+class CheckinResponse(BaseModel):
+    """入住响应 schema"""
+    message: str
+    room_id: int
+    tenant_name: str
+    lease_start: date
+    lease_end: date
 
 
 # ==================== Payment Schemas ====================

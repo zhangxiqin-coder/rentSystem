@@ -40,6 +40,7 @@ class PaymentType(str):
     RENT = "rent"
     DEPOSIT = "deposit"
     UTILITY = "utility"
+    REFUND = "refund"  # 退租退款
     OTHER = "other"
 
 

@@ -12,7 +12,8 @@ from app.core.permissions import apply_room_filter
 from app.models import User, Room, Payment, UtilityReading
 from app.schemas import (
     RoomCreate, RoomUpdate, RoomResponse, PaginatedResponse,
-    PaymentResponse, UtilityReadingResponse
+    PaymentResponse, UtilityReadingResponse,
+    CheckoutRequest, CheckinRequest, CheckoutResponse, CheckinResponse
 )
 from app.service.business import update_room_status
 
@@ -347,5 +348,117 @@ def get_room_utility_readings(
         "page": page,
         "size": size,
         "pages": (total + size - 1) // size
+    }
+
+
+@router.post("/{room_id}/checkout", response_model=CheckoutResponse)
+def checkout_room(
+    room_id: int,
+    checkout_data: CheckoutRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    退租房间
+    
+    操作：
+    1. 将房间状态改为空房（available）
+    2. 清空租客信息
+    3. 创建退租记录（退款金额，payment_type="refund"）
+    """
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="房间不存在")
+    
+    check_room_permission(current_user, room)
+    
+    # 检查房间是否已租
+    if room.status != "occupied":
+        raise HTTPException(status_code=400, detail="只有已租的房间才能退租")
+    
+    # 保存租客信息（用于记录）
+    previous_tenant = room.tenant_name
+    checkout_date = checkout_data.refund_date
+    
+    # 更新房间状态为空房，清空租客信息
+    room.status = "available"
+    room.tenant_name = None
+    room.tenant_phone = None
+    room.lease_start = None
+    room.lease_end = None
+    room.last_payment_date = None
+    
+    # 创建退租记录（负数金额表示退款）
+    refund_payment = Payment(
+        room_id=room.id,
+        amount=-checkout_data.refund_amount,  # 负数表示退款
+        payment_type="refund",
+        payment_date=checkout_date,
+        status="completed",
+        payment_method=checkout_data.payment_method or "现金",
+        description=f"退租退款 - 租客：{previous_tenant}" + 
+                   (f"，原因：{checkout_data.refund_reason}" if checkout_data.refund_reason else ""),
+        owner_id=current_user.id if current_user.role != "admin" else room.owner_id
+    )
+    db.add(refund_payment)
+    db.commit()
+    db.refresh(room)
+    db.refresh(refund_payment)
+    
+    return {
+        "message": f"房间 {room.room_number} 退租成功",
+        "room_id": room.id,
+        "refund_payment_id": refund_payment.id,
+        "checkout_date": checkout_date
+    }
+
+
+@router.post("/{room_id}/checkin", response_model=CheckinResponse)
+def checkin_room(
+    room_id: int,
+    checkin_data: CheckinRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    入住房间
+    
+    操作：
+    1. 填写租客信息
+    2. 设置租约日期
+    3. 将房间状态改为已租（occupied）
+    """
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="房间不存在")
+    
+    check_room_permission(current_user, room)
+    
+    # 检查房间是否为空
+    if room.status != "available":
+        raise HTTPException(status_code=400, detail="只有空房才能办理入住")
+    
+    # 更新房间信息
+    room.status = "occupied"
+    room.tenant_name = checkin_data.tenant_name
+    room.tenant_phone = checkin_data.tenant_phone
+    room.lease_start = checkin_data.lease_start
+    room.lease_end = checkin_data.lease_end
+    
+    # 更新押金和付款周期（如果提供）
+    if checkin_data.deposit_amount is not None:
+        room.deposit_amount = checkin_data.deposit_amount
+    if checkin_data.payment_cycle is not None:
+        room.payment_cycle = checkin_data.payment_cycle
+    
+    db.commit()
+    db.refresh(room)
+    
+    return {
+        "message": f"房间 {room.room_number} 入住成功",
+        "room_id": room.id,
+        "tenant_name": room.tenant_name,
+        "lease_start": room.lease_start,
+        "lease_end": room.lease_end
     }
 
