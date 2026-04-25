@@ -77,6 +77,9 @@ const groupedPayments = computed(() => {
           groups[key].electricity += Number(payment.amount) || 0
         }
       }
+    } else if (payment.payment_type === 'refund') {
+      // 退租记录显示在房租列（负数）
+      groups[key].rent += Number(payment.amount) || 0
     }
     
     groups[key].total += Number(payment.amount) || 0
@@ -332,10 +335,10 @@ onMounted(() => {
             <tr v-for="payment in groupedPayments" :key="`${payment.room_id}_${payment.payment_date}`">
               <td><strong>{{ payment.room_number }}</strong></td>
               <td>{{ payment.payment_date }}</td>
-              <td>¥{{ payment.rent.toFixed(2) }}</td>
+              <td :class="{ 'negative-amount': payment.rent < 0 }">¥{{ payment.rent.toFixed(2) }}</td>
               <td>¥{{ payment.water.toFixed(2) }}</td>
               <td>¥{{ payment.electricity.toFixed(2) }}</td>
-              <td><strong>¥{{ payment.total.toFixed(2) }}</strong></td>
+              <td :class="{ 'negative-amount': payment.total < 0 }"><strong>¥{{ payment.total.toFixed(2) }}</strong></td>
               <td :class="`status-${payment.status}`">{{ payment.status }}</td>
             </tr>
           </tbody>
@@ -531,5 +534,11 @@ td {
   padding: 2rem;
   margin-bottom: 1.5rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 负数金额样式 */
+.negative-amount {
+  color: #f56c6c;
+  font-weight: bold;
 }
 </style>

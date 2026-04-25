@@ -29,4 +29,22 @@ export const roomApi = {
 
   // Delete room
   deleteRoom: (id: number) => request.delete<ApiResponse<void>>(`/api/v1/rooms/${id}`),
+
+  // 退租房间
+  checkoutRoom: (id: number, data: {
+    refund_amount: number
+    refund_date: string
+    refund_reason?: string
+    payment_method: string
+  }) => request.post<ApiResponse<any>>(`/api/v1/rooms/${id}/checkout`, data),
+
+  // 入住房间
+  checkinRoom: (id: number, data: {
+    tenant_name: string
+    tenant_phone: string
+    lease_start: string
+    lease_end: string
+    deposit_amount?: number
+    payment_cycle?: number
+  }) => request.post<ApiResponse<Room>>(`/api/v1/rooms/${id}/checkin`, data),
 }

@@ -108,6 +108,81 @@ const handle删除 = async (room: Room) => {
   }
 }
 
+// 退租和入住功能
+const checkoutDialogVisible = ref(false)
+const checkinDialogVisible = ref(false)
+const currentRoom = ref<Room>()
+
+// 退租表单
+const checkoutForm = ref({
+  refund_amount: 0,
+  refund_date: new Date().toISOString().split('T')[0],
+  refund_reason: '',
+  payment_method: '微信支付'
+})
+
+// 入住表单
+const checkinForm = ref({
+  tenant_name: '',
+  tenant_phone: '',
+  lease_start: '',
+  lease_end: '',
+  deposit_amount: 0,
+  payment_cycle: 1
+})
+
+const handle退租 = (room: Room) => {
+  currentRoom.value = room
+  // 默认退款金额为押金
+  checkoutForm.value.refund_amount = Number(room.deposit_amount) || 0
+  checkoutDialogVisible.value = true
+}
+
+const handle入住 = (room: Room) => {
+  currentRoom.value = room
+  // 默认付款周期为1
+  checkinForm.value.payment_cycle = Number(room.payment_cycle) || 1
+  checkinForm.value.deposit_amount = Number(room.deposit_amount) || 0
+  checkinDialogVisible.value = true
+}
+
+const confirm退租 = async () => {
+  if (!currentRoom.value) return
+  
+  try {
+    submitting.value = true
+    await roomApi.checkoutRoom(currentRoom.value.id, {
+      refund_amount: checkoutForm.value.refund_amount,
+      refund_date: checkoutForm.value.refund_date,
+      refund_reason: checkoutForm.value.refund_reason,
+      payment_method: checkoutForm.value.payment_method
+    })
+    ElMessage.success('退租成功')
+    checkoutDialogVisible.value = false
+    await loadRooms()
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.message || '退租失败')
+  } finally {
+    submitting.value = false
+  }
+}
+
+const confirm入住 = async () => {
+  if (!currentRoom.value) return
+  
+  try {
+    submitting.value = true
+    await roomApi.checkinRoom(currentRoom.value.id, checkinForm.value)
+    ElMessage.success('入住成功')
+    checkinDialogVisible.value = false
+    await loadRooms()
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '入住失败')
+  } finally {
+    submitting.value = false
+  }
+}
+
 const handleSubmit = async (data: CreateRoomRequest | UpdateRoomRequest) => {
   submitting.value = true
   try {
@@ -273,8 +348,26 @@ onMounted(() => {
             {{ getPaymentCycleLabel(row.payment_cycle) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
+            <!-- 已租房间：显示退租按钮 -->
+            <el-button
+              v-if="row.status === 'occupied'"
+              type="warning"
+              size="small"
+              @click.stop="handle退租(row)"
+            >
+              退租
+            </el-button>
+            <!-- 空房：显示入住按钮 -->
+            <el-button
+              v-if="row.status === 'available'"
+              type="success"
+              size="small"
+              @click.stop="handle入住(row)"
+            >
+              入住
+            </el-button>
             <el-button
               type="primary"
               size="small"
@@ -318,6 +411,122 @@ onMounted(() => {
         @submit="handleSubmit"
         @cancel="handleDialogClose"
       />
+    </el-dialog>
+
+    <!-- 退租对话框 -->
+    <el-dialog
+      v-model="checkoutDialogVisible"
+      title="退租"
+      width="500px"
+    >
+      <el-form :model="checkoutForm" label-width="120px">
+        <el-form-item label="房间">
+          <span>{{ currentRoom?.room_number }}</span>
+        </el-form-item>
+        <el-form-item label="租客">
+          <span>{{ currentRoom?.tenant_name }}</span>
+        </el-form-item>
+        <el-form-item label="押金">
+          <span>¥{{ Number(currentRoom?.deposit_amount || 0).toFixed(2) }}</span>
+        </el-form-item>
+        <el-form-item label="退款金额" required>
+          <el-input-number
+            v-model="checkoutForm.refund_amount"
+            :min="0"
+            :precision="2"
+            :step="100"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="退款日期">
+          <el-date-picker
+            v-model="checkoutForm.refund_date"
+            type="date"
+            placeholder="选择日期"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="退款原因">
+          <el-input
+            v-model="checkoutForm.refund_reason"
+            type="textarea"
+            :rows="3"
+            placeholder="选填"
+          />
+        </el-form-item>
+        <el-form-item label="支付方式">
+          <el-select v-model="checkoutForm.payment_method" style="width: 100%">
+            <el-option label="微信支付" value="微信支付" />
+            <el-option label="支付宝" value="支付宝" />
+            <el-option label="现金" value="现金" />
+            <el-option label="银行转账" value="银行转账" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="checkoutDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="confirm退租">
+          确认退租
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 入住对话框 -->
+    <el-dialog
+      v-model="checkinDialogVisible"
+      title="入住"
+      width="500px"
+    >
+      <el-form :model="checkinForm" label-width="120px">
+        <el-form-item label="房间">
+          <span>{{ currentRoom?.room_number }}</span>
+        </el-form-item>
+        <el-form-item label="租客姓名" required>
+          <el-input v-model="checkinForm.tenant_name" placeholder="请输入租客姓名" />
+        </el-form-item>
+        <el-form-item label="租客电话" required>
+          <el-input v-model="checkinForm.tenant_phone" placeholder="请输入租客电话" />
+        </el-form-item>
+        <el-form-item label="租约开始日期" required>
+          <el-date-picker
+            v-model="checkinForm.lease_start"
+            type="date"
+            placeholder="选择开始日期"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="租约结束日期" required>
+          <el-date-picker
+            v-model="checkinForm.lease_end"
+            type="date"
+            placeholder="选择结束日期"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="押金">
+          <el-input-number
+            v-model="checkinForm.deposit_amount"
+            :min="0"
+            :precision="2"
+            :step="100"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="付款周期（月）">
+          <el-input-number
+            v-model="checkinForm.payment_cycle"
+            :min="1"
+            :max="12"
+            style="width: 100%"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="checkinDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="confirm入住">
+          确认入住
+        </el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
