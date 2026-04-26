@@ -211,7 +211,7 @@ def check_if_both_utilities_recorded(
     reading_date
 ) -> dict:
     """
-    检查某房间在某日期是否已录入水和电两项数据，并获取上月数据
+    检查某房间在某日期是否已录入水和电两项数据，并获取上次数据
 
     Args:
         db: 数据库会话
@@ -219,11 +219,14 @@ def check_if_both_utilities_recorded(
         reading_date: 检查日期
 
     Returns:
-        字典，包含是否完整及各项数据（含上月数据）
+        字典，包含是否完整及各项数据（含上次数据）
     """
     from app.models import UtilityReading
-    from datetime import timedelta
-    import calendar
+    from datetime import datetime, timedelta
+
+    # 确保reading_date是date对象
+    if isinstance(reading_date, str):
+        reading_date = datetime.strptime(reading_date, '%Y-%m-%d').date()
 
     # 查询当天的水表记录
     water = db.query(UtilityReading).filter(
@@ -239,27 +242,25 @@ def check_if_both_utilities_recorded(
         UtilityReading.reading_date == reading_date
     ).first()
 
-    # 计算上月日期（上月同一天）
-    if isinstance(reading_date, str):
-        from datetime import datetime
-        reading_date = datetime.strptime(reading_date, '%Y-%m-%d').date()
+    # 查询上一次的水电记录（往前15天内，或者直接查最近的一次）
+    # 策略：查找当前日期之前的最近一次记录
+    start_date = reading_date - timedelta(days=45)  # 往前45天内查找
     
-    # 计算上月同一天（如果上月没有这天，取上月最后一天）
-    last_month = reading_date.replace(day=1) - timedelta(days=1)
-    last_month_date = last_month.replace(day=min(reading_date.day, calendar.monthrange(last_month.year, last_month.month)[1]))
-
-    # 查询上月的水电记录
-    last_month_water = db.query(UtilityReading).filter(
+    # 查询上一次水表记录
+    last_water = db.query(UtilityReading).filter(
         UtilityReading.room_id == room_id,
         UtilityReading.utility_type == 'water',
-        UtilityReading.reading_date == last_month_date
-    ).first()
+        UtilityReading.reading_date < reading_date,
+        UtilityReading.reading_date >= start_date
+    ).order_by(UtilityReading.reading_date.desc()).first()
 
-    last_month_electricity = db.query(UtilityReading).filter(
+    # 查询上一次电表记录
+    last_electricity = db.query(UtilityReading).filter(
         UtilityReading.room_id == room_id,
         UtilityReading.utility_type == 'electricity',
-        UtilityReading.reading_date == last_month_date
-    ).first()
+        UtilityReading.reading_date < reading_date,
+        UtilityReading.reading_date >= start_date
+    ).order_by(UtilityReading.reading_date.desc()).first()
 
     return {
         "both_recorded": water is not None and electricity is not None,
@@ -269,13 +270,15 @@ def check_if_both_utilities_recorded(
         "electricity_reading": float(electricity.reading) if electricity else None,
         "water_usage": float(water.usage) if water and water.usage else 0,
         "electricity_usage": float(electricity.usage) if electricity and electricity.usage else 0,
-        # 上月数据
+        # 上次数据
         "last_month": {
-            "water_reading": float(last_month_water.reading) if last_month_water else None,
-            "water_usage": float(last_month_water.usage) if last_month_water and last_month_water.usage else 0,
-            "water_amount": float(last_month_water.amount) if last_month_water and last_month_water.amount else 0,
-            "electricity_reading": float(last_month_electricity.reading) if last_month_electricity else None,
-            "electricity_usage": float(last_month_electricity.usage) if last_month_electricity and last_month_electricity.usage else 0,
-            "electricity_amount": float(last_month_electricity.amount) if last_month_electricity and last_month_electricity.amount else 0,
+            "water_reading": float(last_water.reading) if last_water else None,
+            "water_usage": float(last_water.usage) if last_water and last_water.usage else 0,
+            "water_amount": float(last_water.amount) if last_water and last_water.amount else 0,
+            "water_date": str(last_water.reading_date) if last_water else None,
+            "electricity_reading": float(last_electricity.reading) if last_electricity else None,
+            "electricity_usage": float(last_electricity.usage) if last_electricity and last_electricity.usage else 0,
+            "electricity_amount": float(last_electricity.amount) if last_electricity and last_electricity.amount else 0,
+            "electricity_date": str(last_electricity.reading_date) if last_electricity else None,
         }
     }
