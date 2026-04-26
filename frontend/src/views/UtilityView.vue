@@ -440,12 +440,10 @@ const mergedReadings = computed(() => {
     merged.is_paid = !!(waterPaid || elecPaid)
   })
 
-  // 过滤掉已支付的记录（只显示未支付的）
-  return result
-    .filter(item => !item.is_paid)
-    .sort((a, b) => 
-      new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime()
-    )
+  // 返回所有记录（包括已支付的），按日期倒序排列
+  return result.sort((a, b) =>
+    new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime()
+  )
 })
 
 // 房间选项（用于筛选）
