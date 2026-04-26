@@ -858,27 +858,31 @@ const submitPayment = async () => {
       notes: paymentForm.value.notes
     }
     
-    // 水费
-    if (paymentForm.value.water_original > 0) {
+    // 添加水电费（如果有金额）
+    if (paymentForm.value.water_amount > 0) {
       payload.water_charge = {
         utility_type: 'water',
-        amount: paymentForm.value.water_amount,
-        original_amount: paymentForm.value.water_original,
-        discount: paymentForm.value.water_original - paymentForm.value.water_amount
+        amount: Number(paymentForm.value.water_amount),
+        original_amount: Number(paymentForm.value.water_original),
+        discount: Number(paymentForm.value.water_original) - Number(paymentForm.value.water_amount)
       }
     }
     
-    // 电费
-    if (paymentForm.value.electricity_original > 0) {
+    if (paymentForm.value.electricity_amount > 0) {
       payload.electricity_charge = {
         utility_type: 'electricity',
-        amount: paymentForm.value.electricity_amount,
-        original_amount: paymentForm.value.electricity_original,
-        discount: paymentForm.value.electricity_original - paymentForm.value.electricity_amount
+        amount: Number(paymentForm.value.electricity_amount),
+        original_amount: Number(paymentForm.value.electricity_original),
+        discount: Number(paymentForm.value.electricity_original) - Number(paymentForm.value.electricity_amount)
       }
     }
     
+    // 添加调试日志
+    console.log('📤 [Bulk Payment] Payload:', payload)
+    
     const response = await paymentApi.createBulkPayment(payload)
+    
+    console.log('✅ [Bulk Payment] Response:', response.data)
     
     if (response.data.success) {
       ElMessage.success(`收租记录创建成功！实收：¥${response.data.total_actual}`)

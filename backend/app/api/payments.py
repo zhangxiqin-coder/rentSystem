@@ -3,9 +3,10 @@
 """
 from typing import Optional
 from datetime import date, datetime
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
+import logging
 
 from app.database import get_db
 from app.models import Payment, Room, User
@@ -212,6 +213,7 @@ def create_payment(
 
 @router.post("/bulk", response_model=BulkPaymentResponse)
 def create_bulk_payment(
+    request: Request,
     data: BulkPaymentCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -224,6 +226,12 @@ def create_bulk_payment(
     - 1条水费支付记录（如果有）
     - 1条电费支付记录（如果有）
     """
+    # 记录请求数据（调试用）
+    import json
+    logger = logging.getLogger(__name__)
+    logger.info(f"Bulk payment request: user={current_user.username}, room_id={data.room_id}")
+    logger.info(f"Request body: {json.dumps(data.model_dump(exclude_unset=True), ensure_ascii=False, default=str)}")
+    
     # 验证房间权限
     room = db.query(Room).filter(
         Room.id == data.room_id,
