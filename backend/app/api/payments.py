@@ -140,7 +140,11 @@ def get_payments(
     支持按房间、支付类型、状态筛选
     """
     # 构建查询条件
-    query = db.query(Payment).join(Room).filter(Room.owner_id == current_user.id)
+    # testuser3（房东姐姐）可以查看所有支付记录
+    if current_user.username == "testuser3":
+        query = db.query(Payment).join(Room)
+    else:
+        query = db.query(Payment).join(Room).filter(Room.owner_id == current_user.id)
 
     if room_id:
         query = query.filter(Payment.room_id == room_id)
