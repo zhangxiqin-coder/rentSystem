@@ -553,7 +553,14 @@ const loadRooms = async () => {
 const loadExpiringRooms = async () => {
   try {
     const response = await roomApi.getExpiringSoon(7)
-    expiringRooms.value = response.data || []
+    const allExpiringRooms = response.data || []
+    
+    // 过滤掉今天已收租的房间
+    const today = new Date().toISOString().split('T')[0]
+    expiringRooms.value = allExpiringRooms.filter((room: Room) => {
+      // 如果没有收租记录，或者收租日期不是今天，都显示
+      return !room.last_payment_date || room.last_payment_date !== today
+    })
   } catch (error) {
     console.error('Failed to load expiring rooms:', error)
     // 静默失败，不显示错误消息
@@ -896,6 +903,8 @@ const submitPayment = async () => {
       paymentDialogVisible.value = false
       // 刷新列表
       loadReadings()
+      // 刷新即将到期列表（排除今天已收租的房间）
+      loadExpiringRooms()
     }
   } catch (error: any) {
     console.error('Failed to create payment:', error)
