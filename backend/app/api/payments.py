@@ -233,10 +233,14 @@ def create_bulk_payment(
     logger.info(f"Request body: {json.dumps(data.model_dump(exclude_unset=True), ensure_ascii=False, default=str)}")
     
     # 验证房间权限
-    room = db.query(Room).filter(
-        Room.id == data.room_id,
-        Room.owner_id == current_user.id
-    ).first()
+    # testuser3（房东姐姐）可以为所有房间创建支付记录
+    if current_user.username == "testuser3":
+        room = db.query(Room).filter(Room.id == data.room_id).first()
+    else:
+        room = db.query(Room).filter(
+            Room.id == data.room_id,
+            Room.owner_id == current_user.id
+        ).first()
 
     if not room:
         raise HTTPException(status_code=404, detail="房间不存在")
