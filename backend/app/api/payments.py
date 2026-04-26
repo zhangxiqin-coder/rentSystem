@@ -9,7 +9,7 @@ from sqlalchemy import func, and_, or_
 import logging
 
 from app.database import get_db
-from app.models import Payment, Room, User
+from app.models import Payment, Room, User, UtilityReading
 from app.schemas import (
     PaymentResponse, PaymentCreate,
     PaginatedResponse, BulkPaymentCreate, BulkPaymentResponse,
@@ -253,29 +253,34 @@ def create_bulk_payment(
     from app.models import Payment
     from datetime import date
     
-    payment_date = data.payment_date
+    # 优先使用reading_date作为检查日期，否则使用payment_date
+    check_date = data.reading_date or data.payment_date
+    
     existing_payments = db.query(Payment).filter(
         Payment.room_id == data.room_id,
-        Payment.payment_date == payment_date
+        Payment.payment_date == check_date
     ).all()
     
     # 如果当天已经有支付记录，拒绝重复支付
     if existing_payments:
         raise HTTPException(
             status_code=400, 
-            detail=f"{payment_date}已存在收租记录，请勿重复操作"
+            detail=f"{check_date}已存在收租记录，请勿重复操作"
         )
 
     payments = []
     water_payment = None
     electricity_payment = None
 
+    # 确定实际使用的支付日期（优先使用reading_date）
+    actual_payment_date = check_date
+
     # 创建房租支付记录
     rent_payment = Payment(
         room_id=data.room_id,
         amount=data.rent_amount,
         payment_type=PaymentType.RENT,
-        payment_date=data.payment_date,
+        payment_date=actual_payment_date,
         payment_method=data.payment_method,
         description=f"房租 {room.room_number}",
         owner_id=current_user.id
@@ -289,7 +294,7 @@ def create_bulk_payment(
             room_id=data.room_id,
             amount=data.water_charge.amount,
             payment_type=PaymentType.UTILITY,
-            payment_date=data.payment_date,
+            payment_date=actual_payment_date,
             payment_method=data.payment_method,
             description=f"水费 {room.room_number}",
             owner_id=current_user.id
@@ -303,7 +308,7 @@ def create_bulk_payment(
             room_id=data.room_id,
             amount=data.electricity_charge.amount,
             payment_type=PaymentType.UTILITY,
-            payment_date=data.payment_date,
+            payment_date=actual_payment_date,
             payment_method=data.payment_method,
             description=f"电费 {room.room_number}",
             owner_id=current_user.id
@@ -318,12 +323,12 @@ def create_bulk_payment(
         db.refresh(payment)
 
     # 更新水电记录的payment_id
-    # 使用payment_date而不是reading_date（因为reading_date可能是None或错误的）
+    # 使用actual_payment_date查询水电记录
     if data.water_charge and water_payment:
         water_reading = db.query(UtilityReading).filter(
             UtilityReading.room_id == data.room_id,
             UtilityReading.utility_type == 'water',
-            UtilityReading.reading_date == data.payment_date  # 使用payment_date
+            UtilityReading.reading_date == actual_payment_date
         ).first()
         if water_reading:
             water_reading.payment_id = water_payment.id
@@ -332,13 +337,13 @@ def create_bulk_payment(
         elec_reading = db.query(UtilityReading).filter(
             UtilityReading.room_id == data.room_id,
             UtilityReading.utility_type == 'electricity',
-            UtilityReading.reading_date == data.payment_date  # 使用payment_date
+            UtilityReading.reading_date == actual_payment_date
         ).first()
         if elec_reading:
             elec_reading.payment_id = electricity_payment.id
     
     # 更新房间的last_payment_date
-    room.last_payment_date = data.payment_date
+    room.last_payment_date = actual_payment_date
     
     db.commit()
 
