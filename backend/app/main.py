@@ -78,6 +78,34 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-CSRF-Token"],
 )
+
+# 全局异常处理器
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """捕获所有未处理的异常"""
+    import traceback
+    logger = logging.getLogger(__name__)
+    logger.error(f"Unhandled exception: {type(exc).__name__}: {str(exc)}")
+    logger.error(f"Request: {request.method} {request.url.path}")
+    logger.error(f"Traceback:\n{traceback.format_exc()}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"}
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """捕获请求验证错误"""
+    logger = logging.getLogger(__name__)
+    logger.error(f"Validation error: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": "Validation error", "errors": exc.errors()}
+    )
+
 # API v1 routers
 api_v1_prefix = "/api/v1"
 app.include_router(auth.router, prefix=api_v1_prefix)
