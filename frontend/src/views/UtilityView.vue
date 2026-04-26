@@ -851,7 +851,7 @@ const submitPayment = async () => {
   try {
     const payload: any = {
       room_id: paymentForm.value.room_id,
-      reading_date: paymentForm.value.reading_date,
+      reading_date: paymentForm.value.reading_date || new Date().toISOString().split('T')[0],  // 如果没有就用今天
       rent_amount: paymentForm.value.rent_amount,
       rent_original: paymentForm.value.rent_original,
       payment_method: paymentForm.value.payment_method,

@@ -286,7 +286,7 @@ class UtilityPaymentItem(BaseModel):
 class BulkPaymentCreate(BaseModel):
     """批量收租创建 schema"""
     room_id: int
-    reading_date: date  # 水电抄表日期
+    reading_date: Optional[date] = None  # 水电抄表日期（可选）
     rent_amount: Decimal  # 房租（可打折）
     rent_original: Decimal  # 房租原始金额
     water_charge: Optional[UtilityPaymentItem] = None  # 水费明细
@@ -300,7 +300,7 @@ class BulkPaymentResponse(BaseModel):
     """批量收租响应"""
     success: bool
     message: str
-    payments: list[PaymentResponse]
+    payments: list[int]  # 支付记录ID列表
     total_original: Decimal  # 原始总额
     total_actual: Decimal  # 实收总额
     total_discount: Decimal  # 总折扣
