@@ -385,3 +385,91 @@ def get_payment(
         raise HTTPException(status_code=404, detail="支付记录不存在")
 
     return payment
+
+
+@router.delete("/{payment_id}", status_code=204)
+def delete_payment(
+    payment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    删除支付记录
+
+    删除支付记录时，需要同时清理关联的水电记录的payment_id字段
+    """
+    # 查询支付记录
+    payment = db.query(Payment).join(Room).filter(
+        Payment.id == payment_id,
+        Room.owner_id == current_user.id
+    ).first()
+
+    if not payment:
+        raise HTTPException(status_code=404, detail="支付记录不存在")
+
+    # 如果是水电费支付，需要清理关联的水电记录的payment_id
+    if payment.payment_type in ['water', 'electricity', 'utility']:
+        # 导入UtilityReading模型
+        from app.models import UtilityReading
+
+        # 查找并更新关联的水电记录
+        utility_readings = db.query(UtilityReading).filter(
+            UtilityReading.payment_id == payment_id
+        ).all()
+
+        for reading in utility_readings:
+            reading.payment_id = None
+
+        db.commit()
+
+    # 删除支付记录
+    db.delete(payment)
+    db.commit()
+
+    return None
+
+
+@router.delete("/batch", status_code=204)
+def batch_delete_payments(
+    payment_ids: list[int],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    批量删除支付记录
+
+    支持一次性删除多条支付记录
+    会自动清理关联的水电记录的payment_id字段
+    """
+    if not payment_ids:
+        raise HTTPException(status_code=400, detail="请提供要删除的支付记录ID列表")
+
+    # 导入UtilityReading模型
+    from app.models import UtilityReading
+
+    # 查询所有要删除的支付记录
+    payments = db.query(Payment).join(Room).filter(
+        Payment.id.in_(payment_ids),
+        Room.owner_id == current_user.id
+    ).all()
+
+    if not payments:
+        raise HTTPException(status_code=404, detail="未找到可删除的支付记录")
+
+    # 清理水电记录的payment_id
+    for payment in payments:
+        if payment.payment_type in ['water', 'electricity', 'utility']:
+            utility_readings = db.query(UtilityReading).filter(
+                UtilityReading.payment_id == payment.id
+            ).all()
+
+            for reading in utility_readings:
+                reading.payment_id = None
+
+    # 批量删除支付记录
+    for payment in payments:
+        db.delete(payment)
+
+    db.commit()
+
+    return None

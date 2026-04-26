@@ -30,6 +30,10 @@ const rooms = ref<Room[]>([])
 const loading = ref(false)
 const selectedRoomId = ref<number | null>(null)
 
+// 批量选择相关
+const selectedGroups = ref<string[]>([])
+const selectAll = ref(false)
+
 // 合并同一次收租的记录（按 room_id + payment_date 分组）
 const groupedPayments = computed(() => {
   const groups: { [key: string]: any } = {}
@@ -272,6 +276,97 @@ const loadPayments = async () => {
   }
 }
 
+// 全选/取消全选
+const toggleSelectAll = () => {
+  if (selectAll.value) {
+    selectedGroups.value = groupedPayments.value.map(
+      p => `${p.room_id}_${p.payment_date}`
+    )
+  } else {
+    selectedGroups.value = []
+  }
+}
+
+// 删除单个组（房租+水费+电费）
+const handleDeleteGroup = async (group: any) => {
+  try {
+    await window.$confirm(
+      `确定要删除 ${group.room_number} ${group.payment_date} 的收租记录吗？\n\n` +
+      `房租: ¥${group.rent.toFixed(2)}\n` +
+      `水费: ¥${group.water.toFixed(2)}\n` +
+      `电费: ¥${group.electricity.toFixed(2)}\n` +
+      `合计: ¥${group.total.toFixed(2)}`,
+      '删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    // 查找该组的所有支付记录ID
+    const groupPayments = payments.value.filter(
+      p => p.room_id === group.room_id && p.payment_date === group.payment_date
+    )
+
+    // 批量删除
+    await paymentApi.batchDeletePayments(groupPayments.map(p => p.id))
+
+    alert('删除成功')
+    await loadPayments()
+    selectedGroups.value = []
+    selectAll.value = false
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('删除失败:', error)
+      alert('删除失败: ' + (error.response?.data?.detail || error.message))
+    }
+  }
+}
+
+// 批量删除选中的记录
+const handleBatchDelete = async () => {
+  if (selectedGroups.value.length === 0) {
+    alert('请先选择要删除的记录')
+    return
+  }
+
+  try {
+    await window.$confirm(
+      `确定要删除选中的 ${selectedGroups.value.length} 条收租记录吗？`,
+      '批量删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    // 收集所有选中的支付记录ID
+    const allPaymentIds: number[] = []
+    selectedGroups.value.forEach(groupKey => {
+      const [room_id, payment_date] = groupKey.split('_')
+      const groupPayments = payments.value.filter(
+        p => p.room_id === parseInt(room_id) && p.payment_date === payment_date
+      )
+      groupPayments.forEach(p => allPaymentIds.push(p.id))
+    })
+
+    // 批量删除
+    await paymentApi.batchDeletePayments(allPaymentIds)
+
+    alert(`成功删除 ${selectedGroups.value.length} 条记录`)
+    await loadPayments()
+    selectedGroups.value = []
+    selectAll.value = false
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('批量删除失败:', error)
+      alert('批量删除失败: ' + (error.response?.data?.detail || error.message))
+    }
+  }
+}
+
 onMounted(() => {
   loadPayments()
 })
@@ -322,6 +417,13 @@ onMounted(() => {
         <table>
           <thead>
             <tr>
+              <th style="width: 40px">
+                <input
+                  type="checkbox"
+                  v-model="selectAll"
+                  @change="toggleSelectAll"
+                />
+              </th>
               <th>房号</th>
               <th>收租日期</th>
               <th>房租</th>
@@ -329,10 +431,18 @@ onMounted(() => {
               <th>电费</th>
               <th>合计</th>
               <th>状态</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="payment in groupedPayments" :key="`${payment.room_id}_${payment.payment_date}`">
+              <td>
+                <input
+                  type="checkbox"
+                  v-model="selectedGroups"
+                  :value="`${payment.room_id}_${payment.payment_date}`"
+                />
+              </td>
               <td><strong>{{ payment.room_number }}</strong></td>
               <td>{{ payment.payment_date }}</td>
               <td :class="{ 'negative-amount': payment.rent < 0 }">¥{{ payment.rent.toFixed(2) }}</td>
@@ -340,9 +450,20 @@ onMounted(() => {
               <td>¥{{ payment.electricity.toFixed(2) }}</td>
               <td :class="{ 'negative-amount': payment.total < 0 }"><strong>¥{{ payment.total.toFixed(2) }}</strong></td>
               <td :class="`status-${payment.status}`">{{ payment.status }}</td>
+              <td>
+                <button @click="handleDeleteGroup(payment)" class="delete-btn">
+                  🗑️ 删除
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
+        <div v-if="selectedGroups.length > 0" class="batch-actions">
+          <span>已选择 {{ selectedGroups.length }} 条记录</span>
+          <button @click="handleBatchDelete" class="batch-delete-btn">
+            🗑️ 批量删除
+          </button>
+        </div>
       </div>
     </main>
   </div>
@@ -540,5 +661,51 @@ td {
 .negative-amount {
   color: #f56c6c;
   font-weight: bold;
+}
+
+/* 删除按钮样式 */
+.delete-btn {
+  padding: 0.3rem 0.6rem;
+  background: #f56c6c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background 0.3s;
+}
+
+.delete-btn:hover {
+  background: #f78989;
+}
+
+/* 批量操作栏样式 */
+.batch-actions {
+  background: #f0f9ff;
+  border-top: 1px solid #409eff;
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.batch-actions span {
+  color: #409eff;
+  font-weight: 600;
+}
+
+.batch-delete-btn {
+  padding: 0.5rem 1rem;
+  background: #f56c6c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background 0.3s;
+}
+
+.batch-delete-btn:hover {
+  background: #f78989;
 }
 </style>

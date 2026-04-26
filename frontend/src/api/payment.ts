@@ -43,5 +43,13 @@ export const paymentApi = {
 
   // 获取房间账单
   getRoomBilling: (roomId: number, year?: number) =>
-    request.get(`/api/v1/payments/stats/room/${roomId}`, { params: { year } })
+    request.get(`/api/v1/payments/stats/room/${roomId}`, { params: { year } }),
+
+  // 删除支付记录
+  deletePayment: (id: number) =>
+    request.delete(`/api/v1/payments/${id}`),
+
+  // 批量删除支付记录
+  batchDeletePayments: (ids: number[]) =>
+    request.delete('/api/v1/payments/batch', { data: ids })
 }
