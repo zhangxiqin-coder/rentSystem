@@ -265,7 +265,7 @@ async def update_utility_reading(
                     UtilityReading.reading_date == reading.reading_date
                 ).first()
 
-                # 生成消息
+                # 生成消息（使用正确的参数）
                 message = generate_rent_notification(
                     room_number=room_number,
                     tenant_name=room.tenant_name or "租户",
@@ -276,8 +276,7 @@ async def update_utility_reading(
                     electricity_reading=float(electricity_reading_value),
                     water_usage=float(water_usage),
                     electricity_usage=float(electricity_usage),
-                    water_previous_reading=water_record.previous_reading if water_record else 0,
-                    electricity_previous_reading=electricity_record.previous_reading if electricity_record else 0
+                    last_month_data=result.get('last_month')
                 )
 
                 # 异步发送飞书消息（不阻塞响应）
