@@ -1,148 +1,79 @@
 """
-支付管理 API 路由
+支付记录API
 """
 from typing import Optional
-from datetime import date
+from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, desc
+from sqlalchemy import func, and_, or_
 
-from app.core.deps import get_db, get_current_user
-from app.core.permissions import apply_payment_filter
-from app.models import User, Payment, Room
+from app.database import get_db
+from app.models import Payment, Room, User
 from app.schemas import (
-    PaymentCreate, PaymentUpdate, PaymentResponse, PaginatedResponse,
-    BulkPaymentCreate, BulkPaymentResponse
+    PaymentResponse, PaymentCreate,
+    PaginatedResponse, BulkPaymentCreate, BulkPaymentResponse,
+    PaymentType, PaymentMethod
 )
-from app.service.business import create_payment, check_overdue_payments
+from app.core.deps import get_current_user
 
-router = APIRouter(prefix="/payments", tags=["payments"])
-
-
-def check_payment_permission(user: User):
-    """检查支付权限"""
-    if user.role == "tenant":
-        raise HTTPException(status_code=403, detail="租客无权操作")
-    return True
+router = APIRouter()
 
 
-@router.get("", response_model=PaginatedResponse[PaymentResponse])
-def list_payments(
-    page: int = Query(1, ge=1),
-    size: int = Query(10, ge=1, le=100),
-    room_id: Optional[int] = None,
-    payment_type: Optional[str] = None,
-    status: Optional[str] = None,
-    start_date: Optional[date] = None,
-    end_date: Optional[date] = None,
-    sort_by: str = "payment_date",
-    order: str = "desc",
+@router.get("/", response_model=PaginatedResponse)
+def get_payments(
+    page: int = Query(1, ge=1, description="页码"),
+    size: int = Query(10, ge=1, le=100, description="每页数量"),
+    room_id: Optional[int] = Query(None, description="房间ID筛选"),
+    payment_type: Optional[str] = Query(None, description="支付类型筛选"),
+    status: Optional[str] = Query(None, description="状态筛选"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    获取支付记录列表
+    获取支付记录列表（分页）
 
-    支持分页、筛选和排序
+    支持按房间、支付类型、状态筛选
     """
-    # 自动检查逾期
-    check_overdue_payments(db)
+    # 构建查询条件
+    query = db.query(Payment).join(Room).filter(Room.owner_id == current_user.id)
 
-    query = db.query(Payment)
-
-    # 用户权限过滤（房东姐姐可以看到所有，其他房东只能看到自己的）
-    query = apply_payment_filter(query, current_user)
-
-    # 筛选
     if room_id:
         query = query.filter(Payment.room_id == room_id)
     if payment_type:
         query = query.filter(Payment.payment_type == payment_type)
     if status:
         query = query.filter(Payment.status == status)
-    if start_date:
-        query = query.filter(Payment.payment_date >= start_date)
-    if end_date:
-        query = query.filter(Payment.payment_date <= end_date)
-    
-    # 排序 - 使用白名单验证
-    ALLOWED_SORT_FIELDS = {
-        'payment_date', 'amount', 'payment_type', 'status', 'due_date', 'created_at'
-    }
-    if sort_by not in ALLOWED_SORT_FIELDS:
-        sort_by = 'payment_date'
-    sort_column = getattr(Payment, sort_by, Payment.payment_date)
-    if order == "desc":
-        query = query.order_by(sort_column.desc())
-    else:
-        query = query.order_by(sort_column.asc())
-    
-    # 分页
+
+    # 计算总数
     total = query.count()
-    items = query.offset((page - 1) * size).limit(size).all()
-    
-    # 为每个payment添加room_number（从关联的room对象获取）
-    result_items = []
-    for item in items:
-        # 将SQLAlchemy对象转换为dict并添加room_number
-        item_dict = {
-            "id": item.id,
-            "room_id": item.room_id,
-            "room_number": item.room.room_number if item.room else None,
-            "amount": item.amount,
-            "payment_type": item.payment_type,
-            "payment_date": item.payment_date,
-            "due_date": item.due_date,
-            "status": item.status,
-            "payment_method": item.payment_method,
-            "description": item.description,
-            "receipt_image": item.receipt_image,
-            "created_at": item.created_at,
-            "updated_at": item.updated_at
-        }
-        result_items.append(item_dict)
-    
+
+    # 分页查询
+    offset = (page - 1) * size
+    payments = query.order_by(Payment.payment_date.desc(), Payment.created_at.desc()).offset(offset).limit(size).all()
+
+    # 转换为响应格式
+    items = []
+    for payment in payments:
+        items.append({
+            "id": payment.id,
+            "room_id": payment.room_id,
+            "room_number": payment.room.room_number if payment.room else None,
+            "amount": float(payment.amount) if payment.amount else 0,
+            "payment_type": payment.payment_type,
+            "payment_date": payment.payment_date.isoformat() if payment.payment_date else None,
+            "due_date": payment.due_date.isoformat() if payment.due_date else None,
+            "status": payment.status,
+            "payment_method": payment.payment_method,
+            "description": payment.description,
+            "created_at": payment.created_at.isoformat() if payment.created_at else None
+        })
+
     return {
-        "items": result_items,
+        "items": items,
         "total": total,
         "page": page,
         "size": size,
         "pages": (total + size - 1) // size
-    }
-
-
-@router.get("/stats")
-def get_payment_statistics(
-    start_date: Optional[date] = None,
-    end_date: Optional[date] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    获取支付统计
-    """
-    check_payment_permission(current_user)
-    
-    query = db.query(Payment).filter(Payment.status == 'completed')
-    
-    if start_date:
-        query = query.filter(Payment.payment_date >= start_date)
-    if end_date:
-        query = query.filter(Payment.payment_date <= end_date)
-    
-    payments = query.all()
-    
-    total_amount = sum(p.amount for p in payments)
-    rent_amount = sum(p.amount for p in payments if p.payment_type == 'rent')
-    utility_amount = sum(p.amount for p in payments if p.payment_type == 'utility')
-    deposit_amount = sum(p.amount for p in payments if p.payment_type == 'deposit')
-    
-    return {
-        "total_count": len(payments),
-        "total_amount": total_amount,
-        "rent_amount": rent_amount,
-        "utility_amount": utility_amount,
-        "deposit_amount": deposit_amount
     }
 
 
@@ -152,328 +83,239 @@ def get_payment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    获取支付记录详情
-    """
-    payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    """获取单个支付记录详情"""
+    payment = db.query(Payment).join(Room).filter(
+        Payment.id == payment_id,
+        Room.owner_id == current_user.id
+    ).first()
+
     if not payment:
         raise HTTPException(status_code=404, detail="支付记录不存在")
-    
-    # 租客只能查看自己房间的支付
-    if current_user.role == "tenant":
-        if payment.room.tenant_name != current_user.full_name:
-            raise HTTPException(status_code=403, detail="无权查看此支付记录")
-    
+
     return payment
 
 
-@router.post("", response_model=PaymentResponse, status_code=201)
-def create_payment_record(
+@router.post("/", response_model=PaymentResponse)
+def create_payment(
     payment_data: PaymentCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    创建支付记录
+    """创建支付记录"""
+    # 验证房间权限
+    room = db.query(Room).filter(
+        Room.id == payment_data.room_id,
+        Room.owner_id == current_user.id
+    ).first()
 
-    - 如果是租金类型且未指定金额，会自动计算（月租金 × 支付周期）
-    """
-    check_payment_permission(current_user)
+    if not room:
+        raise HTTPException(status_code=404, detail="房间不存在")
 
-    try:
-        payment = create_payment(
-            db,
-            room_id=payment_data.room_id,
-            payment_type=payment_data.payment_type,
-            payment_date=payment_data.payment_date,
-            amount=payment_data.amount,
-            due_date=payment_data.due_date,
-            status=payment_data.status,
-            payment_method=payment_data.payment_method,
-            description=payment_data.description,
-            receipt_image=payment_data.receipt_image,
-            owner_id=current_user.id  # 设置owner_id为当前用户
-        )
-        return payment
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    # 创建支付记录（确保payment_type有值）
+    payment_data_dict = payment_data.model_dump()
+    if not payment_data_dict.get('payment_type'):
+        payment_data_dict['payment_type'] = PaymentType.RENT
 
-
-@router.put("/{payment_id}", response_model=PaymentResponse)
-def update_payment(
-    payment_id: int,
-    payment_data: PaymentUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    更新支付记录
-    """
-    check_payment_permission(current_user)
-    
-    payment = db.query(Payment).filter(Payment.id == payment_id).first()
-    if not payment:
-        raise HTTPException(status_code=404, detail="支付记录不存在")
-    
-    # 已完成的支付不允许修改金额和日期
-    if payment.status == 'completed':
-        if payment_data.amount is not None or payment_data.payment_date is not None:
-            raise HTTPException(status_code=400, detail="已完成的支付不允许修改金额和日期")
-    
-    # 更新字段
-    update_data = payment_data.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(payment, key, value)
-    
+    payment = Payment(**payment_data_dict)
+    db.add(payment)
     db.commit()
     db.refresh(payment)
-    
+
     return payment
 
 
-@router.delete("/{payment_id}", status_code=204)
-def delete_payment(
-    payment_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    删除支付记录
-    """
-    check_payment_permission(current_user)
-    
-    payment = db.query(Payment).filter(Payment.id == payment_id).first()
-    if not payment:
-        raise HTTPException(status_code=404, detail="支付记录不存在")
-    
-    db.delete(payment)
-    db.commit()
-    
-    return None
-
-
-@router.post("/bulk", response_model=BulkPaymentResponse, status_code=201)
+@router.post("/bulk", response_model=BulkPaymentResponse)
 def create_bulk_payment(
-    payment_data: BulkPaymentCreate,
+    data: BulkPaymentCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    批量创建收租记录（房租 + 水费 + 电费）
-    
-    支持打折，分别记录房租、水费、电费
+    批量创建收租记录（房租 + 水电费）
+
+    会自动创建：
+    - 1条房租支付记录
+    - 1条水费支付记录（如果有）
+    - 1条电费支付记录（如果有）
     """
-    from app.models import UtilityReading
-    from decimal import Decimal
-    
-    check_payment_permission(current_user)
-    
-    # 验证房间存在
-    room = db.query(Room).filter(Room.id == payment_data.room_id).first()
+    # 验证房间权限
+    room = db.query(Room).filter(
+        Room.id == data.room_id,
+        Room.owner_id == current_user.id
+    ).first()
+
     if not room:
         raise HTTPException(status_code=404, detail="房间不存在")
-    
-    created_payments = []
-    total_original = payment_data.rent_original
-    total_actual = payment_data.rent_amount
-    total_discount = payment_data.rent_original - payment_data.rent_amount
-    
-    # 1. 创建房租记录
-    if payment_data.rent_amount > 0:
-        rent_payment = Payment(
-            room_id=payment_data.room_id,
-            amount=payment_data.rent_amount,
-            payment_type="rent",
-            payment_date=payment_data.payment_date,
-            payment_method=payment_data.payment_method,
-            description=f"房租 {payment_data.notes or ''}",
-            status="completed"
-        )
-        db.add(rent_payment)
-        db.flush()  # 获取ID
-        created_payments.append(rent_payment)
-    
-    # 2. 创建水费记录
-    if payment_data.water_charge:
-        water = payment_data.water_charge
+
+    payments = []
+
+    # 创建房租支付记录
+    rent_payment = Payment(
+        room_id=data.room_id,
+        amount=data.rent_amount,
+        payment_type=PaymentType.RENT,
+        payment_date=data.payment_date,
+        payment_method=data.payment_method,
+        description=f"房租 {room.room_number}",
+        owner_id=current_user.id
+    )
+    db.add(rent_payment)
+    payments.append(rent_payment)
+
+    # 创建水费支付记录（如果有）
+    if data.water_charge:
         water_payment = Payment(
-            room_id=payment_data.room_id,
-            amount=water.amount,
-            payment_type="utility",
-            payment_date=payment_data.payment_date,
-            payment_method=payment_data.payment_method,
-            description=f"水费 {water.original_amount}吨/度",  # 简化显示，原为用水量
-            status="completed"
+            room_id=data.room_id,
+            amount=data.water_charge.amount,
+            payment_type=PaymentType.UTILITY,
+            payment_date=data.payment_date,
+            payment_method=data.payment_method,
+            description=f"水费 {room.room_number}",
+            owner_id=current_user.id
         )
         db.add(water_payment)
-        db.flush()
-        created_payments.append(water_payment)
-        
-        total_original += water.original_amount
-        total_actual += water.amount
-        total_discount += water.discount
-    
-    # 3. 创建电费记录
-    if payment_data.electricity_charge:
-        electricity = payment_data.electricity_charge
+        payments.append(water_payment)
+
+    # 创建电费支付记录（如果有）
+    if data.electricity_charge:
         electricity_payment = Payment(
-            room_id=payment_data.room_id,
-            amount=electricity.amount,
-            payment_type="utility",
-            payment_date=payment_data.payment_date,
-            payment_method=payment_data.payment_method,
-            description=f"电费 {electricity.original_amount}度",
-            status="completed"
+            room_id=data.room_id,
+            amount=data.electricity_charge.amount,
+            payment_type=PaymentType.UTILITY,
+            payment_date=data.payment_date,
+            payment_method=data.payment_method,
+            description=f"电费 {room.room_number}",
+            owner_id=current_user.id
         )
         db.add(electricity_payment)
-        db.flush()
-        created_payments.append(electricity_payment)
-        
-        total_original += electricity.original_amount
-        total_actual += electricity.amount
-        total_discount += electricity.discount
-    
-    # 4. 更新房间的上次付款日期
-    room.last_payment_date = payment_data.payment_date
-    
+        payments.append(electricity_payment)
+
     db.commit()
-    
-    # 刷新所有payment以获取完整数据
-    for p in created_payments:
-        db.refresh(p)
-    
-    # Convert Payment objects to PaymentResponse
-    payment_responses = [
-        PaymentResponse(
-            id=p.id,
-            room_id=p.room_id,
-            amount=p.amount,
-            payment_type=p.payment_type,
-            payment_date=p.payment_date,
-            payment_method=p.payment_method,
-            description=p.description,
-            status=p.status,
-            created_at=p.created_at,
-            updated_at=p.updated_at
-        )
-        for p in created_payments
-    ]
-    
+
+    # 刷新所有支付记录以获取ID
+    for payment in payments:
+        db.refresh(payment)
+
+    # 计算总额
+    total_original = float(data.rent_original)
+    total_actual = float(data.rent_amount)
+    total_discount = total_original - total_actual
+
+    if data.water_charge:
+        total_original += float(data.water_charge.original_amount)
+        total_actual += float(data.water_charge.amount)
+        total_discount += float(data.water_charge.discount)
+
+    if data.electricity_charge:
+        total_original += float(data.electricity_charge.original_amount)
+        total_actual += float(data.electricity_charge.amount)
+        total_discount += float(data.electricity_charge.discount)
+
     return BulkPaymentResponse(
         success=True,
-        message="收租记录创建成功",
-        payments=payment_responses,
+        message="批量收租成功",
+        payments=[p.id for p in payments],
         total_original=total_original,
         total_actual=total_actual,
         total_discount=total_discount
     )
 
 
-@router.get("/stats/yearly", response_model=list[dict])
+@router.get("/stats/yearly")
 def get_yearly_stats(
-    year: Optional[int] = None,
+    year: Optional[int] = Query(None, description="年份，默认当前年份"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    获取年度收入统计
-    
-    可按年份筛选，默认显示所有年份
-    """
-    from sqlalchemy import func, extract
-    from decimal import Decimal
-    
-    query = db.query(
-        extract('year', Payment.payment_date).label('year'),
-        Payment.payment_type,
-        func.sum(Payment.amount).label('total_amount'),
-        func.count(Payment.id).label('count')
-    ).filter(Payment.status == 'completed')
-    
-    if year:
-        query = query.filter(extract('year', Payment.payment_date) == year)
-    
-    stats = query.group_by(
-        extract('year', Payment.payment_date),
-        Payment.payment_type
-    ).order_by(extract('year', Payment.payment_date).desc()).all()
-    
-    result = []
-    for stat in stats:
-        result.append({
-            'year': int(stat.year),
-            'type': stat.payment_type,
-            'total_amount': float(stat.total_amount),
-            'count': stat.count
-        })
-    
-    return result
+    """获取年度收租统计"""
+    if not year:
+        year = datetime.now().year
+
+    # 查询当年所有支付记录
+    payments = db.query(Payment).join(Room).filter(
+        Room.owner_id == current_user.id,
+        func.strftime('%Y', Payment.payment_date) == str(year)
+    ).all()
+
+    # 按类型和月份统计
+    stats = {
+        "year": year,
+        "total": 0,
+        "by_type": {},
+        "by_month": {}
+    }
+
+    for payment in payments:
+        amount = float(payment.amount) if payment.amount else 0
+        month = payment.payment_date.month if payment.payment_date else 1
+
+        stats["total"] += amount
+
+        # 按类型统计
+        ptype = payment.payment_type
+        if ptype not in stats["by_type"]:
+            stats["by_type"][ptype] = 0
+        stats["by_type"][ptype] += amount
+
+        # 按月份统计
+        if month not in stats["by_month"]:
+            stats["by_month"][month] = 0
+        stats["by_month"][month] += amount
+
+    return stats
 
 
-@router.get("/stats/room/{room_id}", response_model=dict)
+@router.get("/stats/room/{room_id}")
 def get_room_billing(
     room_id: int,
-    year: Optional[int] = None,
+    year: Optional[int] = Query(None, description="年份，默认当前年份"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    获取房间账单统计
-    
-    按月份汇总房租和水电费用
-    """
-    from sqlalchemy import func, extract
-    
-    # 验证房间存在
-    room = db.query(Room).filter(Room.id == room_id).first()
+    """获取房间账单统计"""
+    # 验证房间权限
+    room = db.query(Room).filter(
+        Room.id == room_id,
+        Room.owner_id == current_user.id
+    ).first()
+
     if not room:
         raise HTTPException(status_code=404, detail="房间不存在")
-    
-    query = db.query(
-        extract('year', Payment.payment_date).label('year'),
-        extract('month', Payment.payment_date).label('month'),
-        Payment.payment_type,
-        func.sum(Payment.amount).label('total_amount'),
-        func.count(Payment.id).label('count')
-    ).filter(
+
+    if not year:
+        year = datetime.now().year
+
+    # 查询该房间当年所有支付记录
+    payments = db.query(Payment).filter(
         Payment.room_id == room_id,
-        Payment.status == 'completed'
-    )
-    
-    if year:
-        query = query.filter(extract('year', Payment.payment_date) == year)
-    
-    stats = query.group_by(
-        extract('year', Payment.payment_date),
-        extract('month', Payment.payment_date),
-        Payment.payment_type
-    ).order_by(
-        extract('year', Payment.payment_date).desc(),
-        extract('month', Payment.payment_date).desc()
+        func.strftime('%Y', Payment.payment_date) == str(year)
     ).all()
-    
-    # 按年月分组
-    billing = {}
-    for stat in stats:
-        key = f"{int(stat.year)}-{int(stat.month):02d}"
-        if key not in billing:
-            billing[key] = {
-                'year': int(stat.year),
-                'month': int(stat.month),
-                'rent': 0,
-                'water': 0,
-                'electricity': 0,
-                'total': 0
-            }
-        
-        billing[key][stat.payment_type] = float(stat.total_amount)
-        billing[key]['total'] += float(stat.total_amount)
-    
-    return {
-        'room': {
-            'id': room.id,
-            'room_number': room.room_number,
-            'monthly_rent': float(room.monthly_rent)
-        },
-        'billing': list(billing.values())
+
+    billing = {
+        "room_id": room_id,
+        "room_number": room.room_number,
+        "year": year,
+        "total": 0,
+        "by_type": {},
+        "payments": []
     }
+
+    for payment in payments:
+        amount = float(payment.amount) if payment.amount else 0
+        billing["total"] += amount
+
+        ptype = payment.payment_type
+        if ptype not in billing["by_type"]:
+            billing["by_type"][ptype] = 0
+        billing["by_type"][ptype] += amount
+
+        billing["payments"].append({
+            "id": payment.id,
+            "amount": amount,
+            "payment_type": ptype,
+            "payment_date": payment.payment_date.isoformat() if payment.payment_date else None,
+            "payment_method": payment.payment_method,
+            "description": payment.description
+        })
+
+    return billing
