@@ -398,11 +398,14 @@ def delete_payment(
 
     删除支付记录时，需要同时清理关联的水电记录的payment_id字段
     """
-    # 查询支付记录
-    payment = db.query(Payment).join(Room).filter(
-        Payment.id == payment_id,
-        Room.owner_id == current_user.id
-    ).first()
+    # testuser3（房东姐姐）可以删除任何房间的支付记录
+    if current_user.username == "testuser3":
+        payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    else:
+        payment = db.query(Payment).join(Room).filter(
+            Payment.id == payment_id,
+            Room.owner_id == current_user.id
+        ).first()
 
     if not payment:
         raise HTTPException(status_code=404, detail="支付记录不存在")
@@ -447,11 +450,16 @@ def batch_delete_payments(
     # 导入UtilityReading模型
     from app.models import UtilityReading
 
-    # 查询所有要删除的支付记录
-    payments = db.query(Payment).join(Room).filter(
-        Payment.id.in_(payment_ids),
-        Room.owner_id == current_user.id
-    ).all()
+    # testuser3（房东姐姐）可以删除任何房间的支付记录
+    if current_user.username == "testuser3":
+        payments = db.query(Payment).filter(
+            Payment.id.in_(payment_ids)
+        ).all()
+    else:
+        payments = db.query(Payment).join(Room).filter(
+            Payment.id.in_(payment_ids),
+            Room.owner_id == current_user.id
+        ).all()
 
     if not payments:
         raise HTTPException(status_code=404, detail="未找到可删除的支付记录")
