@@ -326,15 +326,14 @@ const submitForm = async () => {
 
   loading.value = true
   try {
-    // 分别创建水和电的记录
-    const promises: Promise<any>[] = []
+    // 顺序创建水和电的记录，确保第二次录入时能触发催收消息
+    const results: any[] = []
 
     // 2501系列房间：总是创建0读数记录（用于记录房租）
     // 其他房间：只有读数>0时才创建记录
     if (isZeroRateRoom.value) {
       // 2501系列房间，创建水和电的0读数记录
-      promises.push(
-        utilityApi.createReading({
+      results.push(await utilityApi.createReading({
           room_id: formData.value.room_id,
           utility_type: 'water',
           reading: 0,
@@ -343,46 +342,38 @@ const submitForm = async () => {
           notes: formData.value.notes || '2501系列房间，无水电费',
         }),
       )
-      promises.push(
-        utilityApi.createReading({
-          room_id: formData.value.room_id,
-          utility_type: 'electricity',
-          reading: 0,
-          reading_date: formData.value.reading_date,
-          previous_reading: 0,
-          notes: formData.value.notes || '2501系列房间，无水电费',
-        }),
-      )
+      results.push(await utilityApi.createReading({
+        room_id: formData.value.room_id,
+        utility_type: 'electricity',
+        reading: 0,
+        reading_date: formData.value.reading_date,
+        previous_reading: 0,
+        notes: formData.value.notes || '2501系列房间，无水电费',
+      }),)
     } else {
       // 其他房间，按读数创建记录
       if (formData.value.water_reading > 0) {
-        promises.push(
-          utilityApi.createReading({
-            room_id: formData.value.room_id,
-            utility_type: 'water',
-            reading: formData.value.water_reading,
-            reading_date: formData.value.reading_date,
-            previous_reading: displayedPreviousWater.value || undefined,
-            notes: formData.value.notes,
-          }),
-        )
+        results.push(await utilityApi.createReading({
+          room_id: formData.value.room_id,
+          utility_type: 'water',
+          reading: formData.value.water_reading,
+          reading_date: formData.value.reading_date,
+          previous_reading: displayedPreviousWater.value || undefined,
+          notes: formData.value.notes,
+        }),)
       }
 
       if (formData.value.electric_reading > 0) {
-        promises.push(
-          utilityApi.createReading({
-            room_id: formData.value.room_id,
-            utility_type: 'electricity',
-            reading: formData.value.electric_reading,
-            reading_date: formData.value.reading_date,
-            previous_reading: displayedPreviousElectric.value || undefined,
-            notes: formData.value.notes,
-          }),
-        )
+        results.push(await utilityApi.createReading({
+          room_id: formData.value.room_id,
+          utility_type: 'electricity',
+          reading: formData.value.electric_reading,
+          reading_date: formData.value.reading_date,
+          previous_reading: displayedPreviousElectric.value || undefined,
+          notes: formData.value.notes,
+        }),)
       }
     }
-
-    await Promise.all(promises)
 
     ElMessage.success('水电录入成功')
 
