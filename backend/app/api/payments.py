@@ -387,51 +387,6 @@ def get_payment(
     return payment
 
 
-@router.delete("/{payment_id}", status_code=204)
-def delete_payment(
-    payment_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    删除支付记录
-
-    删除支付记录时，需要同时清理关联的水电记录的payment_id字段
-    """
-    # testuser3（房东姐姐）可以删除任何房间的支付记录
-    if current_user.username == "testuser3":
-        payment = db.query(Payment).filter(Payment.id == payment_id).first()
-    else:
-        payment = db.query(Payment).join(Room).filter(
-            Payment.id == payment_id,
-            Room.owner_id == current_user.id
-        ).first()
-
-    if not payment:
-        raise HTTPException(status_code=404, detail="支付记录不存在")
-
-    # 如果是水电费支付，需要清理关联的水电记录的payment_id
-    if payment.payment_type in ['water', 'electricity', 'utility']:
-        # 导入UtilityReading模型
-        from app.models import UtilityReading
-
-        # 查找并更新关联的水电记录
-        utility_readings = db.query(UtilityReading).filter(
-            UtilityReading.payment_id == payment_id
-        ).all()
-
-        for reading in utility_readings:
-            reading.payment_id = None
-
-        db.commit()
-
-    # 删除支付记录
-    db.delete(payment)
-    db.commit()
-
-    return None
-
-
 @router.delete("/batch", status_code=204)
 def batch_delete_payments(
     payment_ids: list[int],
@@ -478,6 +433,51 @@ def batch_delete_payments(
     for payment in payments:
         db.delete(payment)
 
+    db.commit()
+
+    return None
+
+
+@router.delete("/{payment_id}", status_code=204)
+def delete_payment(
+    payment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    删除支付记录
+
+    删除支付记录时，需要同时清理关联的水电记录的payment_id字段
+    """
+    # testuser3（房东姐姐）可以删除任何房间的支付记录
+    if current_user.username == "testuser3":
+        payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    else:
+        payment = db.query(Payment).join(Room).filter(
+            Payment.id == payment_id,
+            Room.owner_id == current_user.id
+        ).first()
+
+    if not payment:
+        raise HTTPException(status_code=404, detail="支付记录不存在")
+
+    # 如果是水电费支付，需要清理关联的水电记录的payment_id
+    if payment.payment_type in ['water', 'electricity', 'utility']:
+        # 导入UtilityReading模型
+        from app.models import UtilityReading
+
+        # 查找并更新关联的水电记录
+        utility_readings = db.query(UtilityReading).filter(
+            UtilityReading.payment_id == payment_id
+        ).all()
+
+        for reading in utility_readings:
+            reading.payment_id = None
+
+        db.commit()
+
+    # 删除支付记录
+    db.delete(payment)
     db.commit()
 
     return None
