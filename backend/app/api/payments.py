@@ -16,7 +16,7 @@ from app.schemas import (
 )
 from app.core.deps import get_current_user
 
-router = APIRouter()
+router = APIRouter(prefix="/payments", tags=["payments"])
 
 
 # ==================== 具体路径路由（优先匹配） ====================
@@ -126,7 +126,7 @@ def get_room_billing(
 @router.get("/", response_model=PaginatedResponse)
 def get_payments(
     page: int = Query(1, ge=1, description="页码"),
-    size: int = Query(10, ge=1, le=100, description="每页数量"),
+    size: int = Query(10, ge=1, le=1000, description="每页数量"),
     room_id: Optional[int] = Query(None, description="房间ID筛选"),
     payment_type: Optional[str] = Query(None, description="支付类型筛选"),
     status: Optional[str] = Query(None, description="状态筛选"),
