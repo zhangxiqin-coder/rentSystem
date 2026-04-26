@@ -19,6 +19,110 @@ from app.core.deps import get_current_user
 router = APIRouter()
 
 
+# ==================== 具体路径路由（优先匹配） ====================
+
+@router.get("/stats/yearly")
+def get_yearly_stats(
+    year: Optional[int] = Query(None, description="年份，默认当前年份"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取年度收租统计"""
+    if not year:
+        year = datetime.now().year
+
+    # 查询当年所有支付记录
+    payments = db.query(Payment).join(Room).filter(
+        Room.owner_id == current_user.id,
+        func.strftime('%Y', Payment.payment_date) == str(year)
+    ).all()
+
+    # 按类型和月份统计
+    stats = {
+        "year": year,
+        "total": 0,
+        "by_type": {},
+        "by_month": {}
+    }
+
+    for payment in payments:
+        amount = float(payment.amount) if payment.amount else 0
+        month = payment.payment_date.month if payment.payment_date else 1
+
+        stats["total"] += amount
+
+        # 按类型统计
+        ptype = payment.payment_type
+        if ptype not in stats["by_type"]:
+            stats["by_type"][ptype] = 0
+        stats["by_type"][ptype] += amount
+
+        # 按月份统计
+        if month not in stats["by_month"]:
+            stats["by_month"][month] = 0
+        stats["by_month"][month] += amount
+
+    return stats
+
+
+@router.get("/stats/room/{room_id}")
+def get_room_billing(
+    room_id: int,
+    year: Optional[int] = Query(None, description="年份，默认当前年份"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取房间账单统计"""
+    # 验证房间权限
+    room = db.query(Room).filter(
+        Room.id == room_id,
+        Room.owner_id == current_user.id
+    ).first()
+
+    if not room:
+        raise HTTPException(status_code=404, detail="房间不存在")
+
+    if not year:
+        year = datetime.now().year
+
+    # 查询该房间当年所有支付记录
+    payments = db.query(Payment).filter(
+        Payment.room_id == room_id,
+        func.strftime('%Y', Payment.payment_date) == str(year)
+    ).all()
+
+    billing = {
+        "room_id": room_id,
+        "room_number": room.room_number,
+        "year": year,
+        "total": 0,
+        "by_type": {},
+        "payments": []
+    }
+
+    for payment in payments:
+        amount = float(payment.amount) if payment.amount else 0
+        billing["total"] += amount
+
+        ptype = payment.payment_type
+        if ptype not in billing["by_type"]:
+            billing["by_type"][ptype] = 0
+        billing["by_type"][ptype] += amount
+
+        billing["payments"].append({
+            "id": payment.id,
+            "amount": amount,
+            "payment_type": ptype,
+            "payment_date": payment.payment_date.isoformat() if payment.payment_date else None,
+            "payment_method": payment.payment_method,
+            "description": payment.description
+        })
+
+    return billing
+
+
+# ==================== 列表和创建路由 ====================
+
 @router.get("/", response_model=PaginatedResponse)
 def get_payments(
     page: int = Query(1, ge=1, description="页码"),
@@ -75,24 +179,6 @@ def get_payments(
         "size": size,
         "pages": (total + size - 1) // size
     }
-
-
-@router.get("/{payment_id}", response_model=PaymentResponse)
-def get_payment(
-    payment_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """获取单个支付记录详情"""
-    payment = db.query(Payment).join(Room).filter(
-        Payment.id == payment_id,
-        Room.owner_id == current_user.id
-    ).first()
-
-    if not payment:
-        raise HTTPException(status_code=404, detail="支付记录不存在")
-
-    return payment
 
 
 @router.post("/", response_model=PaymentResponse)
@@ -221,101 +307,21 @@ def create_bulk_payment(
     )
 
 
-@router.get("/stats/yearly")
-def get_yearly_stats(
-    year: Optional[int] = Query(None, description="年份，默认当前年份"),
+# ==================== 参数化路由（最后匹配） ====================
+
+@router.get("/{payment_id}", response_model=PaymentResponse)
+def get_payment(
+    payment_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取年度收租统计"""
-    if not year:
-        year = datetime.now().year
-
-    # 查询当年所有支付记录
-    payments = db.query(Payment).join(Room).filter(
-        Room.owner_id == current_user.id,
-        func.strftime('%Y', Payment.payment_date) == str(year)
-    ).all()
-
-    # 按类型和月份统计
-    stats = {
-        "year": year,
-        "total": 0,
-        "by_type": {},
-        "by_month": {}
-    }
-
-    for payment in payments:
-        amount = float(payment.amount) if payment.amount else 0
-        month = payment.payment_date.month if payment.payment_date else 1
-
-        stats["total"] += amount
-
-        # 按类型统计
-        ptype = payment.payment_type
-        if ptype not in stats["by_type"]:
-            stats["by_type"][ptype] = 0
-        stats["by_type"][ptype] += amount
-
-        # 按月份统计
-        if month not in stats["by_month"]:
-            stats["by_month"][month] = 0
-        stats["by_month"][month] += amount
-
-    return stats
-
-
-@router.get("/stats/room/{room_id}")
-def get_room_billing(
-    room_id: int,
-    year: Optional[int] = Query(None, description="年份，默认当前年份"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """获取房间账单统计"""
-    # 验证房间权限
-    room = db.query(Room).filter(
-        Room.id == room_id,
+    """获取单个支付记录详情"""
+    payment = db.query(Payment).join(Room).filter(
+        Payment.id == payment_id,
         Room.owner_id == current_user.id
     ).first()
 
-    if not room:
-        raise HTTPException(status_code=404, detail="房间不存在")
+    if not payment:
+        raise HTTPException(status_code=404, detail="支付记录不存在")
 
-    if not year:
-        year = datetime.now().year
-
-    # 查询该房间当年所有支付记录
-    payments = db.query(Payment).filter(
-        Payment.room_id == room_id,
-        func.strftime('%Y', Payment.payment_date) == str(year)
-    ).all()
-
-    billing = {
-        "room_id": room_id,
-        "room_number": room.room_number,
-        "year": year,
-        "total": 0,
-        "by_type": {},
-        "payments": []
-    }
-
-    for payment in payments:
-        amount = float(payment.amount) if payment.amount else 0
-        billing["total"] += amount
-
-        ptype = payment.payment_type
-        if ptype not in billing["by_type"]:
-            billing["by_type"][ptype] = 0
-        billing["by_type"][ptype] += amount
-
-        billing["payments"].append({
-            "id": payment.id,
-            "amount": amount,
-            "payment_type": ptype,
-            "payment_date": payment.payment_date.isoformat() if payment.payment_date else None,
-            "payment_method": payment.payment_method,
-            "description": payment.description
-        })
-
-    return billing
+    return payment
