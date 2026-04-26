@@ -94,6 +94,10 @@ const messageDialogVisible = ref(false)
 const currentMessage = ref('')
 const sendingWechat = ref(false)
 
+// 催租消息预览
+const rentReminderPreview = ref('')
+const rentReminderVisible = ref(false)
+
 // 批量录入对话框
 const batchDialogVisible = ref(false)
 const batchLoading = ref(false)
@@ -222,6 +226,59 @@ const submitBatch = async () => {
 }
 
 // 自动生成并发送微信消息
+// 生成催租消息文本（用于预览）
+const generateRentReminder = (merged: MergedReading): string => {
+  const roomNumber = getRoomNumber(merged.room_id)
+  const date = new Date(merged.reading_date).toLocaleDateString('zh-CN')
+
+  let message = `**${roomNumber} 本月收租：`
+
+  // 计算总金额
+  let total = 0
+  const rentAmount = Number(merged.monthly_rent || 0)
+  const waterAmount = Number(merged.water_reading?.amount || 0)
+  const electricAmount = Number(merged.electric_reading?.amount || 0)
+  total = rentAmount + waterAmount + electricAmount
+
+  message += `¥${total.toFixed(0)} 元**\n`
+
+  // 水费详情
+  if (merged.water_reading) {
+    const prev = merged.water_reading.previous_reading || 0
+    const curr = merged.water_reading.reading
+    const usage = curr - prev
+    const amount = merged.water_reading.amount
+    message += `💧 水：${prev}→${curr}（用量${usage}吨 × ¥${merged.water_reading.rate}/吨 = ¥${amount}）\n`
+  }
+
+  // 电费详情
+  if (merged.electric_reading) {
+    const prev = merged.electric_reading.previous_reading || 0
+    const curr = merged.electric_reading.reading
+    const usage = curr - prev
+    const amount = merged.electric_reading.amount
+    message += `⚡ 电：${prev}→${curr}（用量${usage}度 × ¥${merged.electric_reading.rate}/度 = ¥${amount}）\n`
+  }
+
+  // 房租
+  if (merged.monthly_rent) {
+    message += `🏠 房租：¥${merged.monthly_rent.toFixed(0)}\n`
+  }
+
+  return message
+}
+
+// 复制催租消息到剪贴板
+const copyRentReminder = async () => {
+  try {
+    await navigator.clipboard.writeText(rentReminderPreview.value)
+    ElMessage.success('已复制到剪贴板')
+  } catch (error) {
+    console.error('Failed to copy:', error)
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
+
 const autoGenerateAndSendWechat = async (merged: MergedReading) => {
   try {
     // 生成消息
@@ -726,8 +783,7 @@ const handleFormSuccess = async (result: any) => {
   selectedRoomId.value = undefined
   await loadReadings()
 
-  // 自动生成并发送微信消息
-  // 需要重新加载数据后才能获取完整的记录信息
+  // 生成催租消息预览
   setTimeout(async () => {
     try {
       const readings = await utilityApi.getReadingsByRoom(result.room_id, {
@@ -740,10 +796,16 @@ const handleFormSuccess = async (result: any) => {
       const merged = mergedList.find(m => m.reading_date === result.reading_date)
 
       if (merged) {
+        // 生成催租消息预览
+        const reminder = generateRentReminder(merged)
+        rentReminderPreview.value = reminder
+        rentReminderVisible.value = true
+
+        // 同时也发送微信消息（原有功能）
         await autoGenerateAndSendWechat(merged)
       }
     } catch (error) {
-      console.error('Failed to auto send wechat:', error)
+      console.error('Failed to generate rent reminder:', error)
     }
   }, 500)
 }
@@ -837,6 +899,43 @@ const saveEdit = async () => {
 }
 
 // 打开收租对话框
+// 删除水电记录
+const handleDelete = async (row: MergedReading) => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要删除这条水电记录吗？删除后无法恢复。',
+      '删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    loading.value = true
+
+    // 删除水费记录
+    if (row.water_reading) {
+      await utilityApi.deleteReading(row.water_reading.id)
+    }
+
+    // 删除电费记录
+    if (row.electricity_reading) {
+      await utilityApi.deleteReading(row.electricity_reading.id)
+    }
+
+    ElMessage.success('删除成功')
+    await loadReadings()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除失败:', error)
+      ElMessage.error('删除失败')
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
 const showPaymentDialog = (row: MergedReading) => {
   const water_amount = Number(row.water_reading?.amount || 0)
   const electricity_amount = Number(row.electricity_reading?.amount || 0)
@@ -1410,7 +1509,7 @@ onMounted(() => {
 
           <el-table-column prop="notes" label="备注" min-width="150" show-overflow-tooltip />
 
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column label="操作" width="250" fixed="right">
             <template #default="{ row }">
               <el-button
                 type="primary"
@@ -1426,6 +1525,13 @@ onMounted(() => {
                 @click="showPaymentDialog(row)"
               >
                 {{ row.is_paid ? '已收租' : '标记已收' }}
+              </el-button>
+              <el-button
+                type="danger"
+                size="small"
+                @click="handleDelete(row)"
+              >
+                删除
               </el-button>
             </template>
           </el-table-column>
@@ -1877,6 +1983,28 @@ onMounted(() => {
         <el-button @click="batchPaymentDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="batchPaymentLoading" @click="submitBatchPayment">
           确认批量收款
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 催租消息预览对话框 -->
+    <el-dialog
+      v-model="rentReminderVisible"
+      title="📢 催租消息预览"
+      width="600px"
+    >
+      <div class="rent-reminder-preview">
+        <el-input
+          v-model="rentReminderPreview"
+          type="textarea"
+          :rows="10"
+          readonly
+        />
+      </div>
+      <template #footer>
+        <el-button @click="rentReminderVisible = false">关闭</el-button>
+        <el-button type="primary" @click="copyRentReminder">
+          📋 复制消息
         </el-button>
       </template>
     </el-dialog>
