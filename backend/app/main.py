@@ -110,10 +110,12 @@ async def api_health_check() -> Dict[str, Any]:
 
 # CSRF Token endpoint
 @app.get("/api/v1/auth/csrf-token")
-async def get_csrf_token() -> Dict[str, Any]:
+async def get_csrf_token(response: Response) -> Dict[str, Any]:
     """获取 CSRF Token"""
     try:
         csrf_token = secrets.token_urlsafe(32)
+        # 将CSRF token添加到响应头中（供前端获取）
+        response.headers["x-csrf-token"] = csrf_token
         return {
             "status": "success",
             "data": {"csrf_token": csrf_token}

@@ -169,14 +169,37 @@ const confirm退租 = async () => {
 
 const confirm入住 = async () => {
   if (!currentRoom.value) return
-  
+
   try {
     submitting.value = true
-    await roomApi.checkinRoom(currentRoom.value.id, checkinForm.value)
+    
+    // Convert Date objects to YYYY-MM-DD format strings
+    const formatDate = (date: Date | string): string => {
+      if (!date) return ''
+      const d = new Date(date)
+      const year = d.getFullYear()
+      const month = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+    
+    const submitData = {
+      ...checkinForm.value,
+      lease_start: formatDate(checkinForm.value.lease_start),
+      lease_end: formatDate(checkinForm.value.lease_end)
+    }
+    
+    console.log('📤 Checkin form data (raw):', JSON.stringify(checkinForm.value, null, 2))
+    console.log('📤 Checkin submit data (formatted):', JSON.stringify(submitData, null, 2))
+    
+    await roomApi.checkinRoom(currentRoom.value.id, submitData)
     ElMessage.success('入住成功')
     checkinDialogVisible.value = false
     await loadRooms()
   } catch (error: any) {
+    console.error('❌ Checkin error:', error)
+    console.error('❌ Error response:', error.response)
+    console.error('❌ Error data:', error.response?.data)
     ElMessage.error(error.response?.data?.detail || '入住失败')
   } finally {
     submitting.value = false

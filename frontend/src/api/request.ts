@@ -50,7 +50,7 @@ const clearAuthData = () => {
 
 // Request interceptor
 request.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
+  async (config: InternalAxiosRequestConfig) => {
     console.log('📤 [Request]', config.method?.toUpperCase(), config.url)
 
     // Get and decrypt token from localStorage
@@ -63,12 +63,36 @@ request.interceptors.request.use(
       }
     }
 
-    // Add CSRF token for state-changing requests
-    if (config.method !== 'get' && config.method !== 'head') {
-      const csrfToken = getCsrfToken()
+    // Add CSRF token for state-changing requests (except login/register)
+    const isAuthEndpoint = config.url?.includes('/login') || config.url?.includes('/register') || config.url?.includes('/csrf-token')
+    
+    if (config.method !== 'get' && config.method !== 'head' && !isAuthEndpoint) {
+      let csrfToken = getCsrfToken()
+      
+      // If no CSRF token, fetch it first
+      if (!csrfToken && encryptedToken) {
+        try {
+          console.log('🔒 [Request] No CSRF token, fetching...')
+          const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/v1/auth/csrf-token`, {
+            headers: {
+              Authorization: config.headers.Authorization
+            }
+          })
+          csrfToken = response.headers['x-csrf-token']
+          if (csrfToken) {
+            sessionStorage.setItem('csrf_token', csrfToken)
+            console.log('🔒 [Request] CSRF token fetched and saved')
+          }
+        } catch (error) {
+          console.error('❌ [Request] Failed to fetch CSRF token:', error)
+        }
+      }
+      
       if (csrfToken) {
         config.headers['X-CSRF-Token'] = csrfToken
         console.log('🔒 [Request] CSRF token added')
+      } else {
+        console.warn('⚠️ [Request] CSRF token missing, request may fail')
       }
     }
 

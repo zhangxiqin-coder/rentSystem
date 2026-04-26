@@ -3,6 +3,7 @@
 """
 from typing import Optional
 from datetime import date
+from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
@@ -11,7 +12,8 @@ from app.core.deps import get_db, get_current_user
 from app.core.permissions import apply_utility_reading_filter
 from app.models import User, UtilityReading, Room
 from app.schemas import (
-    UtilityReadingCreate, UtilityReadingUpdate, UtilityReadingResponse, PaginatedResponse
+    UtilityReadingCreate, UtilityReadingUpdate, UtilityReadingResponse,
+    BatchUtilityReadingCreate, BatchUtilityReadingResponse, PaginatedResponse
 )
 from app.service.business import create_utility_reading, get_previous_reading
 
@@ -238,6 +240,101 @@ def delete_utility_reading(
     db.commit()
     
     return None
+
+
+@router.post("/batch", response_model=BatchUtilityReadingResponse, status_code=201)
+async def batch_create_utility_readings(
+    batch_data: BatchUtilityReadingCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    批量创建水电抄表记录
+    
+    接收多个房间的水电读数，统一创建记录
+    
+    自动执行：
+    1. 查询上次读数
+    2. 查询有效费率
+    3. 计算用量和费用
+    4. 冗余存储相关数据
+    """
+    check_utility_permission(current_user)
+    
+    success_count = 0
+    failed_count = 0
+    total_amount = Decimal('0')
+    created_readings = []
+    errors = []
+    
+    for reading_data in batch_data.readings:
+        try:
+            # 创建水电记录
+            reading = create_utility_reading(
+                db,
+                room_id=reading_data.room_id,
+                utility_type=reading_data.utility_type,
+                reading=reading_data.reading,
+                reading_date=batch_data.reading_date,  # 使用统一的日期
+                recorded_by=current_user.id,
+                notes=batch_data.notes or reading_data.notes,  # 优先使用统一备注
+                owner_id=current_user.id
+            )
+            
+            success_count += 1
+            created_readings.append(reading)
+            if reading.amount:
+                total_amount += reading.amount
+                
+        except Exception as e:
+            failed_count += 1
+            errors.append(f"房间{reading_data.room_id} {reading_data.utility_type}: {str(e)}")
+    
+    # 检查是否有需要发送微信通知的房间
+    # 找出同时录入水和电的房间
+    room_ids = list(set(r.room_id for r in created_readings))
+    for room_id in room_ids:
+        room = db.query(Room).filter(Room.id == room_id).first()
+        
+        # 跳过2501系列房间
+        if not room or room.room_number.startswith('2501'):
+            continue
+            
+        # 检查水和电是否都已录入
+        from app.utils.wechat import check_if_both_utilities_recorded, generate_rent_notification, send_wechat_message
+        
+        utility_status = check_if_both_utilities_recorded(
+            db,
+            room_id,
+            batch_data.reading_date
+        )
+        
+        if utility_status['both_recorded']:
+            tenant_name = room.tenant_name or room.room_number
+            message = generate_rent_notification(
+                room_number=room.room_number,
+                tenant_name=tenant_name,
+                monthly_rent=float(room.monthly_rent),
+                water_amount=utility_status['water_amount'],
+                electricity_amount=utility_status['electricity_amount'],
+                water_reading=utility_status['water_reading'],
+                electricity_reading=utility_status['electricity_reading'],
+                include_utilities=True
+            )
+            
+            # 异步发送微信消息
+            try:
+                await send_wechat_message(message)
+            except Exception as e:
+                print(f"[Warning] Failed to send WeChat message: {str(e)}")
+    
+    return BatchUtilityReadingResponse(
+        success_count=success_count,
+        failed_count=failed_count,
+        total_amount=total_amount,
+        readings=created_readings,
+        errors=errors
+    )
 
 
 @router.get("/previous/{room_id}/{utility_type}")

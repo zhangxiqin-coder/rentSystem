@@ -56,4 +56,22 @@ export const utilityApi = {
 
   // Get active rates
   getActiveRates: () => request.get<ApiResponse<UtilityRate[]>>('/api/v1/utility/rates/active'),
+
+  // Batch create readings
+  batchCreate: (data: {
+    readings: Array<{
+      room_id: number
+      utility_type: string
+      reading: number
+    }>
+    reading_date: string
+    notes?: string
+  }) =>
+    request.post<{
+      success_count: number
+      failed_count: number
+      total_amount: number
+      readings: UtilityReading[]
+      errors: string[]
+    }>('/api/v1/utility/readings/batch', data),
 }

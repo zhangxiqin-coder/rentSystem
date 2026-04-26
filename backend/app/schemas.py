@@ -342,6 +342,22 @@ class UtilityReadingResponse(UtilityReadingBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class BatchUtilityReadingCreate(BaseModel):
+    """批量水电抄表记录创建 schema"""
+    readings: list[UtilityReadingCreate]
+    reading_date: date  # 统一设置读数日期
+    notes: Optional[str] = None  # 统一设置备注
+
+
+class BatchUtilityReadingResponse(BaseModel):
+    """批量水电抄表记录响应 schema"""
+    success_count: int
+    failed_count: int
+    total_amount: Decimal
+    readings: list[UtilityReadingResponse]
+    errors: list[str] = []
+
+
 # ==================== UtilityRate Schemas ====================
 
 class UtilityRateBase(BaseModel):

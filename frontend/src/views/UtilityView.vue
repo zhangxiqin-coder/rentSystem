@@ -94,6 +94,133 @@ const messageDialogVisible = ref(false)
 const currentMessage = ref('')
 const sendingWechat = ref(false)
 
+// 批量录入对话框
+const batchDialogVisible = ref(false)
+const batchLoading = ref(false)
+const selectedRooms = ref<number[]>([])
+const batchForm = ref({
+  reading_date: new Date().toISOString().split('T')[0], // 默认今天
+  utility_type: 'both', // 默认水电全录
+  notes: ''
+})
+
+// 扩展Room类型，添加临时读数字段
+declare module '@/types' {
+  interface Room {
+    water_reading?: number
+    electricity_reading?: number
+  }
+}
+
+// 显示批量录入表单
+const showBatchForm = () => {
+  // 清空之前的选择
+  selectedRooms.value = []
+  // 重置所有房间的读数
+  allRooms.value.forEach(room => {
+    room.water_reading = 0
+    room.electricity_reading = 0
+  })
+  batchDialogVisible.value = true
+}
+
+// 全选房间
+const selectAllRooms = () => {
+  selectedRooms.value = allRooms.value.map(r => r.id)
+}
+
+// 清空选择
+const clearRoomSelection = () => {
+  selectedRooms.value = []
+}
+
+// 仅选择已租房间
+const selectOccupiedRooms = () => {
+  selectedRooms.value = allRooms.value
+    .filter(r => r.status === 'occupied')
+    .map(r => r.id)
+}
+
+// 计算总记录数
+const calculateTotalRecords = () => {
+  const roomCount = selectedRooms.value.length
+  if (batchForm.value.utility_type === 'both') {
+    return roomCount * 2
+  }
+  return roomCount
+}
+
+// 提交批量录入
+const submitBatch = async () => {
+  if (selectedRooms.value.length === 0) {
+    ElMessage.warning('请至少选择一个房间')
+    return
+  }
+
+  batchLoading.value = true
+  try {
+    // 构建批量数据
+    const readings: any[] = []
+
+    selectedRooms.value.forEach(roomId => {
+      const room = allRooms.value.find(r => r.id === roomId)
+      if (!room) return
+
+      // 水费读数
+      if ((batchForm.value.utility_type === 'water' || batchForm.value.utility_type === 'both') && room.water_reading > 0) {
+        readings.push({
+          room_id: roomId,
+          utility_type: 'water',
+          reading: room.water_reading
+        })
+      }
+
+      // 电费读数
+      if ((batchForm.value.utility_type === 'electricity' || batchForm.value.utility_type === 'both') && room.electricity_reading > 0) {
+        readings.push({
+          room_id: roomId,
+          utility_type: 'electricity',
+          reading: room.electricity_reading
+        })
+      }
+    })
+
+    if (readings.length === 0) {
+      ElMessage.warning('请至少录入一条读数')
+      batchLoading.value = false
+      return
+    }
+
+    // 调用批量API
+    const result = await utilityApi.batchCreate({
+      readings,
+      reading_date: batchForm.value.reading_date,
+      notes: batchForm.value.notes
+    })
+
+    // 显示结果
+    if (result.failed_count > 0) {
+      ElMessage.warning(`成功 ${result.success_count} 条，失败 ${result.failed_count} 条`)
+      if (result.errors.length > 0) {
+        console.error('批量录入错误:', result.errors)
+      }
+    } else {
+      ElMessage.success(`批量录入成功！共 ${result.success_count} 条记录，总金额 ¥${result.total_amount}`)
+    }
+
+    // 关闭对话框并刷新列表
+    batchDialogVisible.value = false
+    loadReadings()
+    loadPayments() // 刷新支付记录
+
+  } catch (error: any) {
+    console.error('批量录入失败:', error)
+    ElMessage.error(error.response?.data?.detail || '批量录入失败')
+  } finally {
+    batchLoading.value = false
+  }
+}
+
 // 自动生成并发送微信消息
 const autoGenerateAndSendWechat = async (merged: MergedReading) => {
   try {
@@ -1018,10 +1145,16 @@ onMounted(() => {
   <div class="utility-view">
     <div class="page-header">
       <h1>水电表管理</h1>
-      <el-button type="primary" @click="showAddForm">
-        <el-icon><Plus /></el-icon>
-        录入水电
-      </el-button>
+      <div class="header-buttons">
+        <el-button type="success" @click="showBatchForm">
+          <el-icon><Plus /></el-icon>
+          批量录入
+        </el-button>
+        <el-button type="primary" @click="showAddForm">
+          <el-icon><Plus /></el-icon>
+          录入水电
+        </el-button>
+      </div>
     </div>
 
     <!-- 收租提醒 - 始终显示 -->
@@ -1309,6 +1442,110 @@ onMounted(() => {
         @success="handleFormSuccess"
         @cancel="showFormDialog = false; selectedRoomId = undefined"
       />
+    </el-dialog>
+
+    <!-- 批量录入对话框 -->
+    <el-dialog
+      v-model="batchDialogVisible"
+      title="批量录入水电读数"
+      width="800px"
+      :close-on-click-modal="false"
+    >
+      <el-form :model="batchForm" label-width="100px">
+        <el-form-item label="抄表日期">
+          <el-date-picker
+            v-model="batchForm.reading_date"
+            type="date"
+            placeholder="选择日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+          />
+        </el-form-item>
+
+        <el-form-item label="水电类型">
+          <el-radio-group v-model="batchForm.utility_type">
+            <el-radio label="water">仅水费</el-radio>
+            <el-radio label="electricity">仅电费</el-radio>
+            <el-radio label="both">水电全录</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-divider content-position="left">选择房间并录入读数</el-divider>
+
+        <el-form-item>
+          <el-button @click="selectAllRooms" size="small">全选</el-button>
+          <el-button @click="clearRoomSelection" size="small">清空</el-button>
+          <el-button @click="selectOccupiedRooms" size="small" type="primary">仅选已租</el-button>
+        </el-form-item>
+
+        <div class="batch-room-list">
+          <el-checkbox-group v-model="selectedRooms">
+            <div
+              v-for="room in allRooms"
+              :key="room.id"
+              class="batch-room-item"
+              :class="{ 'selected': selectedRooms.includes(room.id) }"
+            >
+              <el-checkbox :label="room.id">
+                <span class="room-number">{{ room.room_number }}</span>
+                <el-tag size="small" :type="room.status === 'occupied' ? 'success' : 'info'">
+                  {{ room.status === 'occupied' ? '已租' : '空置' }}
+                </el-tag>
+                <span class="room-rent">¥{{ room.monthly_rent }}/月</span>
+              </el-checkbox>
+
+              <!-- 选中时显示读数输入框 -->
+              <div v-if="selectedRooms.includes(room.id)" class="room-readings">
+                <div v-if="batchForm.utility_type === 'water' || batchForm.utility_type === 'both'" class="reading-input">
+                  <span class="label">💧 水表读数:</span>
+                  <el-input-number
+                    v-model="room.water_reading"
+                    :min="0"
+                    :precision="1"
+                    :step="0.1"
+                    size="small"
+                  />
+                  <span class="rate">费率: ¥{{ room.water_rate || 0 }}/吨</span>
+                </div>
+                <div v-if="batchForm.utility_type === 'electricity' || batchForm.utility_type === 'both'" class="reading-input">
+                  <span class="label">⚡ 电表读数:</span>
+                  <el-input-number
+                    v-model="room.electricity_reading"
+                    :min="0"
+                    :precision="1"
+                    :step="1"
+                    size="small"
+                  />
+                  <span class="rate">费率: ¥{{ room.electricity_rate || 0 }}/度</span>
+                </div>
+              </div>
+            </div>
+          </el-checkbox-group>
+        </div>
+
+        <el-form-item label="统一备注">
+          <el-input
+            v-model="batchForm.notes"
+            type="textarea"
+            :rows="2"
+            placeholder="可选：填写备注（将应用到所有记录）"
+          />
+        </el-form-item>
+
+        <div class="batch-summary" v-if="selectedRooms.length > 0">
+          <div>已选择: <strong>{{ selectedRooms.length }}</strong> 个房间</div>
+          <div>预计录入: <strong>{{ calculateTotalRecords() }}</strong> 条记录</div>
+        </div>
+      </el-form>
+
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="batchDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="submitBatch" :loading="batchLoading" :disabled="selectedRooms.length === 0">
+            批量录入 ({{ selectedRooms.length }}个房间)
+          </el-button>
+        </span>
+      </template>
     </el-dialog>
 
     <!-- 收租对话框 -->
@@ -1957,6 +2194,83 @@ onMounted(() => {
 .batch-summary .amount.actual {
   font-size: 24px;
   color: #67c23a;
+}
+
+/* 批量录入对话框样式 */
+.header-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.batch-room-list {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  padding: 12px;
+  background: #f5f7fa;
+}
+
+.batch-room-item {
+  padding: 12px;
+  margin-bottom: 8px;
+  background: white;
+  border-radius: 4px;
+  border: 1px solid #e4e7ed;
+  transition: all 0.3s;
+}
+
+.batch-room-item:hover {
+  border-color: #409eff;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.1);
+}
+
+.batch-room-item.selected {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+
+.batch-room-item .room-number {
+  font-weight: 600;
+  margin-right: 8px;
+  font-size: 16px;
+}
+
+.batch-room-item .room-rent {
+  margin-left: 8px;
+  color: #909399;
+  font-size: 14px;
+}
+
+.room-readings {
+  margin-top: 12px;
+  padding: 8px;
+  background: #f9fafc;
+  border-radius: 4px;
+}
+
+.reading-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.reading-input:last-child {
+  margin-bottom: 0;
+}
+
+.reading-input .label {
+  min-width: 80px;
+  font-weight: 500;
+  color: #606266;
+}
+
+.reading-input .rate {
+  margin-left: auto;
+  color: #909399;
+  font-size: 12px;
 }
 
 </style>
