@@ -164,6 +164,9 @@ async def create_utility_reading_record(
                     electricity_amount=utility_status['electricity_amount'],
                     water_reading=utility_status['water_reading'],
                     electricity_reading=utility_status['electricity_reading'],
+                    water_usage=utility_status.get('water_usage', 0),
+                    electricity_usage=utility_status.get('electricity_usage', 0),
+                    last_month_data=utility_status.get('last_month'),
                     include_utilities=True
                 )
 
