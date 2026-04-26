@@ -1,5 +1,5 @@
 """
-WeChat message sending utility
+WeChat message sending utility (已改为飞书)
 """
 import os
 import requests
@@ -9,7 +9,7 @@ from typing import Optional
 
 def send_wechat_webhook(message: str, webhook_url: str = None) -> dict:
     """
-    将消息保存到队列，等待Hermes定时任务发送
+    将消息保存到队列，等待Hermes定时任务发送到飞书
 
     Args:
         message: 消息内容
@@ -35,98 +35,29 @@ def send_wechat_webhook(message: str, webhook_url: str = None) -> dict:
             json.dump({
                 'message': message,
                 'timestamp': datetime.now().isoformat(),
-                'target': 'feishu'  # 改为飞书
+                'target': 'feishu'  # 发送到飞书
             }, f, ensure_ascii=False, indent=2)
 
         return {
             "success": True,
-            "message": "消息已加入发送队列（飞书）",
+            "message": "消息已加入飞书发送队列",
             "queue_file": queue_file
         }
 
     except Exception as e:
-        # 如果保存到队列失败，尝试使用企业微信webhook
-        url = webhook_url or os.getenv('WECHAT_WEBHOOK_URL')
-
-        if not url:
-            return {
-                "success": False,
-                "message": f"保存队列失败且未配置webhook: {str(e)}",
-                "error": str(e)
-            }
-
-        # 构建企业微信消息格式
-        data = {
-            "msgtype": "text",
-            "text": {
-                "content": message
-            }
-        }
-
-        # 发送请求
-        response = requests.post(
-            url,
-            json=data,
-            headers={'Content-Type': 'application/json'},
-            timeout=10
-        )
-
-        if response.status_code == 200:
-            result = response.json()
-            if result.get('errcode') == 0:
-                return {
-                    "success": True,
-                    "message": "消息发送成功",
-                    "result": result
-                }
-            else:
-                return {
-                    "success": False,
-                    "message": f"微信API返回错误: {result.get('errmsg')}",
-                    "error": result
-                }
-        else:
-            return {
-                "success": False,
-                "message": f"HTTP请求失败: {response.status_code}",
-                "error": response.text
-            }
-
-
-async def send_wechat_message(message: str, user_id: str = None) -> dict:
-    """
-    发送微信消息（兼容接口）
-
-    优先级：
-    1. 尝试使用配置的webhook
-    2. 如果失败，打印日志（开发环境）
-
-    Args:
-        message: 消息内容
-        user_id: 用户ID（暂未使用）
-
-    Returns:
-        dict with status and result info
-    """
-    # 尝试使用webhook发送
-    result = send_wechat_webhook(message)
-
-    if result['success']:
-        print(f"[WeChat] ✓ 消息已发送到微信群")
-        return result
-    else:
-        # 如果webhook未配置或失败，打印日志（不阻塞业务）
-        print(f"[WeChat] Webhook发送失败: {result['message']}")
-        print(f"[WeChat] 消息内容预览: {message[:100]}...")
-
-        # 开发环境：返回成功（不阻塞数据保存）
-        # 生产环境：应该配置webhook
+        # 如果保存到队列失败，返回错误
         return {
-            "success": True,  # 返回成功以不阻塞业务
-            "message": "消息已记录（webhook未配置）",
-            "logged": True,
-            "preview": message[:200]
+            "success": False,
+            "message": f"保存到飞书队列失败: {str(e)}",
+            "error": str(e)
         }
+
+
+async def send_wechat_message(message: str) -> dict:
+    """
+    发送消息到飞书（通过队列）
+    """
+    return send_wechat_webhook(message)
 
 
 def generate_rent_notification(

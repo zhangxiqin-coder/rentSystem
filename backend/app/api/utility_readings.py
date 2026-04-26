@@ -185,7 +185,7 @@ async def create_utility_reading_record(
 
 
 @router.put("/{reading_id}", response_model=UtilityReadingResponse)
-def update_utility_reading(
+async def update_utility_reading(
     reading_id: int,
     reading_data: UtilityReadingUpdate,
     db: Session = Depends(get_db),
@@ -197,6 +197,8 @@ def update_utility_reading(
     允许更新：
     - reading: 读数（允许修改，但需要重新计算费用）
     - notes: 备注
+
+    更新后检查水和电是否都已录入，如果都已录入则发送催收消息
     """
     check_utility_permission(current_user)
 
@@ -222,6 +224,48 @@ def update_utility_reading(
 
     db.commit()
     db.refresh(reading)
+
+    # 检查是否需要发送催收消息
+    # 查询同一房间、同一日期的水电记录
+    room = db.query(Room).filter(Room.id == reading.room_id).first()
+    if room:
+        from app.utils.wechat import check_if_both_utilities_recorded, generate_rent_notification, send_wechat_message
+
+        water_reading, electricity_reading = check_if_both_utilities_recorded(
+            db, reading.room_id, reading.reading_date
+        )
+
+        # 如果水和电都已录入，发送催收消息
+        if water_reading and electricity_reading:
+            try:
+                # 获取房间号
+                room_number = room.room_number
+
+                # 计算费用
+                water_amount = water_reading.amount or 0
+                electricity_amount = electricity_reading.amount or 0
+                monthly_rent = room.monthly_rent or 0
+
+                # 生成消息
+                message = generate_rent_notification(
+                    room_number=room_number,
+                    tenant_name=room.tenant_name or "租户",
+                    monthly_rent=float(monthly_rent),
+                    water_amount=float(water_amount),
+                    electricity_amount=float(electricity_amount),
+                    water_reading=water_reading.reading,
+                    electricity_reading=electricity_reading.reading,
+                    water_usage=water_reading.usage or 0,
+                    electricity_usage=electricity_reading.usage or 0,
+                    water_previous_reading=water_reading.previous_reading,
+                    electricity_previous_reading=electricity_reading.previous_reading
+                )
+
+                # 异步发送飞书消息（不阻塞响应）
+                await send_wechat_message(message)
+            except Exception as e:
+                # 发送失败不影响数据保存，只记录日志
+                print(f"[Warning] Failed to send notification: {str(e)}")
 
     return reading
 
