@@ -231,9 +231,11 @@ async def update_utility_reading(
     if room:
         from app.utils.wechat import check_if_both_utilities_recorded, generate_rent_notification, send_wechat_message
 
-        water_reading, electricity_reading = check_if_both_utilities_recorded(
+        result = check_if_both_utilities_recorded(
             db, reading.room_id, reading.reading_date
         )
+        water_reading = result.get('water_reading')
+        electricity_reading = result.get('electricity_reading')
 
         # 如果水和电都已录入，发送催收消息
         if water_reading and electricity_reading:
