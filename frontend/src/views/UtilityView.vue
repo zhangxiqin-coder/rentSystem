@@ -833,8 +833,8 @@ const showEditDialog = (merged: MergedReading) => {
   editForm.value = {
     water_reading_id: merged.water_reading?.id || null,
     electricity_reading_id: merged.electricity_reading?.id || null,
-    water_reading: merged.water_reading?.reading || 0,
-    electricity_reading: merged.electricity_reading?.reading || 0,
+    water_reading: Number(merged.water_reading?.reading || 0),
+    electricity_reading: Number(merged.electricity_reading?.reading || 0),
     notes: merged.notes || '',
   }
   editDialogVisible.value = true
