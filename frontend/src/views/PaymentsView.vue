@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { ElMessageBox, ElMessage } from 'element-plus'
 import { paymentApi } from '@/api/payment'
 import { roomApi } from '@/api/room'
 import type { Payment } from '@/types'
@@ -290,7 +291,7 @@ const toggleSelectAll = () => {
 // 删除单个组（房租+水费+电费）
 const handleDeleteGroup = async (group: any) => {
   try {
-    await window.$confirm(
+    await ElMessageBox.confirm(
       `确定要删除 ${group.room_number} ${group.payment_date} 的收租记录吗？\n\n` +
       `房租: ¥${group.rent.toFixed(2)}\n` +
       `水费: ¥${group.water.toFixed(2)}\n` +
@@ -312,14 +313,14 @@ const handleDeleteGroup = async (group: any) => {
     // 批量删除
     await paymentApi.batchDeletePayments(groupPayments.map(p => p.id))
 
-    alert('删除成功')
+    ElMessage.success('删除成功')
     await loadPayments()
     selectedGroups.value = []
     selectAll.value = false
   } catch (error: any) {
     if (error !== 'cancel') {
       console.error('删除失败:', error)
-      alert('删除失败: ' + (error.response?.data?.detail || error.message))
+      ElMessage.error('删除失败: ' + (error.response?.data?.detail || error.message))
     }
   }
 }
@@ -327,12 +328,12 @@ const handleDeleteGroup = async (group: any) => {
 // 批量删除选中的记录
 const handleBatchDelete = async () => {
   if (selectedGroups.value.length === 0) {
-    alert('请先选择要删除的记录')
+    ElMessage.warning('请先选择要删除的记录')
     return
   }
 
   try {
-    await window.$confirm(
+    await ElMessageBox.confirm(
       `确定要删除选中的 ${selectedGroups.value.length} 条收租记录吗？`,
       '批量删除确认',
       {
@@ -355,14 +356,14 @@ const handleBatchDelete = async () => {
     // 批量删除
     await paymentApi.batchDeletePayments(allPaymentIds)
 
-    alert(`成功删除 ${selectedGroups.value.length} 条记录`)
+    ElMessage.success(`成功删除 ${selectedGroups.value.length} 条记录`)
     await loadPayments()
     selectedGroups.value = []
     selectAll.value = false
   } catch (error: any) {
     if (error !== 'cancel') {
       console.error('批量删除失败:', error)
-      alert('批量删除失败: ' + (error.response?.data?.detail || error.message))
+      ElMessage.error('批量删除失败: ' + (error.response?.data?.detail || error.message))
     }
   }
 }
