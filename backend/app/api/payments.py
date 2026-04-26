@@ -398,6 +398,8 @@ def batch_delete_payments(
 
     支持一次性删除多条支付记录
     会自动清理关联的水电记录的payment_id字段
+    
+    请求体示例: [1, 2, 3] 或 {"payment_ids": [1, 2, 3]}
     """
     if not payment_ids:
         raise HTTPException(status_code=400, detail="请提供要删除的支付记录ID列表")

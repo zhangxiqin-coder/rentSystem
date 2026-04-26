@@ -91,20 +91,32 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {type(exc).__name__}: {str(exc)}")
     logger.error(f"Request: {request.method} {request.url.path}")
     logger.error(f"Traceback:\n{traceback.format_exc()}")
-    return JSONResponse(
+    response = JSONResponse(
         status_code=500,
         content={"detail": f"Internal server error: {str(exc)}"}
     )
+    # Add CORS headers to allow frontend to receive error response
+    origin = request.headers.get('origin')
+    if origin in ['http://localhost:5173', 'http://43.134.40.91:5173', 'http://127.0.0.1:5173']:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+    return response
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """捕获请求验证错误"""
     logger = logging.getLogger(__name__)
     logger.error(f"Validation error: {exc.errors()}")
-    return JSONResponse(
+    response = JSONResponse(
         status_code=422,
         content={"detail": "Validation error", "errors": exc.errors()}
     )
+    # Add CORS headers
+    origin = request.headers.get('origin')
+    if origin in ['http://localhost:5173', 'http://43.134.40.91:5173', 'http://127.0.0.1:5173']:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+    return response
 
 # API v1 routers
 api_v1_prefix = "/api/v1"
