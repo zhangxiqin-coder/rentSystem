@@ -118,6 +118,20 @@ def get_expiring_rooms(
     # 计算每个房间的下次收租日期
     expiring_rooms = []
     for room in filtered_rooms:
+        # 检查是否在前后N天内已收租（避免重复显示）
+        start_date = today - timedelta(days=days)
+        recent_payment = db.query(Payment).filter(
+            Payment.room_id == room.id,
+            Payment.payment_type == "rent",
+            Payment.status == "completed",
+            Payment.payment_date >= start_date,
+            Payment.payment_date <= end_date
+        ).first()
+        
+        # 如果近期已收租，跳过这个房间
+        if recent_payment:
+            continue
+        
         # 计算下次收租日期
         # 始终使用lease_start的日（day of month）来确保付款日期一致
         
