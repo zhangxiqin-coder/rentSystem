@@ -127,6 +127,11 @@ async def create_utility_reading_record(
     check_utility_permission(current_user)
 
     try:
+        # 获取房间信息（用于获取正确的owner_id）
+        room = db.query(Room).filter(Room.id == reading_data.room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="房间不存在")
+        
         reading = create_utility_reading(
             db,
             room_id=reading_data.room_id,
@@ -135,11 +140,8 @@ async def create_utility_reading_record(
             reading_date=reading_data.reading_date,
             recorded_by=current_user.id,
             notes=reading_data.notes,
-            owner_id=current_user.id  # 设置owner_id为当前用户
+            owner_id=room.owner_id  # 设置为房间的owner_id，而不是当前用户
         )
-
-        # 获取房间信息
-        room = db.query(Room).filter(Room.id == reading_data.room_id).first()
 
         # 检查是否需要发送微信通知（2501开头的房间不发送水电通知）
         if room and not room.room_number.startswith('2501'):
