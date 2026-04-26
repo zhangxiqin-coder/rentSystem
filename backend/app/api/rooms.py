@@ -282,6 +282,10 @@ def delete_room(
     if not room:
         raise HTTPException(status_code=404, detail="房间不存在")
     
+    # 检查是否拥有该房间
+    if current_user.role == "landlord" and room.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权删除此房间")
+    
     db.delete(room)
     db.commit()
     
