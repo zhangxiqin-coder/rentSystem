@@ -336,6 +336,7 @@ class UtilityReadingResponse(UtilityReadingBase):
     amount: Optional[Decimal] = None
     rate_used: Optional[Decimal] = None
     recorded_by: Optional[int] = None
+    payment_id: Optional[int] = None  # 关联的支付记录ID
     created_at: datetime
     updated_at: datetime
 

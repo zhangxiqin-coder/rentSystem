@@ -174,6 +174,7 @@ class UtilityReading(Base):
     amount = Column(DECIMAL(10, 2))
     rate_used = Column(DECIMAL(10, 4))
     recorded_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
+    payment_id = Column(Integer, ForeignKey("payments.id", ondelete="SET NULL"), nullable=True)  # 关联的支付记录ID
     notes = Column(Text)
     owner_id = Column(Integer, nullable=True, index=True)  # 用户隔离字段
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -182,6 +183,7 @@ class UtilityReading(Base):
     # 关系
     room = relationship("Room", back_populates="utility_readings")
     recorded_by_user = relationship("User", foreign_keys=[recorded_by])
+    payment = relationship("Payment", foreign_keys=[payment_id])
 
     def __repr__(self):
         return f"<UtilityReading(id={self.id}, room_id={self.room_id}, type='{self.utility_type}', reading={self.reading})>"

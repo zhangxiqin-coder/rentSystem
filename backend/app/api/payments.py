@@ -245,7 +245,26 @@ def create_bulk_payment(
     if not room:
         raise HTTPException(status_code=404, detail="房间不存在")
 
+    # 检查是否已经收过租（防止重复）
+    from app.models import Payment
+    from datetime import date
+    
+    payment_date = data.payment_date
+    existing_payments = db.query(Payment).filter(
+        Payment.room_id == data.room_id,
+        Payment.payment_date == payment_date
+    ).all()
+    
+    # 如果当天已经有支付记录，拒绝重复支付
+    if existing_payments:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"{payment_date}已存在收租记录，请勿重复操作"
+        )
+
     payments = []
+    water_payment = None
+    electricity_payment = None
 
     # 创建房租支付记录
     rent_payment = Payment(
@@ -293,6 +312,27 @@ def create_bulk_payment(
     # 刷新所有支付记录以获取ID
     for payment in payments:
         db.refresh(payment)
+
+    # 更新水电记录的payment_id
+    if data.water_charge and water_payment:
+        water_reading = db.query(UtilityReading).filter(
+            UtilityReading.room_id == data.room_id,
+            UtilityReading.utility_type == 'water',
+            UtilityReading.reading_date == data.reading_date
+        ).first()
+        if water_reading:
+            water_reading.payment_id = water_payment.id
+    
+    if data.electricity_charge and electricity_payment:
+        elec_reading = db.query(UtilityReading).filter(
+            UtilityReading.room_id == data.room_id,
+            UtilityReading.utility_type == 'electricity',
+            UtilityReading.reading_date == data.reading_date
+        ).first()
+        if elec_reading:
+            elec_reading.payment_id = electricity_payment.id
+    
+    db.commit()
 
     # 计算总额
     total_original = float(data.rent_original)

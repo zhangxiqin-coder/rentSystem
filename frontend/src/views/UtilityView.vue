@@ -347,6 +347,12 @@ const mergeReadings = (readings: UtilityReading[]): MergedReading[] => {
 
     merged.total_amount = total
     merged.notes = merged.water_reading?.notes || merged.electricity_reading?.notes || ''
+    
+    // 检查是否已支付（任意一个水电记录有payment_id即视为已支付）
+    merged.is_paid = !!(
+      (merged.water_reading && merged.water_reading.payment_id) ||
+      (merged.electricity_reading && merged.electricity_reading.payment_id)
+    )
   })
 
   return Array.from(map.values()).sort((a, b) =>
@@ -425,20 +431,21 @@ const mergedReadings = computed(() => {
     }
   })
 
-  // 检查每条记录是否已收租
+  // 检查每条记录是否已收租（使用payment_id字段）
   const result = Array.from(map.values())
   result.forEach(merged => {
-    // 查找对应的支付记录（同房间、同月份）
-    const hasPayment = payments.value.some(p => 
-      p.room_id === merged.room_id && 
-      p.payment_date.startsWith(merged.reading_date.substring(0, 7))  // 比较年月
-    )
-    merged.is_paid = hasPayment
+    // 使用payment_id字段判断是否已支付（更准确）
+    const waterPaid = merged.water_reading?.payment_id
+    const elecPaid = merged.electricity_reading?.payment_id
+    merged.is_paid = !!(waterPaid || elecPaid)
   })
 
-  return result.sort((a, b) => 
-    new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime()
-  )
+  // 过滤掉已支付的记录（只显示未支付的）
+  return result
+    .filter(item => !item.is_paid)
+    .sort((a, b) => 
+      new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime()
+    )
 })
 
 // 房间选项（用于筛选）
