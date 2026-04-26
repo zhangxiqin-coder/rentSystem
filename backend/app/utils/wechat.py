@@ -161,60 +161,48 @@ def generate_rent_notification(
     Returns:
         格式化的收租消息
     """
-    lines = [
-        "🏠 收租通知",
-        "",
-        f"📦 房号：{room_number}",
-        f"👤 租客：{tenant_name}",
-        "",
-        f"🏠 房租：¥{monthly_rent:.2f}"
-    ]
-
     if include_utilities:
         total = monthly_rent + water_amount + electricity_amount
-
-        # 水费信息（含上月对比）
-        lines.append("")
-        lines.append("💧 水费")
-        if water_reading is not None:
-            lines.append(f"   读数：{water_reading} 吨")
-        if water_usage > 0:
-            lines.append(f"   用量：{water_usage:.1f} 吨")
-            # 显示上月对比
-            if last_month_data and last_month_data.get('water_usage', 0) > 0:
-                last_usage = last_month_data['water_usage']
-                diff = water_usage - last_usage
-                diff_str = f"+{diff:.1f}" if diff > 0 else f"{diff:.1f}"
-                lines.append(f"   上月：{last_usage:.1f} 吨 ({diff_str})")
-        lines.append(f"   费用：¥{water_amount:.2f}")
-
-        # 电费信息（含上月对比）
-        lines.append("")
-        lines.append("⚡ 电费")
-        if electricity_reading is not None:
-            lines.append(f"   读数：{electricity_reading} 度")
-        if electricity_usage > 0:
-            lines.append(f"   用量：{electricity_usage:.1f} 度")
-            # 显示上月对比
-            if last_month_data and last_month_data.get('electricity_usage', 0) > 0:
-                last_usage = last_month_data['electricity_usage']
-                diff = electricity_usage - last_usage
-                diff_str = f"+{diff:.1f}" if diff > 0 else f"{diff:.1f}"
-                lines.append(f"   上月：{last_usage:.1f} 度 ({diff_str})")
-        lines.append(f"   费用：¥{electricity_amount:.2f}")
-
-        lines.append("")
-        lines.append("💰 总计")
-        lines.append(f"   应付：¥{total:.2f}")
+        
+        lines = [
+            f"**{room_number} 本月收租：{int(total)} 元**"
+        ]
+        
+        # 水费信息
+        if water_reading is not None and water_usage > 0:
+            last_water_reading = last_month_data.get('water_reading') if last_month_data else None
+            if last_water_reading:
+                # 水：上月读数→本月读数（用量×单价=费用）
+                water_unit_price = water_amount / water_usage if water_usage > 0 else 5
+                lines.append(f"水：{int(last_water_reading)}→{int(water_reading)}（{int(water_usage)}吨×{water_unit_price:.0f}元={int(water_amount)}元）")
+            else:
+                # 没有上月数据，只显示本月
+                water_unit_price = water_amount / water_usage if water_usage > 0 else 5
+                lines.append(f"水：本月{int(water_reading)}吨（{int(water_usage)}吨×{water_unit_price:.0f}元={int(water_amount)}元）")
+        
+        # 电费信息
+        if electricity_reading is not None and electricity_usage > 0:
+            last_electricity_reading = last_month_data.get('electricity_reading') if last_month_data else None
+            if last_electricity_reading:
+                # 电：上月读数→本月读数（用量×单价=费用）
+                elec_unit_price = electricity_amount / electricity_usage if electricity_usage > 0 else 1
+                lines.append(f"电：{int(last_electricity_reading)}→{int(electricity_reading)}（{int(electricity_usage)}度×{elec_unit_price:.0f}元={int(electricity_amount)}元）")
+            else:
+                # 没有上月数据，只显示本月
+                elec_unit_price = electricity_amount / electricity_usage if electricity_usage > 0 else 1
+                lines.append(f"电：本月{int(electricity_reading)}度（{int(electricity_usage)}度×{elec_unit_price:.0f}元={int(electricity_amount)}元）")
+        
+        # 房租
+        lines.append(f"房租：{int(monthly_rent)}元")
+        
+        return "\n".join(lines)
     else:
-        lines.append("")
-        lines.append("💰 水电已分摊，仅收房租")
-        lines.append(f"   应付：¥{monthly_rent:.2f}")
-
-    lines.append("")
-    lines.append("请及时缴纳房租，感谢配合！")
-
-    return "\n".join(lines)
+        # 2501等不分摊水电的房间
+        lines = [
+            f"**{room_number} 本月收租：{int(monthly_rent)} 元**",
+            "房租：{int(monthly_rent)}元"
+        ]
+        return "\n".join(lines)
 
 
 def check_if_both_utilities_recorded(
