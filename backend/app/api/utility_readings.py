@@ -242,11 +242,28 @@ async def update_utility_reading(
             try:
                 # 获取房间号
                 room_number = room.room_number
-
-                # 计算费用
-                water_amount = water_reading.amount or 0
-                electricity_amount = electricity_reading.amount or 0
                 monthly_rent = room.monthly_rent or 0
+
+                # 从result中获取费用和读数信息
+                water_amount = result.get('water_amount', 0)
+                electricity_amount = result.get('electricity_amount', 0)
+                water_reading_value = result.get('water_reading', 0)
+                electricity_reading_value = result.get('electricity_reading', 0)
+                water_usage = result.get('water_usage', 0)
+                electricity_usage = result.get('electricity_usage', 0)
+
+                # 查询实际的水电记录对象以获取previous_reading
+                from app.models import UtilityReading
+                water_record = db.query(UtilityReading).filter(
+                    UtilityReading.room_id == reading.room_id,
+                    UtilityReading.utility_type == 'water',
+                    UtilityReading.reading_date == reading.reading_date
+                ).first()
+                electricity_record = db.query(UtilityReading).filter(
+                    UtilityReading.room_id == reading.room_id,
+                    UtilityReading.utility_type == 'electricity',
+                    UtilityReading.reading_date == reading.reading_date
+                ).first()
 
                 # 生成消息
                 message = generate_rent_notification(
@@ -255,12 +272,12 @@ async def update_utility_reading(
                     monthly_rent=float(monthly_rent),
                     water_amount=float(water_amount),
                     electricity_amount=float(electricity_amount),
-                    water_reading=water_reading.reading,
-                    electricity_reading=electricity_reading.reading,
-                    water_usage=water_reading.usage or 0,
-                    electricity_usage=electricity_reading.usage or 0,
-                    water_previous_reading=water_reading.previous_reading,
-                    electricity_previous_reading=electricity_reading.previous_reading
+                    water_reading=float(water_reading_value),
+                    electricity_reading=float(electricity_reading_value),
+                    water_usage=float(water_usage),
+                    electricity_usage=float(electricity_usage),
+                    water_previous_reading=water_record.previous_reading if water_record else 0,
+                    electricity_previous_reading=electricity_record.previous_reading if electricity_record else 0
                 )
 
                 # 异步发送飞书消息（不阻塞响应）
@@ -268,6 +285,8 @@ async def update_utility_reading(
             except Exception as e:
                 # 发送失败不影响数据保存，只记录日志
                 print(f"[Warning] Failed to send notification: {str(e)}")
+                import traceback
+                traceback.print_exc()
 
     return reading
 
