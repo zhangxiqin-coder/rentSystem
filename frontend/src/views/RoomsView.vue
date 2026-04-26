@@ -172,7 +172,19 @@ const confirm入住 = async () => {
 
   try {
     submitting.value = true
-    
+
+    // 验证必填字段
+    if (!checkinForm.value.tenant_name || !checkinForm.value.tenant_phone) {
+      ElMessage.error('请填写租客姓名和电话')
+      return
+    }
+
+    // 验证日期
+    if (!checkinForm.value.lease_start || !checkinForm.value.lease_end) {
+      ElMessage.error('请选择租约开始和结束日期')
+      return
+    }
+
     // Convert Date objects to YYYY-MM-DD format strings
     const formatDate = (date: Date | string): string => {
       if (!date) return ''
@@ -182,11 +194,20 @@ const confirm入住 = async () => {
       const day = String(d.getDate()).padStart(2, '0')
       return `${year}-${month}-${day}`
     }
-    
+
+    const startDateStr = formatDate(checkinForm.value.lease_start)
+    const endDateStr = formatDate(checkinForm.value.lease_end)
+
+    // 验证结束日期必须大于开始日期
+    if (endDateStr <= startDateStr) {
+      ElMessage.error('租约结束日期必须大于开始日期')
+      return
+    }
+
     const submitData = {
       ...checkinForm.value,
-      lease_start: formatDate(checkinForm.value.lease_start),
-      lease_end: formatDate(checkinForm.value.lease_end)
+      lease_start: startDateStr,
+      lease_end: endDateStr
     }
     
     console.log('📤 Checkin form data (raw):', JSON.stringify(checkinForm.value, null, 2))
