@@ -229,13 +229,13 @@ const autoGenerateAndSendWechat = async (merged: MergedReading) => {
     currentMessage.value = message
     messageDialogVisible.value = true
 
-    // 自动推送到微信
+    // 注意：后端在水电录入时已经自动发送消息到飞书了
+    // 这里只显示消息，不再重复调用后端API
     sendingWechat.value = true
-    await sendWechatNotification(merged, message)
-    ElMessage.success('微信消息已自动推送')
+    ElMessage.success('消息已自动生成并推送到飞书')
   } catch (error: any) {
-    console.error('Failed to send wechat notification:', error)
-    ElMessage.warning('消息已生成，但微信推送失败')
+    console.error('Failed to generate wechat message:', error)
+    ElMessage.warning('消息生成失败')
   } finally {
     sendingWechat.value = false
   }
