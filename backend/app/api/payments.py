@@ -313,14 +313,13 @@ def create_bulk_payment(
     for payment in payments:
         db.refresh(payment)
 
-    # 更新水电记录的payment_id（使用payment_date而不是reading_date）
-    target_date = data.reading_date or data.payment_date
-    
+    # 更新水电记录的payment_id
+    # 使用payment_date而不是reading_date（因为reading_date可能是None或错误的）
     if data.water_charge and water_payment:
         water_reading = db.query(UtilityReading).filter(
             UtilityReading.room_id == data.room_id,
             UtilityReading.utility_type == 'water',
-            UtilityReading.reading_date == target_date
+            UtilityReading.reading_date == data.payment_date  # 使用payment_date
         ).first()
         if water_reading:
             water_reading.payment_id = water_payment.id
@@ -329,7 +328,7 @@ def create_bulk_payment(
         elec_reading = db.query(UtilityReading).filter(
             UtilityReading.room_id == data.room_id,
             UtilityReading.utility_type == 'electricity',
-            UtilityReading.reading_date == target_date
+            UtilityReading.reading_date == data.payment_date  # 使用payment_date
         ).first()
         if elec_reading:
             elec_reading.payment_id = electricity_payment.id
