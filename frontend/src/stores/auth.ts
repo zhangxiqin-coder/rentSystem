@@ -15,6 +15,11 @@ export const useAuthStore = defineStore('auth', () => {
   // Getters
   const isAuthenticated = computed(() => !!token.value && !!user.value)
   const userRole = computed(() => user.value?.role || null)
+  const displayName = computed(() => {
+    const username = user.value?.username || ''
+    if (username === 'testuser3') return '神仙房东姐姐'
+    return user.value?.full_name || username
+  })
   const isAdmin = computed(() => user.value?.role === 'admin')
   const isLandlord = computed(() => user.value?.role === 'landlord')
   const isTenant = computed(() => user.value?.role === 'tenant')
@@ -146,6 +151,7 @@ export const useAuthStore = defineStore('auth', () => {
     // Getters
     isAuthenticated,
     userRole,
+    displayName,
     isAdmin,
     isLandlord,
     isTenant,

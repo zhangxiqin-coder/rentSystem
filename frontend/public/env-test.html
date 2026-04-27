@@ -18,7 +18,7 @@
   </div>
   <div class="info">
     <h3>期望的 API 地址:</h3>
-    <span class="success">http://43.134.40.91:8000</span>
+    <span class="success">http://127.0.0.1:8000</span>
   </div>
   <div class="info">
     <h3>测试 API 连接:</h3>
@@ -38,7 +38,7 @@
       const result = document.getElementById('api-result');
       result.innerHTML = '测试中...';
       
-      const API_URL = 'http://43.134.40.91:8000/api/v1/health';
+      const API_URL = 'http://127.0.0.1:8000/api/v1/health';
       
       try {
         const response = await fetch(API_URL, {

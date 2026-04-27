@@ -5,7 +5,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'Home',
-    redirect: '/dashboard',
+    redirect: '/rooms',
   },
   {
     path: '/login',
@@ -88,8 +88,8 @@ router.beforeEach((to, _from, next) => {
     // Redirect to login if trying to access protected route
     next({ name: 'Login', query: { redirect: to.fullPath } })
   } else if (to.name === 'Login' && authStore.isAuthenticated) {
-    // Redirect to dashboard if already logged in
-    next({ name: 'Dashboard' })
+    // Redirect to rooms if already logged in
+    next({ name: 'Rooms' })
   } else {
     next()
   }

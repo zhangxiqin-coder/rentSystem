@@ -90,7 +90,7 @@ const handle登录 = async () => {
   loading.value = false
 
   if (success) {
-    router.push('/dashboard')
+    router.push('/rooms')
   }
 }
 

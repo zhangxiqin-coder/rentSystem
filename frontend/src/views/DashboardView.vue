@@ -16,7 +16,7 @@ const handleLogout = async () => {
     <header class="dashboard-header">
       <h1>租赁管理系统</h1>
       <div class="user-info">
-        <span>欢迎，{{ authStore.user?.full_name || authStore.user?.username }}</span>
+        <span>欢迎，{{ authStore.displayName }}</span>
         <button @click="handleLogout">退出登录</button>
       </div>
     </header>

@@ -28,9 +28,8 @@ const roomBillingYear = ref(new Date().getFullYear())
 const loadYearlyStats = async () => {
   yearlyLoading.value = true
   try {
-    const token = localStorage.getItem('token')
+    const token = localStorage.getItem('access_token')
     const response = await axios.get('/api/v1/payments/stats/yearly', {
-      baseURL: 'http://43.134.40.91:8000',
       headers: {
         'Authorization': `Bearer ${token}`
       },
@@ -61,9 +60,8 @@ const loadRoomBilling = async () => {
   
   roomBillingLoading.value = true
   try {
-    const token = localStorage.getItem('token')
+    const token = localStorage.getItem('access_token')
     const response = await axios.get(`/api/v1/payments/stats/room/${selectedRoom.value}`, {
-      baseURL: 'http://43.134.40.91:8000',
       headers: {
         'Authorization': `Bearer ${token}`
       },
