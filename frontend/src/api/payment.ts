@@ -45,6 +45,15 @@ export const paymentApi = {
   getRoomBilling: (roomId: number, year?: number) =>
     request.get(`/api/v1/payments/stats/room/${roomId}`, { params: { year } }),
 
+  // 获取指定房间的支付记录
+  getPaymentsByRoom: (roomId: number, params?: { page?: number; size?: number }) =>
+    request.get('/api/v1/payments', {
+      params: {
+        ...params,
+        room_id: roomId,
+      },
+    }),
+
   // 删除支付记录
   deletePayment: (id: number) =>
     request.delete(`/api/v1/payments/${id}`),

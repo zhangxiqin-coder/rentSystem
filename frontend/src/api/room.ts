@@ -14,21 +14,21 @@ export const roomApi = {
     request.get<ApiListResponse<Room>>('/api/v1/rooms', { params }),
 
   // Get room by id
-  getRoom: (id: number) => request.get<ApiResponse<Room>>(`/api/v1/rooms/${id}`),
+  getRoom: (id: number) => request.get<Room>(`/api/v1/rooms/${id}`),
 
   // Get rooms expiring soon
   getExpiringSoon: (days: number = 7) =>
     request.get<Room[]>('/api/v1/rooms/expiring-soon', { params: { days } }),
 
   // Create room
-  createRoom: (data: CreateRoomRequest) => request.post<ApiResponse<Room>>('/api/v1/rooms', data),
+  createRoom: (data: CreateRoomRequest) => request.post<Room>('/api/v1/rooms', data),
 
   // Update room
   updateRoom: (id: number, data: UpdateRoomRequest) =>
-    request.put<ApiResponse<Room>>(`/api/v1/rooms/${id}`, data),
+    request.put<Room>(`/api/v1/rooms/${id}`, data),
 
   // Delete room
-  deleteRoom: (id: number) => request.delete<ApiResponse<void>>(`/api/v1/rooms/${id}`),
+  deleteRoom: (id: number) => request.delete<void>(`/api/v1/rooms/${id}`),
 
   // 退租房间
   checkoutRoom: (id: number, data: {

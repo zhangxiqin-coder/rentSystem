@@ -9,6 +9,7 @@ from passlib.context import CryptContext
 import re
 import time
 import json
+import os
 
 from app.database import get_db
 from app.models import User
@@ -232,9 +233,10 @@ async def login(
     # 获取客户端 IP
     client_ip = request.client.host if request.client else "unknown"
     
-    # 检查速率限制
-    RateLimiter.check_rate_limit(client_ip)
-    RateLimiter.check_rate_limit(login_data.username)
+    disable_rate_limit = os.getenv("DISABLE_AUTH_RATE_LIMIT", "").strip().lower() in {"1", "true", "yes", "on"}
+    if not disable_rate_limit:
+        RateLimiter.check_rate_limit(client_ip)
+        RateLimiter.check_rate_limit(login_data.username)
     
     # 查找用户
     user = db.query(User).filter(User.username == login_data.username).first()

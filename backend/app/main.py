@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 import secrets
 import os
+import logging
+import re
 from typing import Any, Dict
 
 from app.api import auth, rooms, payments, utility_readings, utility_rates, users, statistics, reminders, export
@@ -12,6 +14,19 @@ app = FastAPI(
     description="租金管理系统后端 API",
     version="2.0.0"
 )
+
+_LOCAL_ORIGIN_REGEX = re.compile(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$")
+_EXPLICIT_ALLOWED_ORIGINS = {
+    "http://43.134.40.91:5173",
+}
+
+
+def _is_allowed_origin(origin: str | None) -> bool:
+    if not origin:
+        return False
+    if origin in _EXPLICIT_ALLOWED_ORIGINS:
+        return True
+    return _LOCAL_ORIGIN_REGEX.match(origin) is not None
 
 # CSRF Protection Middleware
 class CSRFMiddleware(BaseHTTPMiddleware):
@@ -68,11 +83,8 @@ app.add_middleware(CSRFMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://43.134.40.91:5173",
-        "http://127.0.0.1:5173"
-    ],
+    allow_origins=list(_EXPLICIT_ALLOWED_ORIGINS),
+    allow_origin_regex=_LOCAL_ORIGIN_REGEX.pattern,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -97,7 +109,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
     # Add CORS headers to allow frontend to receive error response
     origin = request.headers.get('origin')
-    if origin in ['http://localhost:5173', 'http://43.134.40.91:5173', 'http://127.0.0.1:5173']:
+    if _is_allowed_origin(origin):
         response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Access-Control-Allow-Credentials'] = 'true'
     return response
@@ -113,7 +125,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
     # Add CORS headers
     origin = request.headers.get('origin')
-    if origin in ['http://localhost:5173', 'http://43.134.40.91:5173', 'http://127.0.0.1:5173']:
+    if _is_allowed_origin(origin):
         response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Access-Control-Allow-Credentials'] = 'true'
     return response

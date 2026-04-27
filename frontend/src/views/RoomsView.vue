@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, Search } from '@element-plus/icons-vue'
 import type { Room } from '@/types'
 import { roomApi } from '@/api/room'
 import RoomForm from '@/components/RoomForm.vue'
 import type { CreateRoomRequest, UpdateRoomRequest } from '@/types'
 
 const router = useRouter()
+const route = useRoute()
 
 const rooms = ref<Room[]>([])
 const loading = ref(false)
@@ -302,7 +304,24 @@ const getPaymentCycleLabel = (cycle: number | null | undefined) => {
 }
 
 onMounted(() => {
-  loadRooms()
+  const init = async () => {
+    await loadRooms()
+
+    // 支持从详情页跳转到 /rooms/:id/edit 并自动打开编辑弹窗
+    if (route.path.endsWith('/edit')) {
+      const id = Number(route.params.id)
+      if (!Number.isNaN(id) && id > 0) {
+        try {
+          const response = await roomApi.getRoom(id)
+          handle编辑(response.data)
+        } catch (error: any) {
+          ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '加载房间失败')
+        }
+      }
+    }
+  }
+
+  init()
 })
 </script>
 
@@ -336,9 +355,9 @@ onMounted(() => {
         </el-input>
 
         <el-checkbox-group v-model="statusFilters">
-          <el-checkbox label="available">空置</el-checkbox>
-          <el-checkbox label="occupied">已出租</el-checkbox>
-          <el-checkbox label="maintenance">维修中</el-checkbox>
+          <el-checkbox value="available">空置</el-checkbox>
+          <el-checkbox value="occupied">已出租</el-checkbox>
+          <el-checkbox value="maintenance">维修中</el-checkbox>
         </el-checkbox-group>
       </div>
 

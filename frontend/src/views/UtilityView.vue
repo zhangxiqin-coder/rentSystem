@@ -231,41 +231,45 @@ const generateRentReminder = (merged: MergedReading): string => {
   const roomNumber = getRoomNumber(merged.room_id)
   const date = new Date(merged.reading_date).toLocaleDateString('zh-CN')
 
-  let message = `**${roomNumber} 本月收租：`
-
-  // 计算总金额
-  let total = 0
   const rentAmount = Number(merged.monthly_rent || 0)
   const waterAmount = Number(merged.water_reading?.amount || 0)
-  const electricAmount = Number(merged.electric_reading?.amount || 0)
-  total = rentAmount + waterAmount + electricAmount
+  const electricityAmount = Number(merged.electricity_reading?.amount || 0)
+  const total = rentAmount + waterAmount + electricityAmount
 
-  message += `¥${total.toFixed(0)} 元**\n`
+  let message = `【${roomNumber} 收租明细】\n抄表日期：${date}\n\n💰 合计：¥${total.toFixed(2)}\n`
 
-  // 水费详情
+  if (rentAmount > 0) {
+    message += `🏠 房租：¥${rentAmount.toFixed(2)}\n`
+  }
+
   if (merged.water_reading) {
-    const prev = merged.water_reading.previous_reading || 0
-    const curr = merged.water_reading.reading
-    const usage = curr - prev
-    const amount = merged.water_reading.amount
-    message += `💧 水：${prev}→${curr}（用量${usage}吨 × ¥${merged.water_reading.rate}/吨 = ¥${amount}）\n`
+    const prev = Number(merged.water_reading.previous_reading || 0)
+    const curr = Number(merged.water_reading.reading || 0)
+    const usage = Number(merged.water_reading.usage ?? Math.max(0, curr - prev))
+    const rate = Number(
+      merged.water_reading.rate_used ?? getRoomInfo(merged.room_id, 'water_rate') ?? 0
+    )
+    const amount = Number(merged.water_reading.amount || 0)
+    message += `💧 水费：${prev}→${curr}（用量${usage}吨 × ¥${rate}/吨 = ¥${amount.toFixed(2)}）\n`
   }
 
-  // 电费详情
-  if (merged.electric_reading) {
-    const prev = merged.electric_reading.previous_reading || 0
-    const curr = merged.electric_reading.reading
-    const usage = curr - prev
-    const amount = merged.electric_reading.amount
-    message += `⚡ 电：${prev}→${curr}（用量${usage}度 × ¥${merged.electric_reading.rate}/度 = ¥${amount}）\n`
-  }
-
-  // 房租
-  if (merged.monthly_rent) {
-    message += `🏠 房租：¥${merged.monthly_rent.toFixed(0)}\n`
+  if (merged.electricity_reading) {
+    const prev = Number(merged.electricity_reading.previous_reading || 0)
+    const curr = Number(merged.electricity_reading.reading || 0)
+    const usage = Number(merged.electricity_reading.usage ?? Math.max(0, curr - prev))
+    const rate = Number(
+      merged.electricity_reading.rate_used ?? getRoomInfo(merged.room_id, 'electricity_rate') ?? 0
+    )
+    const amount = Number(merged.electricity_reading.amount || 0)
+    message += `⚡ 电费：${prev}→${curr}（用量${usage}度 × ¥${rate}/度 = ¥${amount.toFixed(2)}）\n`
   }
 
   return message
+}
+
+const showRentReminder = (row: MergedReading) => {
+  rentReminderPreview.value = generateRentReminder(row)
+  rentReminderVisible.value = true
 }
 
 // 复制催租消息到剪贴板
@@ -620,6 +624,37 @@ const loadExpiringRooms = async () => {
     console.error('Failed to load expiring rooms:', error)
     // 静默失败，不显示错误消息
   }
+}
+
+// 即将到期房间：若近2天已录入水电，则允许直接“标记已收”（等价于下方表格的“标记已收”）
+const RECENT_READING_DAYS = 2
+
+const getRecentUnpaidReadingForRoom = (roomId: number): MergedReading | undefined => {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  return mergedReadings.value
+    .filter(item => item.room_id === roomId && !item.is_paid && (item.water_reading || item.electricity_reading))
+    .filter(item => {
+      const readingDate = new Date(item.reading_date)
+      readingDate.setHours(0, 0, 0, 0)
+      const diffDays = Math.floor((today.getTime() - readingDate.getTime()) / (1000 * 60 * 60 * 24))
+      return diffDays >= 0 && diffDays <= RECENT_READING_DAYS
+    })
+    .sort((a, b) => new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime())[0]
+}
+
+const canMarkExpiringRoomPaid = (room: Room) => {
+  return !!getRecentUnpaidReadingForRoom(room.id)
+}
+
+const markExpiringRoomPaid = (room: Room) => {
+  const row = getRecentUnpaidReadingForRoom(room.id)
+  if (!row) {
+    ElMessage.warning(`房间 ${room.room_number} 暂无近${RECENT_READING_DAYS}天未收租的水电记录`)
+    return
+  }
+  showPaymentDialog(row)
 }
 
 // 计算距离到期天数
@@ -1327,8 +1362,21 @@ onMounted(() => {
               <el-tag :type="getNextPaymentDays(room) <= 3 ? 'danger' : 'warning'" size="small">
                 {{ getNextPaymentDays(room) }}天后需收租
               </el-tag>
-              <el-button type="primary" size="small" @click="openUtilityForm(room.id)">
-                💧 录入水电
+              <el-button
+                v-if="canMarkExpiringRoomPaid(room)"
+                type="success"
+                size="small"
+                @click="markExpiringRoomPaid(room)"
+              >
+                ✅ 标记已收
+              </el-button>
+              <el-button
+                v-else
+                type="primary"
+                size="small"
+                @click="openUtilityForm(room.id)"
+              >
+                录入水电
               </el-button>
             </div>
           </div>
@@ -1512,11 +1560,11 @@ onMounted(() => {
           <el-table-column label="操作" width="250" fixed="right">
             <template #default="{ row }">
               <el-button
-                type="primary"
+                type="info"
                 size="small"
-                @click="showEditDialog(row)"
+                @click="showRentReminder(row)"
               >
-                编辑
+                催租消息
               </el-button>
               <el-button
                 type="success"

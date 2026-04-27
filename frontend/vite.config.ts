@@ -45,6 +45,7 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    strictPort: true,
     // 禁用 HMR（如果不需要热更新）
     hmr: true,
     // 关闭 WebSocket，使用普通 HTTP 轮询
@@ -62,6 +63,4 @@ export default defineConfig({
   optimizeDeps: {
     include: ['vue', 'vue-router', 'pinia', 'element-plus', 'axios'],
   },
-  // 生产环境不生成 manifest.json（如果不需要）
-  manifest: false,
 })

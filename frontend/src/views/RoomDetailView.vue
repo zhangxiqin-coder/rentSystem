@@ -34,12 +34,18 @@ const editingUtilityReading = ref<UtilityReading>()
 const activeTab = ref('details')
 
 const loadRoom = async () => {
+  if (!Number.isFinite(roomId.value) || roomId.value <= 0) {
+    ElMessage.error('房间ID无效')
+    router.push('/rooms')
+    return
+  }
+
   loading.value = true
   try {
     const response = await roomApi.getRoom(roomId.value)
-    room.value = response.data.data
+    room.value = response.data
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || 'Failed to load room')
+    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || 'Failed to load room')
     router.push('/rooms')
   } finally {
     loading.value = false
@@ -230,7 +236,7 @@ onMounted(async () => {
   <div class="room-detail-view" v-loading="loading">
     <el-page-header @back="router.back()" class="page-header">
       <template #content>
-        <span class="title">{{ room?.room_number }} - 房间详情</span>
+        <span class="title">{{ room?.room_number }} (ID: {{ room?.id ?? roomId }}) - 房间详情</span>
       </template>
       <template #extra>
         <el-button type="primary" @click="() => router.push(`/rooms/${roomId}/edit`)">
