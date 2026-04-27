@@ -40,10 +40,11 @@ export const roomApi = {
 
   // 入住房间
   checkinRoom: (id: number, data: {
-    tenant_name: string
-    tenant_phone: string
+    tenant_name?: string
+    tenant_phone?: string
     lease_start: string
     lease_end: string
+    monthly_rent?: number
     deposit_amount?: number
     payment_cycle?: number
   }) => request.post<ApiResponse<Room>>(`/api/v1/rooms/${id}/checkin`, data),

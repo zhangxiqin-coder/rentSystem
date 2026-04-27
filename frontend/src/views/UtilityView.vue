@@ -5,12 +5,14 @@ import { Plus } from '@element-plus/icons-vue'
 import { utilityApi } from '@/api/utility'
 import { roomApi } from '@/api/room'
 import { paymentApi } from '@/api/payment'
+import { useAmountVisibility } from '@/composables/useAmountVisibility'
 import UtilityReadingForm from '@/components/UtilityReadingForm.vue'
 import type { UtilityReading, Room } from '@/types'
 import axios from 'axios'
 
 // 活动标签页
 const activeTab = ref('readings')
+const { hideAmounts, formatAmount } = useAmountVisibility()
 
 // 水电记录列表（原始数据）
 const readings = ref<UtilityReading[]>([])
@@ -154,6 +156,16 @@ const calculateTotalRecords = () => {
   return roomCount
 }
 
+const maskedAmount = (value: number | string | null | undefined) => {
+  if (value === null || value === undefined || value === '') return '-'
+  return formatAmount(Number(value))
+}
+
+const maskedRate = (value: number | string | null | undefined, unit: string) => {
+  if (hideAmounts.value) return `****/${unit}`
+  return `¥${Number(value || 0).toFixed(2)}/${unit}`
+}
+
 // 提交批量录入
 const submitBatch = async () => {
   if (selectedRooms.value.length === 0) {
@@ -209,7 +221,7 @@ const submitBatch = async () => {
         console.error('批量录入错误:', result.errors)
       }
     } else {
-      ElMessage.success(`批量录入成功！共 ${result.success_count} 条记录，总金额 ¥${result.total_amount}`)
+      ElMessage.success(`批量录入成功！共 ${result.success_count} 条记录，总金额 ${formatAmount(Number(result.total_amount || 0))}`)
     }
 
     // 关闭对话框并刷新列表
@@ -236,10 +248,10 @@ const generateRentReminder = (merged: MergedReading): string => {
   const electricityAmount = Number(merged.electricity_reading?.amount || 0)
   const total = rentAmount + waterAmount + electricityAmount
 
-  let message = `【${roomNumber} 收租明细】\n抄表日期：${date}\n\n💰 合计：¥${total.toFixed(2)}\n`
+  let message = `【${roomNumber} 收租明细】\n抄表日期：${date}\n\n💰 合计：${formatAmount(total)}\n`
 
   if (rentAmount > 0) {
-    message += `🏠 房租：¥${rentAmount.toFixed(2)}\n`
+    message += `🏠 房租：${formatAmount(rentAmount)}\n`
   }
 
   if (merged.water_reading) {
@@ -250,7 +262,7 @@ const generateRentReminder = (merged: MergedReading): string => {
       merged.water_reading.rate_used ?? getRoomInfo(merged.room_id, 'water_rate') ?? 0
     )
     const amount = Number(merged.water_reading.amount || 0)
-    message += `💧 水费：${prev}→${curr}（用量${usage}吨 × ¥${rate}/吨 = ¥${amount.toFixed(2)}）\n`
+    message += `💧 水费：${prev}→${curr}（用量${usage}吨 × ${hideAmounts.value ? '****/吨' : `¥${rate}/吨`} = ${formatAmount(amount)}）\n`
   }
 
   if (merged.electricity_reading) {
@@ -261,7 +273,7 @@ const generateRentReminder = (merged: MergedReading): string => {
       merged.electricity_reading.rate_used ?? getRoomInfo(merged.room_id, 'electricity_rate') ?? 0
     )
     const amount = Number(merged.electricity_reading.amount || 0)
-    message += `⚡ 电费：${prev}→${curr}（用量${usage}度 × ¥${rate}/度 = ¥${amount.toFixed(2)}）\n`
+    message += `⚡ 电费：${prev}→${curr}（用量${usage}度 × ${hideAmounts.value ? '****/度' : `¥${rate}/度`} = ${formatAmount(amount)}）\n`
   }
 
   return message
@@ -310,7 +322,7 @@ const generateMessageText = (merged: MergedReading): string => {
   let message = `【收租通知】\n房间：${roomNumber}\n抄表日期：${date}\n`
 
   if (merged.monthly_rent) {
-    message += `\n🏠 房租：¥${merged.monthly_rent.toFixed(2)}\n`
+    message += `\n🏠 房租：${formatAmount(merged.monthly_rent)}\n`
   }
 
   if (merged.water_reading) {
@@ -318,7 +330,7 @@ const generateMessageText = (merged: MergedReading): string => {
     message += `  上次读数：${merged.water_reading.previous_reading} 吨\n`
     message += `  本次读数：${merged.water_reading.reading} 吨\n`
     message += `  用量：${merged.water_reading.usage} 吨\n`
-    message += `  费用：¥${(merged.water_reading.amount || 0).toFixed(2)}\n`
+    message += `  费用：${formatAmount(Number(merged.water_reading.amount || 0))}\n`
   }
 
   if (merged.electricity_reading) {
@@ -326,10 +338,10 @@ const generateMessageText = (merged: MergedReading): string => {
     message += `  上次读数：${merged.electricity_reading.previous_reading} 度\n`
     message += `  本次读数：${merged.electricity_reading.reading} 度\n`
     message += `  用量：${merged.electricity_reading.usage} 度\n`
-    message += `  费用：¥${(merged.electricity_reading.amount || 0).toFixed(2)}\n`
+    message += `  费用：${formatAmount(Number(merged.electricity_reading.amount || 0))}\n`
   }
 
-  message += `\n💰 应付总额：¥${merged.total_amount.toFixed(2)}`
+  message += `\n💰 应付总额：${formatAmount(merged.total_amount)}`
 
   if (merged.notes) {
     message += `\n\n备注：${merged.notes}`
@@ -693,12 +705,12 @@ const sendReminder = async (room: Room, type: 'overdue' | 'upcoming') => {
 
 📋 租赁信息：
 • 房间号：${room.room_number}
-• 房租金额：¥${room.monthly_rent}/月
+• 房租金额：${hideAmounts.value ? '****/月' : `¥${room.monthly_rent}/月`}
 • 收租周期：${room.payment_cycle === 1 ? '月付' : room.payment_cycle === 3 ? '季付' : '年付'}
 • 上次交租：${room.last_payment_date ? formatDate(room.last_payment_date) : '未知'}
 • 应交日期：${nextPaymentDate}
 • 逾期天数：${overdueDays}天
-• 欠租金额：约¥${room.monthly_rent + 100}
+• 欠租金额：约${formatAmount(room.monthly_rent + 100)}
 
 请您尽快支付房租，避免产生更多滞纳金。如有特殊情况，请及时与我们联系。
 
@@ -712,7 +724,7 @@ const sendReminder = async (room: Room, type: 'overdue' | 'upcoming') => {
 
 📋 租赁信息：
 • 房间号：${room.room_number}
-• 房租金额：¥${room.monthly_rent}/月
+• 房租金额：${hideAmounts.value ? '****/月' : `¥${room.monthly_rent}/月`}
 • 收租周期：${room.payment_cycle === 1 ? '月付' : room.payment_cycle === 3 ? '季付' : '年付'}
 • 下次收租：${nextPaymentDate}
 • 距离天数：${days}天
@@ -1031,7 +1043,7 @@ const submitPayment = async () => {
     console.log('✅ [Bulk Payment] Response:', response.data)
     
     if (response.data.success) {
-      ElMessage.success(`收租记录创建成功！实收：¥${response.data.total_actual}`)
+      ElMessage.success(`收租记录创建成功！实收：${formatAmount(Number(response.data.total_actual || 0))}`)
       paymentDialogVisible.value = false
       // 刷新列表
       loadReadings()
@@ -1092,7 +1104,7 @@ const submitBatchPayment = async () => {
     )
 
     await ElMessageBox.confirm(
-      `确认批量收租 ${batchPayments.value.length} 个房间？\n原始总额：¥${totalOriginal.toFixed(2)}\n实收总额：¥${totalActual.toFixed(2)}`,
+      `确认批量收租 ${batchPayments.value.length} 个房间？\n原始总额：${formatAmount(totalOriginal)}\n实收总额：${formatAmount(totalActual)}`,
       '批量收租确认',
       { type: 'warning' }
     )
@@ -1160,7 +1172,7 @@ const batchGenerateMessages = async () => {
       let message = `\n【收租通知 ${index + 1}/${selectedRows.value.length}】\n房间：${roomNumber}\n抄表日期：${date}\n`
 
       if (row.monthly_rent) {
-        message += `\n🏠 房租：¥${row.monthly_rent.toFixed(2)}\n`
+        message += `\n🏠 房租：${formatAmount(row.monthly_rent)}\n`
       }
 
       if (row.water_reading) {
@@ -1168,7 +1180,7 @@ const batchGenerateMessages = async () => {
         message += `  上次读数：${row.water_reading.previous_reading} 吨\n`
         message += `  本次读数：${row.water_reading.reading} 吨\n`
         message += `  用量：${row.water_reading.usage} 吨\n`
-        message += `  费用：¥${(row.water_reading.amount || 0).toFixed(2)}\n`
+        message += `  费用：${formatAmount(Number(row.water_reading.amount || 0))}\n`
       }
 
       if (row.electricity_reading) {
@@ -1176,10 +1188,10 @@ const batchGenerateMessages = async () => {
         message += `  上次读数：${row.electricity_reading.previous_reading} 度\n`
         message += `  本次读数：${row.electricity_reading.reading} 度\n`
         message += `  用量：${row.electricity_reading.usage} 度\n`
-        message += `  费用：¥${(row.electricity_reading.amount || 0).toFixed(2)}\n`
+        message += `  费用：${formatAmount(Number(row.electricity_reading.amount || 0))}\n`
       }
 
-      message += `\n💰 应付总额：¥${row.total_amount.toFixed(2)}`
+      message += `\n💰 应付总额：${formatAmount(row.total_amount)}`
 
       if (row.notes) {
         message += `\n\n备注：${row.notes}`
@@ -1330,11 +1342,11 @@ onMounted(() => {
           <div v-for="item in overdueRooms" :key="item.room.id" class="expiring-item overdue-item">
             <div class="room-info">
               <span class="room-number">{{ item.room.room_number }}</span>
-              <span class="room-rent">¥{{ item.room.monthly_rent }}/月</span>
+              <span class="room-rent">{{ hideAmounts ? '****/月' : `¥${item.room.monthly_rent}/月` }}</span>
               <el-tag size="small" type="danger">逾期{{ item.overdueDays }}天</el-tag>
             </div>
             <div class="lease-info">
-              <span class="overdue-amount">欠费约: ¥{{ item.overdueAmount }}</span>
+              <span class="overdue-amount">欠费约: {{ maskedAmount(item.overdueAmount) }}</span>
               <el-button type="danger" size="small" @click="sendReminder(item.room, 'overdue')">
                 📱 催租
               </el-button>
@@ -1355,7 +1367,7 @@ onMounted(() => {
           <div v-for="room in expiringRooms" :key="room.id" class="expiring-item">
             <div class="room-info">
               <span class="room-number">{{ room.room_number }}</span>
-              <span class="room-rent">¥{{ room.monthly_rent }}/月</span>
+              <span class="room-rent">{{ hideAmounts ? '****/月' : `¥${room.monthly_rent}/月` }}</span>
               <el-tag size="small" type="info">{{ room.payment_cycle === 1 ? '月付' : room.payment_cycle === 3 ? '季付' : '年付' }}</el-tag>
             </div>
             <div class="lease-info">
@@ -1480,7 +1492,7 @@ onMounted(() => {
 
           <el-table-column label="💰 月租金" width="110">
             <template #default="{ row }">
-              <span class="rent-amount">¥{{ getRoomInfo(row.room_id, 'monthly_rent') || '-' }}</span>
+              <span class="rent-amount">{{ maskedAmount(getRoomInfo(row.room_id, 'monthly_rent')) }}</span>
             </template>
           </el-table-column>
 
@@ -1541,15 +1553,15 @@ onMounted(() => {
               <div class="amount-cell">
                 <div v-if="row.water_reading" class="amount-row">
                   <span class="amount-label">水费:</span>
-                  <span class="amount">¥{{ Number(row.water_reading.amount || 0).toFixed(2) }}</span>
+                  <span class="amount">{{ formatAmount(Number(row.water_reading.amount || 0)) }}</span>
                 </div>
                 <div v-if="row.electricity_reading" class="amount-row">
                   <span class="amount-label">电费:</span>
-                  <span class="amount">¥{{ Number(row.electricity_reading.amount || 0).toFixed(2) }}</span>
+                  <span class="amount">{{ formatAmount(Number(row.electricity_reading.amount || 0)) }}</span>
                 </div>
                 <div class="total-amount">
                   <span class="amount-label">总计:</span>
-                  <span class="amount total">¥{{ Number(row.total_amount || 0).toFixed(2) }}</span>
+                  <span class="amount total">{{ formatAmount(Number(row.total_amount || 0)) }}</span>
                 </div>
               </div>
             </template>
@@ -1663,7 +1675,7 @@ onMounted(() => {
                 <el-tag size="small" :type="room.status === 'occupied' ? 'success' : 'info'">
                   {{ room.status === 'occupied' ? '已租' : '空置' }}
                 </el-tag>
-                <span class="room-rent">¥{{ room.monthly_rent }}/月</span>
+                <span class="room-rent">{{ hideAmounts ? '****/月' : `¥${room.monthly_rent}/月` }}</span>
               </el-checkbox>
 
               <!-- 选中时显示读数输入框 -->
@@ -1677,7 +1689,7 @@ onMounted(() => {
                     :step="0.1"
                     size="small"
                   />
-                  <span class="rate">费率: ¥{{ room.water_rate || 0 }}/吨</span>
+                  <span class="rate">费率: {{ maskedRate(room.water_rate || 0, '吨') }}</span>
                 </div>
                 <div v-if="batchForm.utility_type === 'electricity' || batchForm.utility_type === 'both'" class="reading-input">
                   <span class="label">⚡ 电表读数:</span>
@@ -1688,7 +1700,7 @@ onMounted(() => {
                     :step="1"
                     size="small"
                   />
-                  <span class="rate">费率: ¥{{ room.electricity_rate || 0 }}/度</span>
+                  <span class="rate">费率: {{ maskedRate(room.electricity_rate || 0, '度') }}</span>
                 </div>
               </div>
             </div>
@@ -1739,7 +1751,7 @@ onMounted(() => {
         <el-divider content-position="left">🏠 房租</el-divider>
 
         <el-form-item label="原始房租">
-          <span class="original-amount">¥{{ Number(paymentForm.rent_original || 0).toFixed(2) }}</span>
+          <span class="original-amount">{{ formatAmount(Number(paymentForm.rent_original || 0)) }}</span>
         </el-form-item>
 
         <el-form-item label="实收房租">
@@ -1751,14 +1763,14 @@ onMounted(() => {
             :step="10"
           />
           <span v-if="Number(paymentForm.rent_amount || 0) < Number(paymentForm.rent_original || 0)" class="discount-hint">
-            打折：¥{{ (Number(paymentForm.rent_original || 0) - Number(paymentForm.rent_amount || 0)).toFixed(2) }}
+            打折：{{ formatAmount(Number(paymentForm.rent_original || 0) - Number(paymentForm.rent_amount || 0)) }}
           </span>
         </el-form-item>
 
         <el-divider content-position="left">💧 水费</el-divider>
 
         <el-form-item label="原始水费">
-          <span class="original-amount">¥{{ Number(paymentForm.water_original || 0).toFixed(2) }}</span>
+          <span class="original-amount">{{ formatAmount(Number(paymentForm.water_original || 0)) }}</span>
         </el-form-item>
 
         <el-form-item label="实收水费">
@@ -1770,14 +1782,14 @@ onMounted(() => {
             :step="1"
           />
           <span v-if="Number(paymentForm.water_amount || 0) < Number(paymentForm.water_original || 0)" class="discount-hint">
-            打折：¥{{ (Number(paymentForm.water_original || 0) - Number(paymentForm.water_amount || 0)).toFixed(2) }}
+            打折：{{ formatAmount(Number(paymentForm.water_original || 0) - Number(paymentForm.water_amount || 0)) }}
           </span>
         </el-form-item>
 
         <el-divider content-position="left">⚡ 电费</el-divider>
 
         <el-form-item label="原始电费">
-          <span class="original-amount">¥{{ Number(paymentForm.electricity_original || 0).toFixed(2) }}</span>
+          <span class="original-amount">{{ formatAmount(Number(paymentForm.electricity_original || 0)) }}</span>
         </el-form-item>
 
         <el-form-item label="实收电费">
@@ -1789,7 +1801,7 @@ onMounted(() => {
             :step="1"
           />
           <span v-if="Number(paymentForm.electricity_amount || 0) < Number(paymentForm.electricity_original || 0)" class="discount-hint">
-            打折：¥{{ (Number(paymentForm.electricity_original || 0) - Number(paymentForm.electricity_amount || 0)).toFixed(2) }}
+            打折：{{ formatAmount(Number(paymentForm.electricity_original || 0) - Number(paymentForm.electricity_amount || 0)) }}
           </span>
         </el-form-item>
 
@@ -1797,10 +1809,10 @@ onMounted(() => {
 
         <el-form-item label="总计">
           <div class="total-summary">
-            <div>原始总额：¥{{ (Number(paymentForm.rent_original || 0) + Number(paymentForm.water_original || 0) + Number(paymentForm.electricity_original || 0)).toFixed(2) }}</div>
-            <div class="actual-total">实收总额：¥{{ (Number(paymentForm.rent_amount || 0) + Number(paymentForm.water_amount || 0) + Number(paymentForm.electricity_amount || 0)).toFixed(2) }}</div>
+            <div>原始总额：{{ formatAmount(Number(paymentForm.rent_original || 0) + Number(paymentForm.water_original || 0) + Number(paymentForm.electricity_original || 0)) }}</div>
+            <div class="actual-total">实收总额：{{ formatAmount(Number(paymentForm.rent_amount || 0) + Number(paymentForm.water_amount || 0) + Number(paymentForm.electricity_amount || 0)) }}</div>
             <div v-if="(Number(paymentForm.rent_amount || 0) + Number(paymentForm.water_amount || 0) + Number(paymentForm.electricity_amount || 0)) < (Number(paymentForm.rent_original || 0) + Number(paymentForm.water_original || 0) + Number(paymentForm.electricity_original || 0))" class="total-discount">
-              总折扣：¥{{ ((Number(paymentForm.rent_original || 0) + Number(paymentForm.water_original || 0) + Number(paymentForm.electricity_original || 0)) - (Number(paymentForm.rent_amount || 0) + Number(paymentForm.water_amount || 0) + Number(paymentForm.electricity_amount || 0))).toFixed(2) }}
+              总折扣：{{ formatAmount((Number(paymentForm.rent_original || 0) + Number(paymentForm.water_original || 0) + Number(paymentForm.electricity_original || 0)) - (Number(paymentForm.rent_amount || 0) + Number(paymentForm.water_amount || 0) + Number(paymentForm.electricity_amount || 0))) }}
             </div>
           </div>
         </el-form-item>
@@ -2005,25 +2017,11 @@ onMounted(() => {
       <div class="batch-summary">
         <div>
           <span>原始总额：</span>
-          <span class="amount">
-            ¥{{
-              batchPayments.reduce(
-                (sum, p) => sum + p.rent_original + p.water_original + p.electricity_original,
-                0
-              ).toFixed(2)
-            }}
-          </span>
+          <span class="amount">{{ formatAmount(batchPayments.reduce((sum, p) => sum + p.rent_original + p.water_original + p.electricity_original, 0)) }}</span>
         </div>
         <div>
           <span>实收总额：</span>
-          <span class="amount actual">
-            ¥{{
-              batchPayments.reduce(
-                (sum, p) => sum + p.rent_amount + p.water_amount + p.electricity_amount,
-                0
-              ).toFixed(2)
-            }}
-          </span>
+          <span class="amount actual">{{ formatAmount(batchPayments.reduce((sum, p) => sum + p.rent_amount + p.water_amount + p.electricity_amount, 0)) }}</span>
         </div>
       </div>
 

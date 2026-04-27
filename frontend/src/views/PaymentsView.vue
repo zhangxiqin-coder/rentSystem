@@ -5,6 +5,7 @@ import { paymentApi } from '@/api/payment'
 import { roomApi } from '@/api/room'
 import type { Payment } from '@/types'
 import type { Room } from '@/types'
+import { useAmountVisibility } from '@/composables/useAmountVisibility'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -30,6 +31,7 @@ const payments = ref<Payment[]>([])
 const rooms = ref<Room[]>([])
 const loading = ref(false)
 const selectedRoomId = ref<number | null>(null)
+const { hideAmounts, formatAmount } = useAmountVisibility()
 
 // 批量选择相关
 const selectedGroups = ref<string[]>([])
@@ -204,7 +206,7 @@ const chartOption = computed(() => {
       formatter: (params: any) => {
         let result = `${params[0].axisValue}<br/>`
         params.forEach((param: any) => {
-          result += `${param.marker} ${param.seriesName}: ¥${param.value.toFixed(2)}<br/>`
+          result += `${param.marker} ${param.seriesName}: ${hideAmounts.value ? '****' : `¥${Number(param.value || 0).toFixed(2)}`}<br/>`
         })
         return result
       }
@@ -228,7 +230,7 @@ const chartOption = computed(() => {
       type: 'value',
       name: '金额 (元)',
       axisLabel: {
-        formatter: (value: number) => `¥${value}`
+        formatter: (value: number) => (hideAmounts.value ? '***' : `¥${value}`)
       }
     },
     series: [
@@ -293,10 +295,10 @@ const handleDeleteGroup = async (group: any) => {
   try {
     await ElMessageBox.confirm(
       `确定要删除 ${group.room_number} ${group.payment_date} 的收租记录吗？\n\n` +
-      `房租: ¥${group.rent.toFixed(2)}\n` +
-      `水费: ¥${group.water.toFixed(2)}\n` +
-      `电费: ¥${group.electricity.toFixed(2)}\n` +
-      `合计: ¥${group.total.toFixed(2)}`,
+      `房租: ${formatAmount(group.rent)}\n` +
+      `水费: ${formatAmount(group.water)}\n` +
+      `电费: ${formatAmount(group.electricity)}\n` +
+      `合计: ${formatAmount(group.total)}`,
       '删除确认',
       {
         confirmButtonText: '确定',
@@ -446,10 +448,10 @@ onMounted(() => {
               </td>
               <td><strong>{{ payment.room_number }}</strong></td>
               <td>{{ payment.payment_date }}</td>
-              <td :class="{ 'negative-amount': payment.rent < 0 }">¥{{ payment.rent.toFixed(2) }}</td>
-              <td>¥{{ payment.water.toFixed(2) }}</td>
-              <td>¥{{ payment.electricity.toFixed(2) }}</td>
-              <td :class="{ 'negative-amount': payment.total < 0 }"><strong>¥{{ payment.total.toFixed(2) }}</strong></td>
+              <td :class="{ 'negative-amount': payment.rent < 0 }">{{ formatAmount(payment.rent) }}</td>
+              <td>{{ formatAmount(payment.water) }}</td>
+              <td>{{ formatAmount(payment.electricity) }}</td>
+              <td :class="{ 'negative-amount': payment.total < 0 }"><strong>{{ formatAmount(payment.total) }}</strong></td>
               <td :class="`status-${payment.status}`">{{ payment.status }}</td>
               <td>
                 <button @click="handleDeleteGroup(payment)" class="delete-btn">

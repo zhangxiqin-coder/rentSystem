@@ -462,12 +462,15 @@ def checkin_room(
     
     # 更新房间信息
     room.status = "occupied"
-    room.tenant_name = checkin_data.tenant_name
+    # 姓名可为空：为空时默认使用房间号
+    room.tenant_name = (checkin_data.tenant_name or "").strip() or room.room_number
     room.tenant_phone = checkin_data.tenant_phone
     room.lease_start = checkin_data.lease_start
     room.lease_end = checkin_data.lease_end
     
-    # 更新押金和付款周期（如果提供）
+    # 更新租金、押金和付款周期（如果提供）
+    if checkin_data.monthly_rent is not None:
+        room.monthly_rent = checkin_data.monthly_rent
     if checkin_data.deposit_amount is not None:
         room.deposit_amount = checkin_data.deposit_amount
     if checkin_data.payment_cycle is not None:

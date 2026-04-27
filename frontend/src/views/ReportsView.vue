@@ -3,10 +3,12 @@ import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { paymentApi } from '@/api/payment'
 import { roomApi } from '@/api/room'
+import { useAmountVisibility } from '@/composables/useAmountVisibility'
 import type { Room } from '@/types'
 import axios from 'axios'
 
 const activeTab = ref('yearly')
+const { hideAmounts, formatAmount } = useAmountVisibility()
 
 // 年度统计
 const yearlyStats = ref<any[]>([])
@@ -128,19 +130,19 @@ onMounted(() => {
             <div v-if="yearlyStats.length > 0" class="summary-cards">
               <div class="summary-card total">
                 <div class="label">总收入</div>
-                <div class="amount">¥{{ yearlySummary.total.toFixed(2) }}</div>
+                <div class="amount">{{ formatAmount(yearlySummary.total) }}</div>
               </div>
               <div class="summary-card rent">
                 <div class="label">房租收入</div>
-                <div class="amount">¥{{ yearlySummary.byType.rent.toFixed(2) }}</div>
+                <div class="amount">{{ formatAmount(yearlySummary.byType.rent) }}</div>
               </div>
               <div class="summary-card water">
                 <div class="label">水费收入</div>
-                <div class="amount">¥{{ yearlySummary.byType.water.toFixed(2) }}</div>
+                <div class="amount">{{ formatAmount(yearlySummary.byType.water) }}</div>
               </div>
               <div class="summary-card electricity">
                 <div class="label">电费收入</div>
-                <div class="amount">¥{{ yearlySummary.byType.electricity.toFixed(2) }}</div>
+                <div class="amount">{{ formatAmount(yearlySummary.byType.electricity) }}</div>
               </div>
             </div>
 
@@ -158,7 +160,7 @@ onMounted(() => {
               <el-table-column prop="count" label="笔数" width="100" />
               <el-table-column prop="total_amount" label="总金额" width="150">
                 <template #default="{ row }">
-                  <span class="amount">¥{{ row.total_amount.toFixed(2) }}</span>
+                  <span class="amount">{{ formatAmount(row.total_amount) }}</span>
                 </template>
               </el-table-column>
             </el-table>
@@ -190,7 +192,7 @@ onMounted(() => {
             <!-- 房间信息 -->
             <div class="room-info">
               <h3>{{ roomBilling.room.room_number }}</h3>
-              <p>月租金：¥{{ roomBilling.room.monthly_rent.toFixed(2) }}</p>
+              <p>月租金：{{ hideAmounts ? '****' : formatAmount(roomBilling.room.monthly_rent) }}</p>
             </div>
 
             <!-- 账单明细 -->
@@ -202,25 +204,25 @@ onMounted(() => {
               </el-table-column>
               <el-table-column prop="rent" label="房租" width="120">
                 <template #default="{ row }">
-                  <span v-if="row.rent > 0" class="amount">¥{{ row.rent.toFixed(2) }}</span>
+                  <span v-if="row.rent > 0" class="amount">{{ formatAmount(row.rent) }}</span>
                   <span v-else class="no-data">-</span>
                 </template>
               </el-table-column>
               <el-table-column prop="water" label="水费" width="120">
                 <template #default="{ row }">
-                  <span v-if="row.water > 0" class="amount">¥{{ row.water.toFixed(2) }}</span>
+                  <span v-if="row.water > 0" class="amount">{{ formatAmount(row.water) }}</span>
                   <span v-else class="no-data">-</span>
                 </template>
               </el-table-column>
               <el-table-column prop="electricity" label="电费" width="120">
                 <template #default="{ row }">
-                  <span v-if="row.electricity > 0" class="amount">¥{{ row.electricity.toFixed(2) }}</span>
+                  <span v-if="row.electricity > 0" class="amount">{{ formatAmount(row.electricity) }}</span>
                   <span v-else class="no-data">-</span>
                 </template>
               </el-table-column>
               <el-table-column prop="total" label="总计" width="120">
                 <template #default="{ row }">
-                  <span class="amount total">¥{{ row.total.toFixed(2) }}</span>
+                  <span class="amount total">{{ formatAmount(row.total) }}</span>
                 </template>
               </el-table-column>
             </el-table>

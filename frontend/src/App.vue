@@ -2,10 +2,12 @@
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useAmountVisibility } from '@/composables/useAmountVisibility'
 
 const authStore = useAuthStore()
 const route = useRoute()
 const router = useRouter()
+const { hideAmounts, toggleHideAmounts } = useAmountVisibility()
 
 const showTopTabs = computed(() => {
   if (!authStore.isAuthenticated) return false
@@ -45,6 +47,9 @@ onMounted(() => {
         <el-tab-pane label="水电管理" name="utility" />
       </el-tabs>
       <div class="actions">
+        <el-button type="info" plain size="small" @click="toggleHideAmounts">
+          {{ hideAmounts ? '显示金额' : '隐藏金额' }}
+        </el-button>
         <span class="username">{{ authStore.displayName }}</span>
         <el-button type="danger" size="small" @click="handleLogout">退出登录</el-button>
       </div>

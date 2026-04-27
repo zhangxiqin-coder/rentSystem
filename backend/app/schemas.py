@@ -202,10 +202,11 @@ class CheckoutRequest(BaseModel):
 
 class CheckinRequest(BaseModel):
     """入住请求 schema"""
-    tenant_name: str = Field(..., min_length=1, max_length=100, description="租客姓名")
-    tenant_phone: str = Field(..., pattern=r'^1[3-9]\d{9}$', description="租客电话")
+    tenant_name: Optional[str] = Field(None, max_length=100, description="租客姓名（可为空）")
+    tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\d{9}$', description="租客电话（可为空）")
     lease_start: date = Field(..., description="租约开始日期")
     lease_end: date = Field(..., description="租约结束日期")
+    monthly_rent: Optional[Decimal] = Field(None, gt=0, description="月租金")
     deposit_amount: Optional[Decimal] = Field(None, ge=0, description="押金金额")
     payment_cycle: Optional[int] = Field(1, gt=0, le=12, description="付款周期（月）")
 

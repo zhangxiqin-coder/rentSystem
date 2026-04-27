@@ -7,9 +7,11 @@ import type { Room } from '@/types'
 import { roomApi } from '@/api/room'
 import RoomForm from '@/components/RoomForm.vue'
 import type { CreateRoomRequest, UpdateRoomRequest } from '@/types'
+import { useAmountVisibility } from '@/composables/useAmountVisibility'
 
 const router = useRouter()
 const route = useRoute()
+const { formatAmount } = useAmountVisibility()
 
 const rooms = ref<Room[]>([])
 const loading = ref(false)
@@ -129,6 +131,7 @@ const checkinForm = ref({
   tenant_phone: '',
   lease_start: '',
   lease_end: '',
+  monthly_rent: 0,
   deposit_amount: 0,
   payment_cycle: 1
 })
@@ -143,7 +146,12 @@ const handle退租 = (room: Room) => {
 const handle入住 = (room: Room) => {
   currentRoom.value = room
   // 默认付款周期为1
+  checkinForm.value.tenant_name = ''
+  checkinForm.value.tenant_phone = ''
+  checkinForm.value.lease_start = ''
+  checkinForm.value.lease_end = ''
   checkinForm.value.payment_cycle = Number(room.payment_cycle) || 1
+  checkinForm.value.monthly_rent = Number(room.monthly_rent) || 0
   checkinForm.value.deposit_amount = Number(room.deposit_amount) || 0
   checkinDialogVisible.value = true
 }
@@ -175,12 +183,6 @@ const confirm入住 = async () => {
   try {
     submitting.value = true
 
-    // 验证必填字段
-    if (!checkinForm.value.tenant_name || !checkinForm.value.tenant_phone) {
-      ElMessage.error('请填写租客姓名和电话')
-      return
-    }
-
     // 验证日期
     if (!checkinForm.value.lease_start || !checkinForm.value.lease_end) {
       ElMessage.error('请选择租约开始和结束日期')
@@ -208,6 +210,9 @@ const confirm入住 = async () => {
 
     const submitData = {
       ...checkinForm.value,
+      tenant_name: checkinForm.value.tenant_name?.trim() || undefined,
+      tenant_phone: checkinForm.value.tenant_phone?.trim() || undefined,
+      monthly_rent: Number(checkinForm.value.monthly_rent) > 0 ? Number(checkinForm.value.monthly_rent) : undefined,
       lease_start: startDateStr,
       lease_end: endDateStr
     }
@@ -221,9 +226,12 @@ const confirm入住 = async () => {
     await loadRooms()
   } catch (error: any) {
     console.error('❌ Checkin error:', error)
-    console.error('❌ Error response:', error.response)
-    console.error('❌ Error data:', error.response?.data)
-    ElMessage.error(error.response?.data?.detail || '入住失败')
+    const errorData = error?.response?.data || error
+    console.error('❌ Error data:', errorData)
+    const validationMessage = Array.isArray(errorData?.errors) && errorData.errors.length > 0
+      ? errorData.errors.map((e: any) => e?.msg || JSON.stringify(e)).join('；')
+      : ''
+    ElMessage.error(validationMessage || errorData?.detail || errorData?.message || '入住失败')
   } finally {
     submitting.value = false
   }
@@ -376,7 +384,7 @@ onMounted(() => {
         <el-table-column prop="building" label="楼栋" width="100" />
         <el-table-column prop="monthly_rent" label="Monthly Rent" width="120">
           <template #default="{ row }">
-            ${{ Number(row.monthly_rent || 0).toFixed(2) }}
+            {{ formatAmount(Number(row.monthly_rent || 0), '$') }}
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="120">
@@ -490,7 +498,7 @@ onMounted(() => {
           <span>{{ currentRoom?.tenant_name }}</span>
         </el-form-item>
         <el-form-item label="押金">
-          <span>¥{{ Number(currentRoom?.deposit_amount || 0).toFixed(2) }}</span>
+          <span>{{ formatAmount(Number(currentRoom?.deposit_amount || 0)) }}</span>
         </el-form-item>
         <el-form-item label="退款金额" required>
           <el-input-number
@@ -544,11 +552,11 @@ onMounted(() => {
         <el-form-item label="房间">
           <span>{{ currentRoom?.room_number }}</span>
         </el-form-item>
-        <el-form-item label="租客姓名" required>
-          <el-input v-model="checkinForm.tenant_name" placeholder="请输入租客姓名" />
+        <el-form-item label="租客姓名">
+          <el-input v-model="checkinForm.tenant_name" placeholder="可为空；为空时自动使用房间号" />
         </el-form-item>
-        <el-form-item label="租客电话" required>
-          <el-input v-model="checkinForm.tenant_phone" placeholder="请输入租客电话" />
+        <el-form-item label="租客电话">
+          <el-input v-model="checkinForm.tenant_phone" placeholder="可为空；填写时需为手机号" />
         </el-form-item>
         <el-form-item label="租约开始日期" required>
           <el-date-picker
@@ -563,6 +571,15 @@ onMounted(() => {
             v-model="checkinForm.lease_end"
             type="date"
             placeholder="选择结束日期"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="月租金">
+          <el-input-number
+            v-model="checkinForm.monthly_rent"
+            :min="0"
+            :precision="2"
+            :step="100"
             style="width: 100%"
           />
         </el-form-item>
