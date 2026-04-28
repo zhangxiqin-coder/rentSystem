@@ -7,7 +7,7 @@ import { roomApi } from '@/api/room'
 import { paymentApi } from '@/api/payment'
 import { useAmountVisibility } from '@/composables/useAmountVisibility'
 import UtilityReadingForm from '@/components/UtilityReadingForm.vue'
-import type { UtilityReading, Room } from '@/types'
+import type { UtilityReading, Room, Payment as RentPayment } from '@/types'
 import axios from 'axios'
 
 // 活动标签页
@@ -16,18 +16,35 @@ const { hideAmounts, formatAmount } = useAmountVisibility()
 
 // 水电记录列表（原始数据）
 const readings = ref<UtilityReading[]>([])
+const allReadings = ref<UtilityReading[]>([])
 const loading = ref(false)
 
 // 支付记录（用于判断是否已收租）
-const payments = ref<Payment[]>([])
-
-// 即将到期的房间
-const expiringRooms = ref<Room[]>([])
+const payments = ref<RentPayment[]>([])
 
 // 所有房间（用于计算欠租）
 const allRooms = ref<Room[]>([])
 
 // 欠租房间
+const ADVANCE_RENT_COLLECTION_DAYS = 1 // 收租提前天数：例如应交日28号，则27号开始计入欠租管理
+const OVERDUE_IGNORE_BEFORE_TS = new Date('2026-04-22T00:00:00').getTime() // 历史账务豁免日期（不含当天）
+const latestUnpaidUtilityAmountByRoom = computed(() => {
+  const roomAmountMap = new Map<number, number>()
+  const mergedList = mergeReadings(allReadings.value)
+
+  // mergeReadings 已按日期倒序，首条即最近记录
+  mergedList.forEach(item => {
+    if (roomAmountMap.has(item.room_id)) return
+    if (item.is_paid) return
+    const utilityAmount =
+      Number(item.water_reading?.amount || 0) +
+      Number(item.electricity_reading?.amount || 0)
+    roomAmountMap.set(item.room_id, utilityAmount)
+  })
+
+  return roomAmountMap
+})
+
 const overdueRooms = computed(() => {
   const overdue: Array<{
     room: Room
@@ -38,16 +55,25 @@ const overdueRooms = computed(() => {
   }> = []
 
   allRooms.value.forEach(room => {
+    if (room.status !== 'occupied') return
+    if (hasPaidThisMonth(room)) return
+    if (hasRecentRentPayment(room.id)) return
+
+    const { targetDue } = getPaymentDueContext(room)
+    // 业务规则：4/22之前应交的历史账务不再追踪，但 502-2 继续保留在欠租管理
+    if (room.room_number !== '502-2' && targetDue.getTime() < OVERDUE_IGNORE_BEFORE_TS) return
+
     const nextPaymentDate = getNextPaymentDate(room)
     const nextPaymentDays = getNextPaymentDays(room)
 
-    // 如果下次收租日期是今天或之前，说明欠租
-    if (nextPaymentDays <= 0) {
-      const overdueDays = Math.abs(nextPaymentDays)
+    // 如果距离应交日 <= 提前收租天数，计入欠租管理（支持提前1天收租）
+    if (nextPaymentDays <= ADVANCE_RENT_COLLECTION_DAYS) {
+      const overdueDays = Math.max(0, -nextPaymentDays)
       const lastPaymentDate = room.last_payment_date || room.lease_start
 
-      // 计算欠租金额（房租 + 估算的水电费）
-      const overdueAmount = room.monthly_rent + 100 // 估算水电费100元
+      // 计算欠费总额（房租 + 最近未结清水电）
+      const utilityAmount = latestUnpaidUtilityAmountByRoom.value.get(room.id) || 0
+      const overdueAmount = Number(room.monthly_rent || 0) + utilityAmount
 
       overdue.push({
         room,
@@ -61,6 +87,19 @@ const overdueRooms = computed(() => {
 
   // 按欠租天数排序（天数越多越靠前）
   return overdue.sort((a, b) => b.overdueDays - a.overdueDays)
+})
+
+// 即将到期房间（2~7天内；提前1天及当天已归入欠租管理）
+const expiringRooms = computed(() => {
+  return allRooms.value
+    .filter(room => room.status === 'occupied')
+    .filter(room => !hasPaidThisMonth(room))
+    .filter(room => !hasRecentRentPayment(room.id))
+    .filter(room => {
+      const days = getNextPaymentDays(room)
+      return days > ADVANCE_RENT_COLLECTION_DAYS && days <= 7
+    })
+    .sort((a, b) => getNextPaymentDays(a) - getNextPaymentDays(b))
 })
 
 // 收租对话框
@@ -558,6 +597,23 @@ const openUtilityForm = (roomId?: number) => {
 }
 
 // 加载水电记录列表
+const loadAllReadings = async () => {
+  const loaded: UtilityReading[] = []
+  let page = 1
+  let hasMore = true
+
+  while (hasMore) {
+    const res = await utilityApi.getReadings({ page, size: 100 })
+    const items = res.data.items || []
+    loaded.push(...items)
+
+    hasMore = items.length === 100
+    page += 1
+  }
+
+  return loaded
+}
+
 const loadReadings = async () => {
   loading.value = true
   try {
@@ -576,12 +632,17 @@ const loadReadings = async () => {
       params.end_date = filters.value.end_date
     }
 
-    const res = await utilityApi.getReadings(params)
+    const [res, allItems, paymentsRes] = await Promise.all([
+      utilityApi.getReadings(params),
+      loadAllReadings(),
+      paymentApi.getPayments({ size: 1000 })
+    ])
+
     readings.value = res.data.items || []
+    allReadings.value = allItems
     pagination.value.total = res.data.total || 0
-    
+
     // 同时加载支付记录，用于判断是否已收租
-    const paymentsRes = await paymentApi.getPayments({ size: 1000 })
     payments.value = paymentsRes.data.items || []
   } catch (error) {
     console.error('Failed to load readings:', error)
@@ -596,45 +657,27 @@ const loadRooms = async () => {
   roomsLoading.value = true
   try {
     // 后端API限制size最大为100，需要分页加载
-    let allRooms: Room[] = []
+    let loadedRooms: Room[] = []
     let page = 1
     let hasMore = true
     
     while (hasMore) {
       const res = await roomApi.getRooms({ page, size: 100 })
       const items = res.data.items || []
-      allRooms = [...allRooms, ...items]
+      loadedRooms = [...loadedRooms, ...items]
       
       // 如果返回的数据少于100条，说明没有更多数据了
       hasMore = items.length === 100
       page++
     }
     
-    roomOptions.value = allRooms
-    allRooms.value = allRooms // 设置所有房间，用于计算欠租
+    roomOptions.value = loadedRooms
+    allRooms.value = loadedRooms // 设置所有房间，用于计算欠租/即将到期
   } catch (error) {
     console.error('Failed to load rooms:', error)
     ElMessage.error('加载房间列表失败')
   } finally {
     roomsLoading.value = false
-  }
-}
-
-// 加载即将到期的房间
-const loadExpiringRooms = async () => {
-  try {
-    const response = await roomApi.getExpiringSoon(7)
-    const allExpiringRooms = response.data || []
-    
-    // 过滤掉今天已收租的房间
-    const today = new Date().toISOString().split('T')[0]
-    expiringRooms.value = allExpiringRooms.filter((room: Room) => {
-      // 如果没有收租记录，或者收租日期不是今天，都显示
-      return !room.last_payment_date || room.last_payment_date !== today
-    })
-  } catch (error) {
-    console.error('Failed to load expiring rooms:', error)
-    // 静默失败，不显示错误消息
   }
 }
 
@@ -686,53 +729,52 @@ const formatDate = (dateStr: string) => {
   })
 }
 
+// 获取最近一次收租明细文本（用于催租消息）
+const getLatestCollectionDetailText = async (room: Room) => {
+  try {
+    const res = await utilityApi.getReadingsByRoom(room.id, { page: 1, size: 50 })
+    const mergedList = mergeReadings(res.data.items || [])
+    const latest = mergedList[0]
+    if (!latest) return `【${room.room_number} 收租明细】\n抄表日期：-\n\n💰 合计：${formatAmount(Number(room.monthly_rent || 0))}\n🏠 房租：${formatAmount(Number(room.monthly_rent || 0))}\n💧 水费：暂无抄表记录\n⚡ 电费：暂无抄表记录`
+
+    const date = new Date(latest.reading_date).toLocaleDateString('zh-CN')
+    const rent = Number(room.monthly_rent || 0)
+    const water = latest.water_reading
+    const electric = latest.electricity_reading
+
+    const waterPrev = Number(water?.previous_reading || 0)
+    const waterCurr = Number(water?.reading || 0)
+    const waterUsage = Number(water?.usage ?? Math.max(0, waterCurr - waterPrev))
+    const waterRate = Number(water?.rate_used ?? room.water_rate ?? 0)
+    const waterAmount = Number(water?.amount || 0)
+
+    const elecPrev = Number(electric?.previous_reading || 0)
+    const elecCurr = Number(electric?.reading || 0)
+    const elecUsage = Number(electric?.usage ?? Math.max(0, elecCurr - elecPrev))
+    const elecRate = Number(electric?.rate_used ?? room.electricity_rate ?? 0)
+    const elecAmount = Number(electric?.amount || 0)
+
+    const total = rent + waterAmount + elecAmount
+
+    const waterLine = water
+      ? `💧 水费：${waterPrev}→${waterCurr}（用量${waterUsage}吨 × ¥${waterRate}/吨 = ${formatAmount(waterAmount)}）`
+      : '💧 水费：暂无抄表记录'
+    const electricLine = electric
+      ? `⚡ 电费：${elecPrev}→${elecCurr}（用量${elecUsage}度 × ¥${elecRate}/度 = ${formatAmount(elecAmount)}）`
+      : '⚡ 电费：暂无抄表记录'
+
+    return `【${room.room_number} 收租明细】\n抄表日期：${date}\n\n💰 合计：${formatAmount(total)}\n🏠 房租：${formatAmount(rent)}\n${waterLine}\n${electricLine}`
+  } catch {
+    return `【${room.room_number} 收租明细】\n抄表日期：-\n\n💰 合计：${formatAmount(Number(room.monthly_rent || 0))}\n🏠 房租：${formatAmount(Number(room.monthly_rent || 0))}\n💧 水费：获取失败\n⚡ 电费：获取失败`
+  }
+}
+
 // 一键催租
 const sendReminder = async (room: Room, type: 'overdue' | 'upcoming') => {
   try {
-    const today = new Date().toLocaleDateString('zh-CN')
-    const nextPaymentDate = formatDate(getNextPaymentDate(room))
-    const days = getNextPaymentDays(room)
-
     let message = ''
 
-    if (type === 'overdue') {
-      const overdueDays = Math.abs(days)
-      message = `【欠租催缴通知】
-
-亲爱的${room.room_number}租客：
-
-您好！温馨提醒您，您的房租已逾期${overdueDays}天。
-
-📋 租赁信息：
-• 房间号：${room.room_number}
-• 房租金额：${hideAmounts.value ? '****/月' : `¥${room.monthly_rent}/月`}
-• 收租周期：${room.payment_cycle === 1 ? '月付' : room.payment_cycle === 3 ? '季付' : '年付'}
-• 上次交租：${room.last_payment_date ? formatDate(room.last_payment_date) : '未知'}
-• 应交日期：${nextPaymentDate}
-• 逾期天数：${overdueDays}天
-• 欠租金额：约${formatAmount(room.monthly_rent + 100)}
-
-请您尽快支付房租，避免产生更多滞纳金。如有特殊情况，请及时与我们联系。
-
-感谢您的配合！🙏`
-    } else {
-      message = `【收租温馨提醒】
-
-亲爱的${room.room_number}租客：
-
-您好！温馨提醒您，下次收租日期即将到来。
-
-📋 租赁信息：
-• 房间号：${room.room_number}
-• 房租金额：${hideAmounts.value ? '****/月' : `¥${room.monthly_rent}/月`}
-• 收租周期：${room.payment_cycle === 1 ? '月付' : room.payment_cycle === 3 ? '季付' : '年付'}
-• 下次收租：${nextPaymentDate}
-• 距离天数：${days}天
-
-请您提前准备好房租，我们将在${days}天内联系您收取。
-
-感谢您的配合！🙏`
-    }
+    message = await getLatestCollectionDetailText(room)
 
     // 复制到剪贴板
     await navigator.clipboard.writeText(message)
@@ -746,58 +788,105 @@ const sendReminder = async (room: Room, type: 'overdue' | 'upcoming') => {
   }
 }
 
-// 计算下次收租日期
-const getNextPaymentDate = (room: Room) => {
-  const lastPayment = room.last_payment_date || room.lease_start
-  const lastDate = new Date(lastPayment)
+const toStartOfDay = (date: Date) => {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
 
-  // 计算下次收租日期：lastDate + payment_cycle个月
-  const nextDate = new Date(lastDate)
-  // 先设置日期为1，避免溢出（比如1月31日加1个月会变成3月）
-  nextDate.setDate(1)
-  nextDate.setMonth(nextDate.getMonth() + room.payment_cycle)
+const RECENT_PAYMENT_DAYS = 7
+const hasRecentRentPayment = (roomId: number) => {
+  const today = toStartOfDay(new Date())
+  return payments.value.some(payment => {
+    if (payment.room_id !== roomId) return false
+    if (!payment.payment_date) return false
+    if (payment.status === 'cancelled') return false
 
-  // 恢复原始日期，处理月份天数不足的情况
-  const lastDay = lastDate.getDate()
-  const daysInMonth = new Date(nextDate.getFullYear(), nextDate.getMonth() + 1, 0).getDate()
-  if (lastDay > daysInMonth) {
-    nextDate.setDate(daysInMonth)
-  } else {
-    nextDate.setDate(lastDay)
+    const paymentDate = toStartOfDay(new Date(payment.payment_date))
+    const diffDays = Math.floor((today.getTime() - paymentDate.getTime()) / (1000 * 60 * 60 * 24))
+    return diffDays >= 0 && diffDays <= RECENT_PAYMENT_DAYS
+  })
+}
+
+const isSameMonth = (a: Date, b: Date) => {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()
+}
+
+const hasPaidThisMonth = (room: Room) => {
+  const today = toStartOfDay(new Date())
+
+  // 历史导入场景：没有 payment 记录，但 last_payment_date 已更新，视为本月已收
+  if (room.last_payment_date) {
+    const lastPaid = toStartOfDay(new Date(room.last_payment_date))
+    if (isSameMonth(lastPaid, today)) return true
   }
 
-  return nextDate.toLocaleDateString('zh-CN', {
+  return payments.value.some(payment => {
+    if (payment.room_id !== room.id) return false
+    if (!payment.payment_date) return false
+    if (payment.status === 'cancelled') return false
+    const paymentDate = toStartOfDay(new Date(payment.payment_date))
+    return isSameMonth(paymentDate, today)
+  })
+}
+
+const buildDueDate = (year: number, month: number, day: number) => {
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  return new Date(year, month, Math.min(day, daysInMonth))
+}
+
+const addMonthsByDueDay = (base: Date, months: number, dueDay: number) => {
+  const d = new Date(base)
+  d.setDate(1)
+  d.setMonth(d.getMonth() + months)
+  const adjusted = buildDueDate(d.getFullYear(), d.getMonth(), dueDay)
+  adjusted.setHours(0, 0, 0, 0)
+  return adjusted
+}
+
+const getPaymentDueContext = (room: Room) => {
+  const today = toStartOfDay(new Date())
+  const cycleMonths = Math.max(1, Number(room.payment_cycle || 1))
+  const anchorSource = room.lease_start || room.last_payment_date || new Date().toISOString().split('T')[0]
+  const anchorDate = toStartOfDay(new Date(anchorSource))
+  const dueDay = anchorDate.getDate()
+
+  let cursor = buildDueDate(anchorDate.getFullYear(), anchorDate.getMonth(), dueDay)
+  cursor = toStartOfDay(cursor)
+  let previousDue: Date | null = null
+
+  while (cursor <= today) {
+    previousDue = cursor
+    cursor = addMonthsByDueDay(cursor, cycleMonths, dueDay)
+  }
+
+  const nextDue = cursor
+  const currentCycleDue = previousDue || buildDueDate(today.getFullYear(), today.getMonth(), dueDay)
+  const currentCycleDueStart = toStartOfDay(currentCycleDue)
+  const lastPaid = room.last_payment_date ? toStartOfDay(new Date(room.last_payment_date)) : null
+  const paidCurrentCycle =
+    hasRecentRentPayment(room.id) ||
+    !!(lastPaid && lastPaid >= currentCycleDueStart)
+
+  const targetDue = paidCurrentCycle ? nextDue : currentCycleDueStart
+  const daysToDue = Math.ceil((targetDue.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+
+  return { targetDue, nextDue, currentCycleDue: currentCycleDueStart, paidCurrentCycle, daysToDue }
+}
+
+// 计算收租目标日期（当前周期未收则显示当前应交日；已收则显示下一次应交日）
+const getNextPaymentDate = (room: Room) => {
+  const { targetDue } = getPaymentDueContext(room)
+  return targetDue.toLocaleDateString('zh-CN', {
     year: 'numeric',
     month: 'long',
     day: 'numeric'
   })
 }
 
-// 计算距离下次收租的天数
+// 计算距离收租目标日期的天数（正数=未到期，0=当天，负数=已逾期）
 const getNextPaymentDays = (room: Room) => {
-  const lastPayment = room.last_payment_date || room.lease_start
-  const lastDate = new Date(lastPayment)
-
-  // 计算下次收租日期
-  const nextDate = new Date(lastDate)
-  // 先设置日期为1，避免溢出
-  nextDate.setDate(1)
-  nextDate.setMonth(nextDate.getMonth() + room.payment_cycle)
-
-  const lastDay = lastDate.getDate()
-  const daysInMonth = new Date(nextDate.getFullYear(), nextDate.getMonth() + 1, 0).getDate()
-  if (lastDay > daysInMonth) {
-    nextDate.setDate(daysInMonth)
-  } else {
-    nextDate.setDate(lastDay)
-  }
-
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)  // 清除时分秒，确保准确计算天数
-  nextDate.setHours(0, 0, 0, 0)
-
-  const diff = Math.ceil((nextDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-  return diff  // 返回实际天数差，可以是负数（表示逾期）
+  return getPaymentDueContext(room).daysToDue
 }
 
 // 获取房间号
@@ -1045,10 +1134,9 @@ const submitPayment = async () => {
     if (response.data.success) {
       ElMessage.success(`收租记录创建成功！实收：${formatAmount(Number(response.data.total_actual || 0))}`)
       paymentDialogVisible.value = false
-      // 刷新列表
+      // 刷新列表与房间状态（用于重新计算欠租/到期）
       loadReadings()
-      // 刷新即将到期列表（排除今天已收租的房间）
-      loadExpiringRooms()
+      loadRooms()
     }
   } catch (error: any) {
     console.error('Failed to create payment:', error)
@@ -1301,7 +1389,6 @@ const handleSizeChange = (size: number) => {
 onMounted(() => {
   loadRooms() // 先加载房间列表
   loadReadings()
-  loadExpiringRooms() // 加载即将到期的房间
 })
 </script>
 
@@ -1346,7 +1433,7 @@ onMounted(() => {
               <el-tag size="small" type="danger">逾期{{ item.overdueDays }}天</el-tag>
             </div>
             <div class="lease-info">
-              <span class="overdue-amount">欠费约: {{ maskedAmount(item.overdueAmount) }}</span>
+              <span class="overdue-amount">欠费总额: {{ maskedAmount(item.overdueAmount) }}</span>
               <el-button type="danger" size="small" @click="sendReminder(item.room, 'overdue')">
                 📱 催租
               </el-button>

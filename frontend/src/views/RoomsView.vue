@@ -64,7 +64,7 @@ const loadRooms = async () => {
     rooms.value = response.data.items
     total.value = response.data.total
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || 'Failed to load rooms')
+    ElMessage.error(error.response?.data?.message || '加载房间失败')
   } finally {
     loading.value = false
   }
@@ -93,7 +93,7 @@ const handle编辑 = (room: Room) => {
 const handle删除 = async (room: Room) => {
   try {
     await ElMessageBox.confirm(
-      `Are you sure you want to delete room ${room.room_number}?`,
+      `确认要删除房间 ${room.room_number} 吗？`,
       '确认删除',
       {
         confirmButtonText: '删除',
@@ -107,7 +107,7 @@ const handle删除 = async (room: Room) => {
     await loadRooms()
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || 'Failed to delete room')
+      ElMessage.error(error.response?.data?.message || '删除房间失败')
     }
   }
 }
@@ -268,7 +268,7 @@ const handleSubmit = async (data: CreateRoomRequest | UpdateRoomRequest) => {
     console.error('❌ Save error:', error)
     console.error('❌ Error response:', error.response)
     console.error('❌ Error data:', error.response?.data)
-    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || 'Failed to save room')
+    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '保存房间失败')
   } finally {
     submitting.value = false
   }
@@ -382,7 +382,17 @@ onMounted(() => {
       >
         <el-table-column prop="room_number" label="房间号" width="120" />
         <el-table-column prop="building" label="楼栋" width="100" />
-        <el-table-column prop="monthly_rent" label="Monthly Rent" width="120">
+        <el-table-column prop="tenant_name" label="租客" width="120">
+          <template #default="{ row }">
+            {{ row.tenant_name || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="lease_end" label="租约结束" width="120">
+          <template #default="{ row }">
+            {{ row.lease_end ? row.lease_end.split('T')[0] : '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="monthly_rent" label="租金" width="120">
           <template #default="{ row }">
             {{ formatAmount(Number(row.monthly_rent || 0), '$') }}
           </template>
@@ -392,16 +402,6 @@ onMounted(() => {
             <el-tag :type="getStatusType(row.status)">
               {{ getStatusLabel(row.status) }}
             </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="tenant_name" label="Tenant" width="120">
-          <template #default="{ row }">
-            {{ row.tenant_name || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="lease_end" label="Lease End" width="120">
-          <template #default="{ row }">
-            {{ row.lease_end ? row.lease_end.split('T')[0] : '-' }}
           </template>
         </el-table-column>
         <el-table-column prop="water_rate" label="水费率 (元/吨)" width="120">
@@ -472,7 +472,7 @@ onMounted(() => {
     <!-- Room Form Dialog -->
     <el-dialog
       v-model="dialogVisible"
-      :title="editingRoom ? '编辑 Room' : 'Create Room'"
+      :title="editingRoom ? '编辑房间' : '创建房间'"
       width="600px"
       @close="handleDialogClose"
     >
