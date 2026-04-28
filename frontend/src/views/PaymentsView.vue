@@ -37,6 +37,16 @@ const { hideAmounts, formatAmount } = useAmountVisibility()
 const selectedGroups = ref<string[]>([])
 const selectAll = ref(false)
 
+const getStatusLabel = (status: string) => {
+  const labels: Record<string, string> = {
+    pending: '待处理',
+    completed: '已完成',
+    overdue: '逾期',
+    cancelled: '已取消',
+  }
+  return labels[status] || status
+}
+
 // 合并同一次收租的记录（按 room_id + payment_date 分组）
 const groupedPayments = computed(() => {
   const groups: { [key: string]: any } = {}
@@ -53,7 +63,7 @@ const groupedPayments = computed(() => {
       // 优先使用API返回的room_number，如果没有才从rooms数组查找
       const roomNumber = payment.room_number || 
                         rooms.value.find(r => r.id === payment.room_id)?.room_number || 
-                        `Room ${payment.room_id}`
+                        `房间 ${payment.room_id}`
       groups[key] = {
         room_id: payment.room_id,
         room_number: roomNumber,
@@ -273,7 +283,7 @@ const loadPayments = async () => {
     payments.value = paymentsRes.data.items
     rooms.value = roomsRes.data.items || roomsRes.data
   } catch (error) {
-    console.error('Failed to load payments:', error)
+    console.error('加载缴费记录失败:', error)
   } finally {
     loading.value = false
   }
@@ -378,7 +388,7 @@ onMounted(() => {
 <template>
   <div class="payments-view">
     <header class="view-header">
-      <h1>Payments</h1>
+      <h1>缴费记录</h1>
     </header>
 
     <main class="view-content">
@@ -415,7 +425,7 @@ onMounted(() => {
         <v-chart :option="chartOption" style="height: 400px" autoresize />
       </div>
 
-      <div v-if="loading" class="loading">Loading...</div>
+      <div v-if="loading" class="loading">加载中...</div>
       <div v-else class="payments-list">
         <table>
           <thead>
@@ -452,7 +462,7 @@ onMounted(() => {
               <td>{{ formatAmount(payment.water) }}</td>
               <td>{{ formatAmount(payment.electricity) }}</td>
               <td :class="{ 'negative-amount': payment.total < 0 }"><strong>{{ formatAmount(payment.total) }}</strong></td>
-              <td :class="`status-${payment.status}`">{{ payment.status }}</td>
+              <td :class="`status-${payment.status}`">{{ getStatusLabel(payment.status) }}</td>
               <td>
                 <button @click="handleDeleteGroup(payment)" class="delete-btn">
                   🗑️ 删除

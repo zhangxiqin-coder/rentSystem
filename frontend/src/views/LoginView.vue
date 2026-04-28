@@ -24,15 +24,15 @@ const validateField = (field: string): string | null => {
   switch (field) {
     case 'username':
       if (!value || value.trim().length === 0) {
-        return 'Username is required'
+        return '请输入用户名'
       }
       if (value.length < 3) {
-        return 'Username must be at least 3 characters'
+        return '用户名至少3个字符'
       }
       break
     case 'password':
       if (!value || value.length === 0) {
-        return 'Password is required'
+        return '请输入密码'
       }
       break
   }
@@ -110,7 +110,7 @@ watch(() => authStore.error, (newError) => {
       <h1>登录</h1>
       <form @submit.prevent="handle登录" novalidate>
         <div class="form-group" :class="{ 'has-error': hasError('username') }">
-          <label for="username">Username</label>
+          <label for="username">用户名</label>
           <input
             id="username"
             v-model="form.username"
@@ -126,7 +126,7 @@ watch(() => authStore.error, (newError) => {
         </div>
 
         <div class="form-group" :class="{ 'has-error': hasError('password') }">
-          <label for="password">Password</label>
+          <label for="password">密码</label>
           <input
             id="password"
             v-model="form.password"
@@ -147,12 +147,12 @@ watch(() => authStore.error, (newError) => {
 
         <button type="submit" :disabled="loading || !isFormValid" class="submit-btn">
           <span v-if="loading" class="loading-spinner"></span>
-          {{ loading ? 'Logging in...' : '登录' }}
+          {{ loading ? '登录中...' : '登录' }}
         </button>
       </form>
 
       <p class="register-link">
-        还没有账户？ <router-link to="/register">Register</router-link>
+        还没有账户？ <router-link to="/register">去注册</router-link>
       </p>
     </div>
   </div>

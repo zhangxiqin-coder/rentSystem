@@ -41,18 +41,18 @@ const formData = ref<CreateRoomRequest>({
 
 const rules: FormRules<CreateRoomRequest> = {
   room_number: [
-    { required: true, message: 'Please enter room number', trigger: 'blur' },
+    { required: true, message: '请输入房间号', trigger: 'blur' },
   ],
   monthly_rent: [
-    { required: true, message: 'Please enter monthly rent', trigger: 'blur' },
-    { type: 'number', min: 0, message: 'Rent must be positive', trigger: 'blur' },
+    { required: true, message: '请输入租金', trigger: 'blur' },
+    { type: 'number', min: 0, message: '租金必须大于等于0', trigger: 'blur' },
   ],
   payment_cycle: [
-    { required: true, message: 'Please enter payment cycle', trigger: 'blur' },
-    { type: 'number', min: 1, message: 'Payment cycle must be at least 1', trigger: 'blur' },
+    { required: true, message: '请输入付款周期', trigger: 'blur' },
+    { type: 'number', min: 1, message: '付款周期至少为1', trigger: 'blur' },
   ],
   status: [
-    { required: true, message: 'Please select status', trigger: 'change' },
+    { required: true, message: '请选择状态', trigger: 'change' },
   ],
 }
 
@@ -90,7 +90,7 @@ const handleSubmit = async () => {
     if (valid) {
       emit('submit', formData.value)
     } else {
-      ElMessage.error('Please fix the form errors')
+      ElMessage.error('请先修正表单中的错误')
     }
   })
 }
@@ -112,14 +112,14 @@ const resetForm = () => {
     label-width="140px"
     label-position="right"
   >
-    <el-divider content-position="left">Basic Information</el-divider>
+    <el-divider content-position="left">基础信息</el-divider>
 
     <el-form-item label="房间号" prop="room_number">
-      <el-input v-model="formData.room_number" placeholder="e.g., A101" />
+      <el-input v-model="formData.room_number" placeholder="例如：A101" />
     </el-form-item>
 
     <el-form-item label="楼栋" prop="building">
-      <el-input v-model="formData.building" placeholder="e.g., Building A" />
+      <el-input v-model="formData.building" placeholder="例如：A栋" />
     </el-form-item>
 
     <el-form-item label="楼层" prop="floor">
@@ -127,45 +127,45 @@ const resetForm = () => {
         v-model="formData.floor"
         :min="1"
         :max="100"
-        placeholder="Floor number"
+        placeholder="请输入楼层"
       />
     </el-form-item>
 
-    <el-form-item label="Area (sqm)" prop="area">
+    <el-form-item label="面积（㎡）" prop="area">
       <el-input-number
         v-model="formData.area"
         :min="1"
         :precision="2"
-        placeholder="Room area"
+        placeholder="请输入面积"
       />
     </el-form-item>
 
-    <el-divider content-position="left">Financial Information</el-divider>
+    <el-divider content-position="left">费用信息</el-divider>
 
-    <el-form-item label="Monthly Rent" prop="monthly_rent">
+    <el-form-item label="租金" prop="monthly_rent">
       <el-input-number
         v-model="formData.monthly_rent"
         :min="0"
         :precision="2"
-        placeholder="Monthly rent amount"
+        placeholder="请输入租金"
       />
     </el-form-item>
 
-    <el-form-item label="Deposit Amount" prop="deposit_amount">
+    <el-form-item label="押金" prop="deposit_amount">
       <el-input-number
         v-model="formData.deposit_amount"
         :min="0"
         :precision="2"
-        placeholder="Deposit amount"
+        placeholder="请输入押金"
       />
     </el-form-item>
 
     <el-form-item label="付款周期" prop="payment_cycle">
-      <el-select v-model="formData.payment_cycle" placeholder="Select payment cycle">
-        <el-option label="Monthly" :value="1" />
-        <el-option label="Quarterly" :value="3" />
-        <el-option label="Semi-annually" :value="6" />
-        <el-option label="Annually" :value="12" />
+      <el-select v-model="formData.payment_cycle" placeholder="请选择付款周期">
+        <el-option label="月付" :value="1" />
+        <el-option label="季付" :value="3" />
+        <el-option label="半年付" :value="6" />
+        <el-option label="年付" :value="12" />
       </el-select>
     </el-form-item>
 
@@ -193,10 +193,10 @@ const resetForm = () => {
       <span style="margin-left: 10px; color: #909399;">默认 1.00 元/度</span>
     </el-form-item>
 
-    <el-divider content-position="left">Status & Tenant</el-divider>
+    <el-divider content-position="left">状态与租客</el-divider>
 
     <el-form-item label="状态" prop="status">
-      <el-select v-model="formData.status" placeholder="Select status">
+      <el-select v-model="formData.status" placeholder="请选择状态">
         <el-option label="空置" value="available" />
         <el-option label="已出租" value="occupied" />
         <el-option label="维修中" value="maintenance" />
@@ -211,41 +211,41 @@ const resetForm = () => {
       <el-input v-model="formData.tenant_phone" placeholder="租客电话" />
     </el-form-item>
 
-    <el-form-item label="Lease Start" prop="lease_start">
+    <el-form-item label="租约开始" prop="lease_start">
       <el-date-picker
         v-model="formData.lease_start"
         type="date"
-        placeholder="Select start date"
+        placeholder="请选择开始日期"
         value-format="YYYY-MM-DD"
       />
     </el-form-item>
 
-    <el-form-item label="Lease End" prop="lease_end">
+    <el-form-item label="租约结束" prop="lease_end">
       <el-date-picker
         v-model="formData.lease_end"
         type="date"
-        placeholder="Select end date"
+        placeholder="请选择结束日期"
         value-format="YYYY-MM-DD"
       />
     </el-form-item>
 
-    <el-divider content-position="left">Additional Information</el-divider>
+    <el-divider content-position="left">补充信息</el-divider>
 
     <el-form-item label="描述" prop="description">
       <el-input
         v-model="formData.description"
         type="textarea"
         :rows="3"
-        placeholder="Room description"
+        placeholder="请输入房间描述"
       />
     </el-form-item>
 
     <el-form-item>
       <el-button type="primary" :loading="loading" @click="handleSubmit">
-        {{ room ? 'Update' : 'Create' }} Room
+        {{ room ? '更新房间' : '创建房间' }}
       </el-button>
       <el-button @click="handle取消">取消</el-button>
-      <el-button v-if="!room" @click="resetForm">Reset</el-button>
+      <el-button v-if="!room" @click="resetForm">重置</el-button>
     </el-form-item>
   </el-form>
 </template>

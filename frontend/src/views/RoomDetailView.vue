@@ -45,7 +45,7 @@ const loadRoom = async () => {
     const response = await roomApi.getRoom(roomId.value)
     room.value = response.data
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || 'Failed to load room')
+    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '加载房间失败')
     router.push('/rooms')
   } finally {
     loading.value = false
@@ -61,7 +61,7 @@ const loadPayments = async () => {
     })
     payments.value = response.data.items
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || 'Failed to load payments')
+    ElMessage.error(error.response?.data?.message || '加载缴费记录失败')
   } finally {
     paymentsLoading.value = false
   }
@@ -76,7 +76,7 @@ const loadUtilityReadings = async () => {
     })
     utilityReadings.value = response.data.items
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || 'Failed to load utility readings')
+    ElMessage.error(error.response?.data?.message || '加载水电记录失败')
   } finally {
     utilityLoading.value = false
   }
@@ -95,21 +95,21 @@ const handleEditPayment = (payment: Payment) => {
 const handleDeletePayment = async (payment: Payment) => {
   try {
     await ElMessageBox.confirm(
-      `Are you sure you want to delete this payment?`,
-      'Confirm Delete',
+      `确认要删除这条缴费记录吗？`,
+      '确认删除',
       {
-        confirmButtonText: 'Delete',
-        cancelButtonText: 'Cancel',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
         type: 'warning',
       },
     )
 
     await paymentApi.deletePayment(payment.id)
-    ElMessage.success('Payment deleted successfully')
+    ElMessage.success('缴费记录删除成功')
     await loadPayments()
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || 'Failed to delete payment')
+      ElMessage.error(error.response?.data?.message || '删除缴费记录失败')
     }
   }
 }
@@ -119,15 +119,15 @@ const handleSubmitPayment = async (data: any) => {
   try {
     if (editingPayment.value) {
       await paymentApi.updatePayment(editingPayment.value.id, data)
-      ElMessage.success('Payment updated successfully')
+      ElMessage.success('缴费记录更新成功')
     } else {
       await paymentApi.createPayment({ ...data, room_id: roomId.value })
-      ElMessage.success('Payment created successfully')
+      ElMessage.success('缴费记录创建成功')
     }
     paymentDialogVisible.value = false
     await loadPayments()
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || 'Failed to save payment')
+    ElMessage.error(error.response?.data?.message || '保存缴费记录失败')
   } finally {
     paymentSubmitting.value = false
   }
@@ -146,21 +146,21 @@ const handleEditUtilityReading = (reading: UtilityReading) => {
 const handleDeleteUtilityReading = async (reading: UtilityReading) => {
   try {
     await ElMessageBox.confirm(
-      `Are you sure you want to delete this reading?`,
-      'Confirm Delete',
+      `确认要删除这条抄表记录吗？`,
+      '确认删除',
       {
-        confirmButtonText: 'Delete',
-        cancelButtonText: 'Cancel',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
         type: 'warning',
       },
     )
 
     await utilityApi.deleteReading(reading.id)
-    ElMessage.success('Reading deleted successfully')
+    ElMessage.success('抄表记录删除成功')
     await loadUtilityReadings()
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || 'Failed to delete reading')
+      ElMessage.error(error.response?.data?.message || '删除抄表记录失败')
     }
   }
 }
@@ -170,15 +170,15 @@ const handleSubmitUtilityReading = async (data: any) => {
   try {
     if (editingUtilityReading.value) {
       await utilityApi.updateReading(editingUtilityReading.value.id, data)
-      ElMessage.success('Reading updated successfully')
+      ElMessage.success('抄表记录更新成功')
     } else {
       await utilityApi.createReading({ ...data, room_id: roomId.value })
-      ElMessage.success('Reading created successfully')
+      ElMessage.success('抄表记录创建成功')
     }
     utilityDialogVisible.value = false
     await loadUtilityReadings()
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || 'Failed to save reading')
+    ElMessage.error(error.response?.data?.message || '保存抄表记录失败')
   } finally {
     utilitySubmitting.value = false
   }
@@ -194,23 +194,49 @@ const get状态Type = (status: string) => {
   return types[status] || 'info'
 }
 
+const get状态Label = (status: string) => {
+  const labels: Record<string, string> = {
+    available: '空置',
+    occupied: '已出租',
+    maintenance: '维修中',
+    pending: '待处理',
+    completed: '已完成',
+    overdue: '逾期',
+    cancelled: '已取消',
+  }
+  return labels[status] || status
+}
+
 const getPaymentTypeLabel = (type: string) => {
   const labels: Record<string, string> = {
-    rent: 'Rent',
-    deposit: 'Deposit',
-    utility: 'Utility',
-    other: 'Other',
+    rent: '房租',
+    deposit: '押金',
+    utility: '水电费',
+    other: '其他',
   }
   return labels[type] || type
 }
 
 const getUtilityTypeLabel = (type: string) => {
   const labels: Record<string, string> = {
-    water: 'Water',
-    electricity: 'Electricity',
-    gas: 'Gas',
+    water: '水',
+    electricity: '电',
+    gas: '燃气',
   }
   return labels[type] || type
+}
+
+const getPaymentMethodLabel = (method?: string | null) => {
+  const labels: Record<string, string> = {
+    cash: '现金',
+    bank_transfer: '银行转账',
+    credit_card: '信用卡',
+    wechat_pay: '微信支付',
+    alipay: '支付宝',
+    other: '其他',
+  }
+  if (!method) return '-'
+  return labels[method] || method
 }
 
 const getPaymentCycleLabel = (cycle: number | null | undefined) => {
@@ -236,36 +262,36 @@ onMounted(async () => {
   <div class="room-detail-view" v-loading="loading">
     <el-page-header @back="router.back()" class="page-header">
       <template #content>
-        <span class="title">{{ room?.room_number }} (ID: {{ room?.id ?? roomId }}) - 房间详情</span>
+        <span class="title">{{ room?.room_number }}（编号：{{ room?.id ?? roomId }}）- 房间详情</span>
       </template>
       <template #extra>
         <el-button type="primary" @click="() => router.push(`/rooms/${roomId}/edit`)">
-          Edit Room
+          编辑房间
         </el-button>
       </template>
     </el-page-header>
 
     <el-tabs v-model="activeTab" class="room-tabs">
       <!-- Details Tab -->
-      <el-tab-pane label="Details" name="details">
+      <el-tab-pane label="基本信息" name="details">
         <el-card>
           <el-descriptions :column="2" border>
             <el-descriptions-item label="房间号">
               {{ room?.room_number }}
             </el-descriptions-item>
             <el-descriptions-item label="楼栋">
-              {{ room?.building || 'N/A' }}
+              {{ room?.building || '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="楼层">
-              {{ room?.floor || 'N/A' }}
+              {{ room?.floor || '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="面积">
-              {{ room?.area || 'N/A' }} m²
+              {{ room?.area || '-' }} ㎡
             </el-descriptions-item>
             <el-descriptions-item label="月租金">
               ${{ Number(room?.monthly_rent || 0).toFixed(2) }}
             </el-descriptions-item>
-            <el-descriptions-item label="Deposit">
+            <el-descriptions-item label="押金">
               ${{ Number(room?.deposit_amount || 0).toFixed(2) }}
             </el-descriptions-item>
             <el-descriptions-item label="付款周期">
@@ -273,52 +299,52 @@ onMounted(async () => {
             </el-descriptions-item>
             <el-descriptions-item label="状态">
               <el-tag :type="room?.status === 'available' ? 'success' : room?.status === 'occupied' ? 'warning' : 'danger'">
-                {{ room?.status }}
+                {{ get状态Label(room?.status || '') }}
               </el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="租客姓名">
-              {{ room?.tenant_name || 'N/A' }}
+              {{ room?.tenant_name || '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="租客电话">
-              {{ room?.tenant_phone || 'N/A' }}
+              {{ room?.tenant_phone || '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="租期开始">
-              {{ room?.lease_start ? room.lease_start.split('T')[0] : 'N/A' }}
+              {{ room?.lease_start ? room.lease_start.split('T')[0] : '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="租期结束">
-              {{ room?.lease_end ? room.lease_end.split('T')[0] : 'N/A' }}
+              {{ room?.lease_end ? room.lease_end.split('T')[0] : '-' }}
             </el-descriptions-item>
-            <el-descriptions-item label="Description" :span="2">
-              {{ room?.description || 'N/A' }}
+            <el-descriptions-item label="描述" :span="2">
+              {{ room?.description || '-' }}
             </el-descriptions-item>
           </el-descriptions>
         </el-card>
       </el-tab-pane>
 
       <!-- Payments Tab -->
-      <el-tab-pane label="Payments" name="payments">
+      <el-tab-pane label="缴费记录" name="payments">
         <el-card>
           <template #header>
             <div class="card-header">
-              <span>Payment Records</span>
+              <span>缴费记录</span>
               <el-button type="primary" @click="handleCreatePayment">
-                Add Payment
+                新增缴费
               </el-button>
             </div>
           </template>
 
           <el-table :data="payments" v-loading="paymentsLoading" stripe>
-            <el-table-column prop="payment_date" label="Date" width="120">
+            <el-table-column prop="payment_date" label="日期" width="120">
               <template #default="{ row }">
                 {{ row.payment_date.split('T')[0] }}
               </template>
             </el-table-column>
-            <el-table-column prop="payment_type" label="Type" width="100">
+            <el-table-column prop="payment_type" label="类型" width="100">
               <template #default="{ row }">
                 {{ getPaymentTypeLabel(row.payment_type) }}
               </template>
             </el-table-column>
-            <el-table-column prop="amount" label="Amount" width="120">
+            <el-table-column prop="amount" label="金额" width="120">
               <template #default="{ row }">
                 ${{ Number(row.amount || 0).toFixed(2) }}
               </template>
@@ -326,27 +352,27 @@ onMounted(async () => {
             <el-table-column prop="status" label="状态" width="100">
               <template #default="{ row }">
                 <el-tag :type="get状态Type(row.status)">
-                  {{ row.status }}
+                  {{ get状态Label(row.status) }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="payment_method" label="Method" width="120">
+            <el-table-column prop="payment_method" label="支付方式" width="120">
               <template #default="{ row }">
-                {{ row.payment_method || 'N/A' }}
+                {{ getPaymentMethodLabel(row.payment_method) }}
               </template>
             </el-table-column>
-            <el-table-column prop="description" label="Description" show-overflow-tooltip />
-            <el-table-column label="Actions" width="180">
+            <el-table-column prop="description" label="备注" show-overflow-tooltip />
+            <el-table-column label="操作" width="180">
               <template #default="{ row }">
                 <el-button size="small" @click="handleEditPayment(row)">
-                  Edit
+                  编辑
                 </el-button>
                 <el-button
                   type="danger"
                   size="small"
                   @click="handleDeletePayment(row)"
                 >
-                  Delete
+                  删除
                 </el-button>
               </template>
             </el-table-column>
@@ -355,52 +381,52 @@ onMounted(async () => {
       </el-tab-pane>
 
       <!-- Utility Readings Tab -->
-      <el-tab-pane label="Utility Readings" name="utility">
+      <el-tab-pane label="水电抄表" name="utility">
         <el-card>
           <template #header>
             <div class="card-header">
-              <span>Utility Readings</span>
+              <span>水电抄表</span>
               <el-button type="primary" @click="handleCreateUtilityReading">
-                Add Reading
+                新增抄表
               </el-button>
             </div>
           </template>
 
           <el-table :data="utilityReadings" v-loading="utilityLoading" stripe>
-            <el-table-column prop="reading_date" label="Date" width="120">
+            <el-table-column prop="reading_date" label="日期" width="120">
               <template #default="{ row }">
                 {{ row.reading_date.split('T')[0] }}
               </template>
             </el-table-column>
-            <el-table-column prop="utility_type" label="Type" width="100">
+            <el-table-column prop="utility_type" label="类型" width="100">
               <template #default="{ row }">
                 {{ getUtilityTypeLabel(row.utility_type) }}
               </template>
             </el-table-column>
-            <el-table-column prop="reading" label="Reading" width="120" />
-            <el-table-column prop="previous_reading" label="Previous" width="120">
+            <el-table-column prop="reading" label="本次读数" width="120" />
+            <el-table-column prop="previous_reading" label="上次读数" width="120">
               <template #default="{ row }">
-                {{ row.previous_reading || 'N/A' }}
+                {{ row.previous_reading || '-' }}
               </template>
             </el-table-column>
-            <el-table-column prop="usage" label="Usage" width="100" />
-            <el-table-column prop="amount" label="Amount" width="120">
+            <el-table-column prop="usage" label="用量" width="100" />
+            <el-table-column prop="amount" label="金额" width="120">
               <template #default="{ row }">
                 ${{ Number(row.amount || 0).toFixed(2) }}
               </template>
             </el-table-column>
-            <el-table-column prop="notes" label="Notes" show-overflow-tooltip />
-            <el-table-column label="Actions" width="180">
+            <el-table-column prop="notes" label="备注" show-overflow-tooltip />
+            <el-table-column label="操作" width="180">
               <template #default="{ row }">
                 <el-button size="small" @click="handleEditUtilityReading(row)">
-                  Edit
+                  编辑
                 </el-button>
                 <el-button
                   type="danger"
                   size="small"
                   @click="handleDeleteUtilityReading(row)"
                 >
-                  Delete
+                  删除
                 </el-button>
               </template>
             </el-table-column>
@@ -412,7 +438,7 @@ onMounted(async () => {
     <!-- Payment Form Dialog -->
     <el-dialog
       v-model="paymentDialogVisible"
-      :title="editingPayment ? 'Edit Payment' : 'Create Payment'"
+      :title="editingPayment ? '编辑缴费' : '新增缴费'"
       width="600px"
     >
       <PaymentForm
@@ -427,7 +453,7 @@ onMounted(async () => {
     <!-- Utility Reading Form Dialog -->
     <el-dialog
       v-model="utilityDialogVisible"
-      :title="editingUtilityReading ? 'Edit Reading' : 'Record Reading'"
+      :title="editingUtilityReading ? '编辑抄表' : '新增抄表'"
       width="600px"
     >
       <UtilityReadingForm

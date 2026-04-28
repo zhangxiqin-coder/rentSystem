@@ -49,10 +49,10 @@ const passwordStrength = computed<PasswordStrength>(() => {
   const normalizedScore = Math.min(Math.floor(score / 2), 3)
 
   const strengthMap: Record<number, PasswordStrength> = {
-    0: { score: 0, label: 'Weak', color: '#f44336', percent: 20 },
-    1: { score: 1, label: 'Weak', color: '#f44336', percent: 40 },
-    2: { score: 2, label: 'Medium', color: '#ff9800', percent: 60 },
-    3: { score: 3, label: 'Strong', color: '#4caf50', percent: 100 },
+    0: { score: 0, label: '弱', color: '#f44336', percent: 20 },
+    1: { score: 1, label: '弱', color: '#f44336', percent: 40 },
+    2: { score: 2, label: '中', color: '#ff9800', percent: 60 },
+    3: { score: 3, label: '强', color: '#4caf50', percent: 100 },
   }
 
   return strengthMap[normalizedScore]
@@ -62,11 +62,11 @@ const passwordStrength = computed<PasswordStrength>(() => {
 const passwordRequirements = computed(() => {
   const password = form.value.password
   return [
-    { text: 'At least 8 characters', met: password.length >= 8 },
-    { text: 'Contains lowercase letter', met: /[a-z]/.test(password) },
-    { text: 'Contains uppercase letter', met: /[A-Z]/.test(password) },
-    { text: 'Contains number', met: /[0-9]/.test(password) },
-    { text: 'Contains special character', met: /[^a-zA-Z0-9]/.test(password) },
+    { text: '至少8个字符', met: password.length >= 8 },
+    { text: '包含小写字母', met: /[a-z]/.test(password) },
+    { text: '包含大写字母', met: /[A-Z]/.test(password) },
+    { text: '包含数字', met: /[0-9]/.test(password) },
+    { text: '包含特殊字符', met: /[^a-zA-Z0-9]/.test(password) },
   ]
 })
 
@@ -77,41 +77,41 @@ const validateField = (field: string): string | null => {
   switch (field) {
     case 'username':
       if (!value || value.trim().length === 0) {
-        return 'Username is required'
+        return '请输入用户名'
       }
       if (value.length < 3) {
         return '用户名至少3个字符'
       }
       if (!/^[a-zA-Z0-9_]+$/.test(value)) {
-        return 'Username can only contain letters, numbers, and underscores'
+        return '用户名只能包含字母、数字和下划线'
       }
       break
 
     case 'email':
       if (!value || value.trim().length === 0) {
-        return 'Email is required'
+        return '请输入邮箱'
       }
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
       if (!emailRegex.test(value)) {
-        return 'Please enter a valid email address'
+        return '请输入有效的邮箱地址'
       }
       break
 
     case 'password':
       if (!value || value.length === 0) {
-        return 'Password is required'
+        return '请输入密码'
       }
       if (value.length < 8) {
-        return 'Password must be at least 8 characters'
+        return '密码至少8个字符'
       }
       if (passwordStrength.value.score === 0) {
-        return 'Password is too weak'
+        return '密码强度太弱'
       }
       break
 
     case 'confirmPassword':
       if (!value || value.length === 0) {
-        return 'Please confirm your password'
+        return '请确认密码'
       }
       if (value !== form.value.password) {
         return '两次密码不一致'
@@ -213,7 +213,7 @@ const handle注册 = async () => {
       <h1>创建账户</h1>
       <form @submit.prevent="handle注册" novalidate>
         <div class="form-group" :class="{ 'has-error': hasError('username') }">
-          <label for="username">Username *</label>
+          <label for="username">用户名 *</label>
           <input
             id="username"
             v-model="form.username"
@@ -229,7 +229,7 @@ const handle注册 = async () => {
         </div>
 
         <div class="form-group" :class="{ 'has-error': hasError('email') }">
-          <label for="email">Email *</label>
+          <label for="email">邮箱 *</label>
           <input
             id="email"
             v-model="form.email"
@@ -245,24 +245,24 @@ const handle注册 = async () => {
         </div>
 
         <div class="form-group">
-          <label for="fullName">Full Name</label>
+          <label for="fullName">姓名</label>
           <input
             id="fullName"
             v-model="form.full_name"
             type="text"
-            placeholder="Enter your full name (optional)"
+            placeholder="请输入姓名（选填）"
             :disabled="loading"
             autocomplete="name"
           />
         </div>
 
         <div class="form-group" :class="{ 'has-error': hasError('password') }">
-          <label for="password">Password *</label>
+          <label for="password">密码 *</label>
           <input
             id="password"
             v-model="form.password"
             type="password"
-            placeholder="Create a password"
+            placeholder="请输入密码"
             @blur="handleBlur('password')"
             :disabled="loading"
             autocomplete="new-password"
@@ -283,7 +283,7 @@ const handle注册 = async () => {
               ></div>
             </div>
             <div class="strength-label">
-              <span>Password strength:</span>
+              <span>密码强度：</span>
               <span :style="{ color: passwordStrength.color }">
                 {{ passwordStrength.label }}
               </span>
@@ -307,7 +307,7 @@ const handle注册 = async () => {
         </div>
 
         <div class="form-group" :class="{ 'has-error': hasError('confirmPassword') }">
-          <label for="confirmPassword">Confirm Password *</label>
+          <label for="confirmPassword">确认密码 *</label>
           <input
             id="confirmPassword"
             v-model="form.confirmPassword"
@@ -328,12 +328,12 @@ const handle注册 = async () => {
 
         <button type="submit" :disabled="loading || !isFormValid" class="submit-btn">
           <span v-if="loading" class="loading-spinner"></span>
-          {{ loading ? 'Creating account...' : '创建账户' }}
+          {{ loading ? '创建中...' : '创建账户' }}
         </button>
       </form>
 
       <p class="login-link">
-        已有账户？ <router-link to="/login">Login</router-link>
+        已有账户？ <router-link to="/login">去登录</router-link>
       </p>
     </div>
   </div>

@@ -35,20 +35,20 @@ const formData = ref<CreatePaymentRequest>({
 
 const rules: FormRules<CreatePaymentRequest> = {
   room_id: [
-    { required: true, message: 'Room is required', trigger: 'blur' },
+    { required: true, message: '请选择房间', trigger: 'blur' },
   ],
   payment_type: [
-    { required: true, message: 'Please select payment type', trigger: 'change' },
+    { required: true, message: '请选择付款类型', trigger: 'change' },
   ],
   amount: [
-    { required: true, message: 'Please enter amount', trigger: 'blur' },
-    { type: 'number', min: 0.01, message: 'Amount must be positive', trigger: 'blur' },
+    { required: true, message: '请输入金额', trigger: 'blur' },
+    { type: 'number', min: 0.01, message: '金额必须大于0', trigger: 'blur' },
   ],
   payment_date: [
-    { required: true, message: 'Please select payment date', trigger: 'change' },
+    { required: true, message: '请选择缴费日期', trigger: 'change' },
   ],
   status: [
-    { required: true, message: 'Please select status', trigger: 'change' },
+    { required: true, message: '请选择状态', trigger: 'change' },
   ],
 }
 
@@ -91,7 +91,7 @@ const handleSubmit = async () => {
     if (valid) {
       emit('submit', formData.value)
     } else {
-      ElMessage.error('Please fix the form errors')
+      ElMessage.error('请先修正表单中的错误')
     }
   })
 }
@@ -113,31 +113,31 @@ const resetForm = () => {
     label-width="140px"
     label-position="right"
   >
-    <el-divider content-position="left">Basic Information</el-divider>
+    <el-divider content-position="left">基础信息</el-divider>
 
     <el-form-item label="付款类型" prop="payment_type">
       <el-select
         v-model="formData.payment_type"
-        placeholder="Select payment type"
+        placeholder="请选择付款类型"
         @change="() => { if (is房租Type) formData.amount = 0 }"
       >
         <el-option label="房租" value="rent" />
         <el-option label="押金" value="deposit" />
-        <el-option label="Utility" value="utility" />
+        <el-option label="水电费" value="utility" />
         <el-option label="其他" value="other" />
       </el-select>
     </el-form-item>
 
-    <el-form-item label="Amount" prop="amount">
+    <el-form-item label="金额" prop="amount">
       <el-input-number
         v-model="formData.amount"
         :min="0"
         :precision="2"
         :disabled="is房租Type"
-        placeholder="Amount"
+        placeholder="请输入金额"
       />
       <span v-if="is房租Type" class="form-tip">
-        Amount will be calculated automatically based on room rent
+        金额将根据房间租金自动计算
       </span>
     </el-form-item>
 
@@ -145,59 +145,59 @@ const resetForm = () => {
       <el-date-picker
         v-model="formData.payment_date"
         type="date"
-        placeholder="Select payment date"
+        placeholder="请选择缴费日期"
         value-format="YYYY-MM-DD"
       />
     </el-form-item>
 
-    <el-form-item label="Due Date" prop="due_date">
+    <el-form-item label="应缴日期" prop="due_date">
       <el-date-picker
         v-model="formData.due_date"
         type="date"
-        placeholder="Select due date"
+        placeholder="请选择应缴日期"
         value-format="YYYY-MM-DD"
       />
     </el-form-item>
 
-    <el-divider content-position="left">Status & Method</el-divider>
+    <el-divider content-position="left">状态与支付方式</el-divider>
 
     <el-form-item label="状态" prop="status">
-      <el-select v-model="formData.status" placeholder="Select status">
+      <el-select v-model="formData.status" placeholder="请选择状态">
         <el-option label="待处理" value="pending" />
         <el-option label="已完成" value="completed" />
-        <el-option label="Overdue" value="overdue" />
-        <el-option label="取消led" value="cancelled" />
+        <el-option label="逾期" value="overdue" />
+        <el-option label="已取消" value="cancelled" />
       </el-select>
     </el-form-item>
 
     <el-form-item label="支付方式" prop="payment_method">
-      <el-select v-model="formData.payment_method" placeholder="Select payment method" clearable>
+      <el-select v-model="formData.payment_method" placeholder="请选择支付方式" clearable>
         <el-option label="现金" value="cash" />
         <el-option label="银行转账" value="bank_transfer" />
-        <el-option label="Credit Card" value="credit_card" />
+        <el-option label="信用卡" value="credit_card" />
         <el-option label="微信支付" value="wechat_pay" />
         <el-option label="支付宝" value="alipay" />
         <el-option label="其他" value="other" />
       </el-select>
     </el-form-item>
 
-    <el-divider content-position="left">Additional Information</el-divider>
+    <el-divider content-position="left">补充信息</el-divider>
 
-    <el-form-item label="Description" prop="description">
+    <el-form-item label="备注" prop="description">
       <el-input
         v-model="formData.description"
         type="textarea"
         :rows="3"
-        placeholder="Payment description or notes"
+        placeholder="请输入付款备注"
       />
     </el-form-item>
 
     <el-form-item>
       <el-button type="primary" :loading="loading" @click="handleSubmit">
-        {{ payment ? 'Update' : 'Create' }} Payment
+        {{ payment ? '更新缴费' : '新增缴费' }}
       </el-button>
       <el-button @click="handle取消">取消</el-button>
-      <el-button v-if="!payment" @click="resetForm">Reset</el-button>
+      <el-button v-if="!payment" @click="resetForm">重置</el-button>
     </el-form-item>
   </el-form>
 </template>

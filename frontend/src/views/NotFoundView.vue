@@ -12,8 +12,8 @@ const goHome = () => {
   <div class="not-found">
     <div class="content">
       <h1>404</h1>
-      <h2>Page Not Found</h2>
-      <p>The page you are looking for does not exist.</p>
+      <h2>页面不存在</h2>
+      <p>您访问的页面不存在或已被移除。</p>
       <button @click="goHome">返回首页</button>
     </div>
   </div>
