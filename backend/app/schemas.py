@@ -320,7 +320,7 @@ class UtilityReadingBase(BaseModel):
 
 class UtilityReadingCreate(UtilityReadingBase):
     """水电抄表记录创建 schema"""
-    # 上次读数、用量、费用自动计算，不在此输入
+    previous_reading: Optional[Decimal] = Field(None, ge=0, description="可选手工上次读数")
 
 
 class UtilityReadingUpdate(BaseModel):

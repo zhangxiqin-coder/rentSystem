@@ -64,6 +64,7 @@ def generate_rent_notification(
     room_number: str,
     tenant_name: str,
     monthly_rent: float,
+    payment_cycle: int = 1,
     water_amount: float = 0,
     electricity_amount: float = 0,
     water_reading: float = None,
@@ -92,13 +93,17 @@ def generate_rent_notification(
     Returns:
         格式化的收租消息
     """
+    cycle = max(1, payment_cycle or 1)
+    rent_due = monthly_rent * cycle
+    rent_label = f"房租（{cycle}个月）" if cycle > 1 else "房租"
+
     if include_utilities:
-        total = monthly_rent + water_amount + electricity_amount
-        
+        total = rent_due + water_amount + electricity_amount
+
         lines = [
             f"**{room_number} 本月收租：{int(total)} 元**"
         ]
-        
+
         # 水费信息
         if water_reading is not None and water_usage > 0:
             last_water_reading = last_month_data.get('water_reading') if last_month_data else None
@@ -110,7 +115,7 @@ def generate_rent_notification(
                 # 没有上月数据，只显示本月
                 water_unit_price = water_amount / water_usage if water_usage > 0 else 5
                 lines.append(f"水：本月{int(water_reading)}吨（{int(water_usage)}吨×{water_unit_price:.0f}元={int(water_amount)}元）")
-        
+
         # 电费信息
         if electricity_reading is not None and electricity_usage > 0:
             last_electricity_reading = last_month_data.get('electricity_reading') if last_month_data else None
@@ -122,16 +127,16 @@ def generate_rent_notification(
                 # 没有上月数据，只显示本月
                 elec_unit_price = electricity_amount / electricity_usage if electricity_usage > 0 else 1
                 lines.append(f"电：本月{int(electricity_reading)}度（{int(electricity_usage)}度×{elec_unit_price:.0f}元={int(electricity_amount)}元）")
-        
+
         # 房租
-        lines.append(f"房租：{int(monthly_rent)}元")
-        
+        lines.append(f"{rent_label}：{int(rent_due)}元")
+
         return "\n".join(lines)
     else:
         # 2501等不分摊水电的房间
         lines = [
-            f"**{room_number} 本月收租：{int(monthly_rent)} 元**",
-            "房租：{int(monthly_rent)}元"
+            f"**{room_number} 本月收租：{int(rent_due)} 元**",
+            f"{rent_label}：{int(rent_due)}元"
         ]
         return "\n".join(lines)
 

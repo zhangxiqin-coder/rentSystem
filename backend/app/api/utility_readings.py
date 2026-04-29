@@ -138,6 +138,7 @@ async def create_utility_reading_record(
             utility_type=reading_data.utility_type,
             reading=reading_data.reading,
             reading_date=reading_data.reading_date,
+            previous_reading=reading_data.previous_reading,
             recorded_by=current_user.id,
             notes=reading_data.notes,
             owner_id=room.owner_id  # 设置为房间的owner_id，而不是当前用户
@@ -162,6 +163,7 @@ async def create_utility_reading_record(
                     room_number=room.room_number,
                     tenant_name=tenant_name,
                     monthly_rent=float(room.monthly_rent),
+                    payment_cycle=room.payment_cycle or 1,
                     water_amount=utility_status['water_amount'],
                     electricity_amount=utility_status['electricity_amount'],
                     water_reading=utility_status['water_reading'],
@@ -270,6 +272,7 @@ async def update_utility_reading(
                     room_number=room_number,
                     tenant_name=room.tenant_name or "租户",
                     monthly_rent=float(monthly_rent),
+                    payment_cycle=room.payment_cycle or 1,
                     water_amount=float(water_amount),
                     electricity_amount=float(electricity_amount),
                     water_reading=float(water_reading_value),
@@ -345,6 +348,7 @@ async def batch_create_utility_readings(
                 utility_type=reading_data.utility_type,
                 reading=reading_data.reading,
                 reading_date=batch_data.reading_date,  # 使用统一的日期
+                previous_reading=reading_data.previous_reading,
                 recorded_by=current_user.id,
                 notes=batch_data.notes or reading_data.notes,  # 优先使用统一备注
                 owner_id=current_user.id
@@ -384,6 +388,7 @@ async def batch_create_utility_readings(
                 room_number=room.room_number,
                 tenant_name=tenant_name,
                 monthly_rent=float(room.monthly_rent),
+                payment_cycle=room.payment_cycle or 1,
                 water_amount=utility_status['water_amount'],
                 electricity_amount=utility_status['electricity_amount'],
                 water_reading=utility_status['water_reading'],

@@ -73,7 +73,8 @@ const overdueRooms = computed(() => {
 
       // 计算欠费总额（房租 + 最近未结清水电）
       const utilityAmount = latestUnpaidUtilityAmountByRoom.value.get(room.id) || 0
-      const overdueAmount = Number(room.monthly_rent || 0) + utilityAmount
+      const cycle = Math.max(1, Number(room.payment_cycle || 1))
+      const overdueAmount = Number(room.monthly_rent || 0) * cycle + utilityAmount
 
       overdue.push({
         room,
@@ -282,7 +283,9 @@ const generateRentReminder = (merged: MergedReading): string => {
   const roomNumber = getRoomNumber(merged.room_id)
   const date = new Date(merged.reading_date).toLocaleDateString('zh-CN')
 
-  const rentAmount = Number(merged.monthly_rent || 0)
+  const cycle = Math.max(1, Number(merged.payment_cycle || 1))
+  const rentAmount = Number(merged.monthly_rent || 0) * cycle
+  const rentLabel = cycle > 1 ? `房租（${cycle}个月）` : '房租'
   const waterAmount = Number(merged.water_reading?.amount || 0)
   const electricityAmount = Number(merged.electricity_reading?.amount || 0)
   const total = rentAmount + waterAmount + electricityAmount
@@ -290,7 +293,7 @@ const generateRentReminder = (merged: MergedReading): string => {
   let message = `【${roomNumber} 收租明细】\n抄表日期：${date}\n\n💰 合计：${formatAmount(total)}\n`
 
   if (rentAmount > 0) {
-    message += `🏠 房租：${formatAmount(rentAmount)}\n`
+    message += `🏠 ${rentLabel}：${formatAmount(rentAmount)}\n`
   }
 
   if (merged.water_reading) {
@@ -357,11 +360,14 @@ const autoGenerateAndSendWechat = async (merged: MergedReading) => {
 const generateMessageText = (merged: MergedReading): string => {
   const roomNumber = getRoomNumber(merged.room_id)
   const date = new Date(merged.reading_date).toLocaleDateString('zh-CN')
+  const cycle = Math.max(1, Number(merged.payment_cycle || 1))
+  const rentDue = Number(merged.monthly_rent || 0) * cycle
+  const rentLabel = cycle > 1 ? `房租（${cycle}个月）` : '房租'
 
   let message = `【收租通知】\n房间：${roomNumber}\n抄表日期：${date}\n`
 
-  if (merged.monthly_rent) {
-    message += `\n🏠 房租：${formatAmount(merged.monthly_rent)}\n`
+  if (rentDue > 0) {
+    message += `\n🏠 ${rentLabel}：${formatAmount(rentDue)}\n`
   }
 
   if (merged.water_reading) {
@@ -432,6 +438,7 @@ const mergeReadings = (readings: UtilityReading[]): MergedReading[] => {
         water_reading: reading.utility_type === 'water' ? reading : undefined,
         electricity_reading: reading.utility_type === 'electricity' ? reading : undefined,
         monthly_rent: room?.monthly_rent,
+        payment_cycle: room?.payment_cycle,
         total_amount: 0,
         notes: '',
       })
@@ -447,7 +454,8 @@ const mergeReadings = (readings: UtilityReading[]): MergedReading[] => {
 
   // 计算总费用
   Array.from(map.values()).forEach(merged => {
-    let total = merged.monthly_rent || 0
+    const cycle = Math.max(1, merged.payment_cycle || 1)
+    let total = (merged.monthly_rent || 0) * cycle
 
     if (merged.water_reading) {
       total += merged.water_reading.amount || 0
@@ -459,7 +467,7 @@ const mergeReadings = (readings: UtilityReading[]): MergedReading[] => {
 
     merged.total_amount = total
     merged.notes = merged.water_reading?.notes || merged.electricity_reading?.notes || ''
-    
+
     // 检查是否已支付（任意一个水电记录有payment_id即视为已支付）
     merged.is_paid = !!(
       (merged.water_reading && merged.water_reading.payment_id) ||
@@ -505,6 +513,7 @@ interface MergedReading {
   water_reading?: UtilityReading
   electricity_reading?: UtilityReading
   monthly_rent?: number  // 月租金
+  payment_cycle?: number  // 付款周期（月数）
   total_amount: number
   notes: string
   is_paid?: boolean  // 是否已收租
@@ -519,23 +528,25 @@ const mergedReadings = computed(() => {
     if (!map.has(key)) {
       // 获取房间信息（包含房租）
       const room = roomOptions.value.find(r => r.id === reading.room_id)
+      const cycle = Math.max(1, Number(room?.payment_cycle || 1))
       map.set(key, {
         room_id: reading.room_id,
         reading_date: reading.reading_date,
         monthly_rent: room?.monthly_rent,
-        total_amount: Number(room?.monthly_rent || 0),  // 总计包含房租，确保是数字
+        payment_cycle: room?.payment_cycle,
+        total_amount: Number(room?.monthly_rent || 0) * cycle,  // 总计包含房租，按周期计算
         notes: reading.notes || ''
       })
     }
 
     const merged = map.get(key)!
-    
+
     if (reading.utility_type === 'water') {
       merged.water_reading = reading
     } else if (reading.utility_type === 'electricity') {
       merged.electricity_reading = reading
     }
-    
+
     // 累加水电费到总计（房租已在初始化时添加）
     merged.total_amount += Number(reading.amount || 0)
     if (reading.notes) {
@@ -735,10 +746,13 @@ const getLatestCollectionDetailText = async (room: Room) => {
     const res = await utilityApi.getReadingsByRoom(room.id, { page: 1, size: 50 })
     const mergedList = mergeReadings(res.data.items || [])
     const latest = mergedList[0]
-    if (!latest) return `【${room.room_number} 收租明细】\n抄表日期：-\n\n💰 合计：${formatAmount(Number(room.monthly_rent || 0))}\n🏠 房租：${formatAmount(Number(room.monthly_rent || 0))}\n💧 水费：暂无抄表记录\n⚡ 电费：暂无抄表记录`
+    const cycle = Math.max(1, Number(room.payment_cycle || 1))
+    const rentDue = Number(room.monthly_rent || 0) * cycle
+    const rentLabel = cycle > 1 ? `房租（${cycle}个月）` : '房租'
+    if (!latest) return `【${room.room_number} 收租明细】\n抄表日期：-\n\n💰 合计：${formatAmount(rentDue)}\n🏠 ${rentLabel}：${formatAmount(rentDue)}\n💧 水费：暂无抄表记录\n⚡ 电费：暂无抄表记录`
 
     const date = new Date(latest.reading_date).toLocaleDateString('zh-CN')
-    const rent = Number(room.monthly_rent || 0)
+    const rent = rentDue
     const water = latest.water_reading
     const electric = latest.electricity_reading
 
@@ -763,9 +777,9 @@ const getLatestCollectionDetailText = async (room: Room) => {
       ? `⚡ 电费：${elecPrev}→${elecCurr}（用量${elecUsage}度 × ¥${elecRate}/度 = ${formatAmount(elecAmount)}）`
       : '⚡ 电费：暂无抄表记录'
 
-    return `【${room.room_number} 收租明细】\n抄表日期：${date}\n\n💰 合计：${formatAmount(total)}\n🏠 房租：${formatAmount(rent)}\n${waterLine}\n${electricLine}`
+    return `【${room.room_number} 收租明细】\n抄表日期：${date}\n\n💰 合计：${formatAmount(total)}\n🏠 ${rentLabel}：${formatAmount(rent)}\n${waterLine}\n${electricLine}`
   } catch {
-    return `【${room.room_number} 收租明细】\n抄表日期：-\n\n💰 合计：${formatAmount(Number(room.monthly_rent || 0))}\n🏠 房租：${formatAmount(Number(room.monthly_rent || 0))}\n💧 水费：获取失败\n⚡ 电费：获取失败`
+    return `【${room.room_number} 收租明细】\n抄表日期：-\n\n💰 合计：${formatAmount(rentDue)}\n🏠 ${rentLabel}：${formatAmount(rentDue)}\n💧 水费：获取失败\n⚡ 电费：获取失败`
   }
 }
 
@@ -1075,7 +1089,8 @@ const handleDelete = async (row: MergedReading) => {
 const showPaymentDialog = (row: MergedReading) => {
   const water_amount = Number(row.water_reading?.amount || 0)
   const electricity_amount = Number(row.electricity_reading?.amount || 0)
-  const rent_amount = Number(row.monthly_rent || 0)
+  const cycle = Math.max(1, Number(row.payment_cycle || 1))
+  const rent_amount = Number(row.monthly_rent || 0) * cycle
   
   paymentForm.value = {
     room_id: row.room_id,
@@ -1161,7 +1176,8 @@ const showBatchPaymentDialog = () => {
   batchPayments.value = selectedRows.value.map(row => {
     const water_amount = Number(row.water_reading?.amount || 0)
     const electricity_amount = Number(row.electricity_reading?.amount || 0)
-    const rent_amount = Number(row.monthly_rent || 0)
+    const cycle = Math.max(1, Number(row.payment_cycle || 1))
+    const rent_amount = Number(row.monthly_rent || 0) * cycle
 
     return {
       room_id: row.room_id,
@@ -1256,11 +1272,14 @@ const batchGenerateMessages = async () => {
     selectedRows.value.forEach((row, index) => {
       const roomNumber = getRoomNumber(row.room_id)
       const date = new Date(row.reading_date).toLocaleDateString('zh-CN')
+      const cycle = Math.max(1, Number(row.payment_cycle || 1))
+      const rentDue = Number(row.monthly_rent || 0) * cycle
+      const rentLabel = cycle > 1 ? `房租（${cycle}个月）` : '房租'
 
       let message = `\n【收租通知 ${index + 1}/${selectedRows.value.length}】\n房间：${roomNumber}\n抄表日期：${date}\n`
 
-      if (row.monthly_rent) {
-        message += `\n🏠 房租：${formatAmount(row.monthly_rent)}\n`
+      if (rentDue > 0) {
+        message += `\n🏠 ${rentLabel}：${formatAmount(rentDue)}\n`
       }
 
       if (row.water_reading) {

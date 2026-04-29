@@ -119,6 +119,7 @@ def create_utility_reading(
     utility_type: str,
     reading: Decimal,
     reading_date: date,
+    previous_reading: Optional[Decimal] = None,
     recorded_by: Optional[int] = None,
     notes: Optional[str] = None,
     owner_id: Optional[int] = None
@@ -142,10 +143,11 @@ def create_utility_reading(
     Raises:
         ValueError: 业务规则验证失败
     """
-    # 1. 获取上次读数
-    previous_reading = get_previous_reading(db, room_id, utility_type, reading_date)
+    # 1. 获取上次读数（优先使用手工输入）
     if previous_reading is None:
-        previous_reading = Decimal('0')
+        previous_reading = get_previous_reading(db, room_id, utility_type, reading_date)
+        if previous_reading is None:
+            previous_reading = Decimal('0')
 
     # 2. 验证当前读数
     if reading < previous_reading:

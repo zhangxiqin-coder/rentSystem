@@ -63,6 +63,7 @@ export const utilityApi = {
       room_id: number
       utility_type: string
       reading: number
+      previous_reading?: number
     }>
     reading_date: string
     notes?: string

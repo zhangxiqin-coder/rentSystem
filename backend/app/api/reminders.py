@@ -90,20 +90,23 @@ async def get_upcoming_reminders(
                     UtilityReading.room_id == room.id,
                     UtilityReading.utility_type == "water"
                 ).order_by(UtilityReading.reading_date.desc()).first()
-                
+
                 if recent_reading:
                     water_amount = float(recent_reading.amount or 0)
-                
+
                 recent_reading = db.query(UtilityReading).filter(
                     UtilityReading.room_id == room.id,
                     UtilityReading.utility_type == "electricity"
                 ).order_by(UtilityReading.reading_date.desc()).first()
-                
+
                 if recent_reading:
                     electricity_amount = float(recent_reading.amount or 0)
-                
-                total_amount = float(room.monthly_rent) + water_amount + electricity_amount
-                
+
+                cycle = room.payment_cycle or 1
+                rent_due = float(room.monthly_rent) * cycle
+                total_amount = rent_due + water_amount + electricity_amount
+                rent_label = f"房租（{cycle}个月）" if cycle > 1 else "房租"
+
                 reminders.append(ReminderItem(
                     room_id=room.id,
                     room_number=room.room_number,
@@ -113,20 +116,22 @@ async def get_upcoming_reminders(
                     amount=total_amount,
                     tenant_name=room.tenant_name,
                     breakdown={
-                        "rent": float(room.monthly_rent),
+                        "rent": rent_due,
                         "water": water_amount,
                         "electricity": electricity_amount
                     },
-                    message=f"应付房租¥{total_amount:.2f}（房租¥{room.monthly_rent} + 水电¥{water_amount + electricity_amount:.2f}）"
+                    message=f"应付{rent_label}¥{total_amount:.2f}（{rent_label}¥{rent_due:.2f} + 水电¥{water_amount + electricity_amount:.2f}）"
                 ))
             elif include_overdue and days_until_payment < 0:
+                cycle = room.payment_cycle or 1
+                rent_due = float(room.monthly_rent) * cycle
                 reminders.append(ReminderItem(
                     room_id=room.id,
                     room_number=room.room_number,
                     reminder_type="payment_overdue",
                     reminder_date=next_payment,
                     days_left=days_until_payment,
-                    amount=float(room.monthly_rent),
+                    amount=rent_due,
                     tenant_name=room.tenant_name,
                     message=f"房租已逾期{-days_until_payment}天未付"
                 ))
@@ -215,18 +220,21 @@ async def send_rent_reminder_for_room(
         room_number=room.room_number,
         tenant_name=room.tenant_name,
         monthly_rent=float(room.monthly_rent),
+        payment_cycle=room.payment_cycle or 1,
         include_utilities=False  # 2501房间不包含水电
     )
 
     # 发送到微信
     try:
         result = await send_wechat_message(message)
+        cycle = room.payment_cycle or 1
+        rent_due = float(room.monthly_rent) * cycle
         return {
             "success": True,
             "message": f"已发送 {room.room_number} 催租通知",
             "room_number": room.room_number,
             "tenant_name": room.tenant_name,
-            "rent_amount": float(room.monthly_rent)
+            "rent_amount": rent_due
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"发送失败: {str(e)}")

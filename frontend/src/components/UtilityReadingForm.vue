@@ -303,6 +303,16 @@ const submitForm = async () => {
     }
   }
 
+  // 手动模式下必须输入上次读数
+  if (formData.value.use_manual_water && formData.value.manual_previous_water === null) {
+    ElMessage.error('请输入上次水表读数，或切换为自动查找')
+    return
+  }
+  if (formData.value.use_manual_electric && formData.value.manual_previous_electric === null) {
+    ElMessage.error('请输入上次电表读数，或切换为自动查找')
+    return
+  }
+
   // 2501系列房间跳过水电表读数验证
   if (!isZeroRateRoom.value) {
     // 验证水表读数
@@ -358,7 +368,7 @@ const submitForm = async () => {
           utility_type: 'water',
           reading: formData.value.water_reading,
           reading_date: formData.value.reading_date,
-          previous_reading: displayedPreviousWater.value || undefined,
+          previous_reading: displayedPreviousWater.value ?? undefined,
           notes: formData.value.notes,
         }),)
       }
@@ -369,7 +379,7 @@ const submitForm = async () => {
           utility_type: 'electricity',
           reading: formData.value.electric_reading,
           reading_date: formData.value.reading_date,
-          previous_reading: displayedPreviousElectric.value || undefined,
+          previous_reading: displayedPreviousElectric.value ?? undefined,
           notes: formData.value.notes,
         }),)
       }
@@ -557,17 +567,19 @@ loadRooms()
       </el-form-item>
 
       <el-form-item v-else label="上次水表读数" required>
-        <el-input-number
-          v-model="formData.manual_previous_water"
-          :min="0"
-          :precision="2"
-          :step="0.01"
-          style="width: 100%"
-          controls-position="right"
-          placeholder="请输入上次读数"
-          @change="calculateCosts"
-        />
-        <template #append>吨</template>
+        <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
+          <el-input-number
+            v-model="formData.manual_previous_water"
+            :min="0"
+            :precision="2"
+            :step="0.01"
+            style="flex: 1"
+            controls-position="right"
+            placeholder="请输入上次读数"
+            @change="calculateCosts"
+          />
+          <span style="color: #909399; white-space: nowrap;">吨</span>
+        </div>
         <div class="manual-hint">
           ℹ️ 请手动输入上次水表读数
         </div>
@@ -618,17 +630,19 @@ loadRooms()
       </el-form-item>
 
       <el-form-item v-else label="上次电表读数" required>
-        <el-input-number
-          v-model="formData.manual_previous_electric"
-          :min="0"
-          :precision="2"
-          :step="1"
-          style="width: 100%"
-          controls-position="right"
-          placeholder="请输入上次读数"
-          @change="calculateCosts"
-        />
-        <template #append>度</template>
+        <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
+          <el-input-number
+            v-model="formData.manual_previous_electric"
+            :min="0"
+            :precision="2"
+            :step="1"
+            style="flex: 1"
+            controls-position="right"
+            placeholder="请输入上次读数"
+            @change="calculateCosts"
+          />
+          <span style="color: #909399; white-space: nowrap;">度</span>
+        </div>
         <div class="manual-hint">
           ℹ️ 请手动输入上次电表读数
         </div>
