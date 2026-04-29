@@ -140,8 +140,8 @@ def get_payments(
     支持按房间、支付类型、状态筛选
     """
     # 构建查询条件
-    # testuser3（房东姐姐）可以查看所有支付记录
-    if current_user.username == "testuser3":
+    # super_landlord可以查看所有支付记录
+    if current_user.role in ("admin", "super_landlord"):
         query = db.query(Payment).join(Room)
     else:
         query = db.query(Payment).join(Room).filter(Room.owner_id == current_user.id)
@@ -237,8 +237,8 @@ def create_bulk_payment(
     logger.info(f"Request body: {json.dumps(data.model_dump(exclude_unset=True), ensure_ascii=False, default=str)}")
     
     # 验证房间权限
-    # testuser3（房东姐姐）可以为所有房间创建支付记录
-    if current_user.username == "testuser3":
+    # super_landlord可以为所有房间创建支付记录
+    if current_user.role in ("admin", "super_landlord"):
         room = db.query(Room).filter(Room.id == data.room_id).first()
     else:
         room = db.query(Room).filter(
@@ -412,8 +412,8 @@ def batch_delete_payments(
     # 导入UtilityReading模型
     from app.models import UtilityReading
 
-    # testuser3（房东姐姐）可以删除任何房间的支付记录
-    if current_user.username == "testuser3":
+    # super_landlord可以删除任何房间的支付记录
+    if current_user.role in ("admin", "super_landlord"):
         payments = db.query(Payment).filter(
             Payment.id.in_(payment_ids)
         ).all()
@@ -456,8 +456,8 @@ def delete_payment(
 
     删除支付记录时，需要同时清理关联的水电记录的payment_id字段
     """
-    # testuser3（房东姐姐）可以删除任何房间的支付记录
-    if current_user.username == "testuser3":
+    # super_landlord可以删除任何房间的支付记录
+    if current_user.role in ("admin", "super_landlord"):
         payment = db.query(Payment).filter(Payment.id == payment_id).first()
     else:
         payment = db.query(Payment).join(Room).filter(

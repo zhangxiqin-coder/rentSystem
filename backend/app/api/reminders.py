@@ -202,7 +202,7 @@ async def send_rent_reminder_for_room(
     - 2501开头的房间（水电分摊，不单独录入）
     - 其他只需催房租的场景
     """
-    from app.utils.wechat import generate_rent_notification, send_wechat_message
+    from app.utils.notification_service import send_rent_notification_if_complete
 
     # 获取房间信息
     room = db.query(Room).filter(Room.id == room_id).first()
@@ -212,21 +212,12 @@ async def send_rent_reminder_for_room(
     if not room.tenant_name:
         raise HTTPException(status_code=400, detail="房间无租客信息")
 
-    # 判断是否为2501房间（水电分摊）
-    is_2501_room = room.room_number.startswith('2501')
-
-    # 生成催租消息
-    message = generate_rent_notification(
-        room_number=room.room_number,
-        tenant_name=room.tenant_name,
-        monthly_rent=float(room.monthly_rent),
-        payment_cycle=room.payment_cycle or 1,
-        include_utilities=False  # 2501房间不包含水电
+    # 发送催租通知
+    result = await send_rent_notification_if_complete(
+        db, room, date.today(), include_utilities=False
     )
 
-    # 发送到微信
-    try:
-        result = await send_wechat_message(message)
+    if result["sent"]:
         cycle = room.payment_cycle or 1
         rent_due = float(room.monthly_rent) * cycle
         return {
@@ -236,8 +227,8 @@ async def send_rent_reminder_for_room(
             "tenant_name": room.tenant_name,
             "rent_amount": rent_due
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"发送失败: {str(e)}")
+    else:
+        raise HTTPException(status_code=500, detail=f"发送失败: {result.get('error', result.get('reason', '未知错误'))}")
 
 
 @router.get("/summary")

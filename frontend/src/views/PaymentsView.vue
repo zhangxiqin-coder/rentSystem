@@ -37,6 +37,48 @@ const { hideAmounts, formatAmount } = useAmountVisibility()
 const selectedGroups = ref<string[]>([])
 const selectAll = ref(false)
 
+// 缴费提醒：月付查当月，季付查近3个月
+const unpaidRentRooms = computed(() => {
+  const today = new Date()
+  const currentYear = today.getFullYear()
+  const currentMonth = today.getMonth()
+
+  return rooms.value
+    .filter(room => room.status === 'occupied' && room.monthly_rent > 0)
+    .map(room => {
+      const cycle = Math.max(1, Number(room.payment_cycle || 1))
+      const cycleLabel = cycle > 1 ? `${cycle}个月` : ''
+      // 计算需要检查的月数范围
+      const checkMonths = cycle
+      const rentDue = Number(room.monthly_rent || 0) * cycle
+
+      // 检查最近N个月内是否有房租支付记录（排除refund）
+      const hasPaid = payments.value.some(p => {
+        if (p.room_id !== room.id) return false
+        if (p.payment_type === 'refund') return false
+        if (p.status === 'cancelled') return false
+        if (!p.payment_date) return false
+        const d = new Date(p.payment_date)
+        const monthDiff = (currentYear - d.getFullYear()) * 12 + (currentMonth - d.getMonth())
+        return monthDiff >= 0 && monthDiff < checkMonths
+      })
+
+      // 计算应交日期
+      const anchorSource = room.lease_start || room.last_payment_date || ''
+      let dueDay = 0
+      let dueDateStr = ''
+      if (anchorSource) {
+        const anchor = new Date(anchorSource)
+        dueDay = anchor.getDate()
+        dueDateStr = `${dueDay}号`
+      }
+
+      return { room, cycle, cycleLabel, rentDue, hasPaid, dueDateStr, dueDay }
+    })
+    .filter(item => !item.hasPaid)
+    .sort((a, b) => a.dueDay - b.dueDay)
+})
+
 const getStatusLabel = (status: string) => {
   const labels: Record<string, string> = {
     pending: '待处理',
@@ -277,8 +319,8 @@ const loadPayments = async () => {
   loading.value = true
   try {
     const [paymentsRes, roomsRes] = await Promise.all([
-      paymentApi.getPayments({ page: 1, size: 100 }),
-      roomApi.getRooms()
+      paymentApi.getPayments({ page: 1, size: 1000 }),
+      roomApi.getRooms({ page: 1, size: 100 })
     ])
     payments.value = paymentsRes.data.items
     rooms.value = roomsRes.data.items || roomsRes.data
@@ -400,6 +442,22 @@ onMounted(() => {
           <ul>
             <li v-for="(warning, index) in missedPaymentWarnings" :key="index">{{ warning }}</li>
           </ul>
+        </div>
+      </div>
+
+      <!-- 未收租提醒 -->
+      <div v-if="unpaidRentRooms.length > 0" class="unpaid-alert">
+        <div class="alert-icon">💰</div>
+        <div class="alert-content">
+          <strong>未收租提醒（{{ unpaidRentRooms.length }}间）：</strong>
+          <div class="unpaid-room-list">
+            <div v-for="item in unpaidRentRooms" :key="item.room.id" class="unpaid-room-item">
+              <span class="room-number">{{ item.room.room_number }}</span>
+              <span class="room-due">应交{{ item.dueDateStr }}</span>
+              <span class="room-cycle" v-if="item.cycle > 1">（{{ item.cycleLabel }}付）</span>
+              <span class="room-rent">{{ hideAmounts ? '****' : `¥${item.rentDue}` }}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -553,6 +611,66 @@ td {
 
 .status-cancelled {
   color: #999;
+}
+
+/* 未收租提醒样式 */
+.unpaid-alert {
+  background: #fef0f0;
+  border: 1px solid #f56c6c;
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  box-shadow: 0 2px 4px rgba(245, 108, 108, 0.2);
+}
+
+.unpaid-alert .alert-content strong {
+  color: #c45656;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.unpaid-room-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.unpaid-room-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: white;
+  border: 1px solid #fbc4c4;
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.unpaid-room-item .room-number {
+  font-weight: 700;
+  color: #303133;
+}
+
+.unpaid-room-item .room-tenant {
+  color: #909399;
+}
+
+.unpaid-room-item .room-due {
+  color: #e6a23c;
+  font-size: 0.8rem;
+}
+
+.unpaid-room-item .room-cycle {
+  color: #e6a23c;
+  font-size: 0.8rem;
+}
+
+.unpaid-room-item .room-rent {
+  color: #f56c6c;
+  font-weight: 600;
 }
 
 /* 漏交提醒样式 */

@@ -144,42 +144,10 @@ async def create_utility_reading_record(
             owner_id=room.owner_id  # 设置为房间的owner_id，而不是当前用户
         )
 
-        # 检查是否需要发送微信通知（2501开头的房间不发送水电通知）
-        if room and not room.room_number.startswith('2501'):
-            from app.utils.wechat import check_if_both_utilities_recorded, generate_rent_notification, send_wechat_message
-
-            # 检查水和电是否都已录入
-            utility_status = check_if_both_utilities_recorded(
-                db,
-                reading_data.room_id,
-                reading_data.reading_date
-            )
-
-            # 如果水和电都已录入，发送微信通知（无需租客姓名检查）
-            if utility_status['both_recorded']:
-                # 如果没有租客姓名，使用房间号代替
-                tenant_name = room.tenant_name or room.room_number
-                message = generate_rent_notification(
-                    room_number=room.room_number,
-                    tenant_name=tenant_name,
-                    monthly_rent=float(room.monthly_rent),
-                    payment_cycle=room.payment_cycle or 1,
-                    water_amount=utility_status['water_amount'],
-                    electricity_amount=utility_status['electricity_amount'],
-                    water_reading=utility_status['water_reading'],
-                    electricity_reading=utility_status['electricity_reading'],
-                    water_usage=utility_status.get('water_usage', 0),
-                    electricity_usage=utility_status.get('electricity_usage', 0),
-                    last_month_data=utility_status.get('last_month'),
-                    include_utilities=True
-                )
-
-                # 异步发送微信消息（不阻塞响应）
-                try:
-                    await send_wechat_message(message)
-                except Exception as e:
-                    # 发送失败不影响数据保存，只记录日志
-                    print(f"[Warning] Failed to send WeChat message: {str(e)}")
+        # 发送通知（如果水电都录入完毕）
+        if room:
+            from app.utils.notification_service import send_rent_notification_if_complete
+            await send_rent_notification_if_complete(db, room, reading_data.reading_date)
 
         return reading
     except ValueError as e:
@@ -227,68 +195,11 @@ async def update_utility_reading(
     db.commit()
     db.refresh(reading)
 
-    # 检查是否需要发送催收消息
-    # 查询同一房间、同一日期的水电记录
+    # 发送通知（如果水电都录入完毕）
     room = db.query(Room).filter(Room.id == reading.room_id).first()
     if room:
-        from app.utils.wechat import check_if_both_utilities_recorded, generate_rent_notification, send_wechat_message
-
-        result = check_if_both_utilities_recorded(
-            db, reading.room_id, reading.reading_date
-        )
-        water_reading = result.get('water_reading')
-        electricity_reading = result.get('electricity_reading')
-
-        # 如果水和电都已录入，发送催收消息
-        if water_reading and electricity_reading:
-            try:
-                # 获取房间号
-                room_number = room.room_number
-                monthly_rent = room.monthly_rent or 0
-
-                # 从result中获取费用和读数信息
-                water_amount = result.get('water_amount', 0)
-                electricity_amount = result.get('electricity_amount', 0)
-                water_reading_value = result.get('water_reading', 0)
-                electricity_reading_value = result.get('electricity_reading', 0)
-                water_usage = result.get('water_usage', 0)
-                electricity_usage = result.get('electricity_usage', 0)
-
-                # 查询实际的水电记录对象以获取previous_reading
-                from app.models import UtilityReading
-                water_record = db.query(UtilityReading).filter(
-                    UtilityReading.room_id == reading.room_id,
-                    UtilityReading.utility_type == 'water',
-                    UtilityReading.reading_date == reading.reading_date
-                ).first()
-                electricity_record = db.query(UtilityReading).filter(
-                    UtilityReading.room_id == reading.room_id,
-                    UtilityReading.utility_type == 'electricity',
-                    UtilityReading.reading_date == reading.reading_date
-                ).first()
-
-                # 生成消息（使用正确的参数）
-                message = generate_rent_notification(
-                    room_number=room_number,
-                    tenant_name=room.tenant_name or "租户",
-                    monthly_rent=float(monthly_rent),
-                    payment_cycle=room.payment_cycle or 1,
-                    water_amount=float(water_amount),
-                    electricity_amount=float(electricity_amount),
-                    water_reading=float(water_reading_value),
-                    electricity_reading=float(electricity_reading_value),
-                    water_usage=float(water_usage),
-                    electricity_usage=float(electricity_usage),
-                    last_month_data=result.get('last_month')
-                )
-
-                # 异步发送飞书消息（不阻塞响应）
-                await send_wechat_message(message)
-            except Exception as e:
-                # 发送失败不影响数据保存，只记录日志
-                print(f"[Warning] Failed to send notification: {str(e)}")
-                import traceback
-                traceback.print_exc()
+        from app.utils.notification_service import send_rent_notification_if_complete
+        await send_rent_notification_if_complete(db, room, reading.reading_date)
 
     return reading
 
@@ -363,44 +274,13 @@ async def batch_create_utility_readings(
             failed_count += 1
             errors.append(f"房间{reading_data.room_id} {reading_data.utility_type}: {str(e)}")
     
-    # 检查是否有需要发送微信通知的房间
-    # 找出同时录入水和电的房间
+    # 发送通知（如果水电都录入完毕）
     room_ids = list(set(r.room_id for r in created_readings))
     for room_id in room_ids:
         room = db.query(Room).filter(Room.id == room_id).first()
-        
-        # 跳过2501系列房间
-        if not room or room.room_number.startswith('2501'):
-            continue
-            
-        # 检查水和电是否都已录入
-        from app.utils.wechat import check_if_both_utilities_recorded, generate_rent_notification, send_wechat_message
-        
-        utility_status = check_if_both_utilities_recorded(
-            db,
-            room_id,
-            batch_data.reading_date
-        )
-        
-        if utility_status['both_recorded']:
-            tenant_name = room.tenant_name or room.room_number
-            message = generate_rent_notification(
-                room_number=room.room_number,
-                tenant_name=tenant_name,
-                monthly_rent=float(room.monthly_rent),
-                payment_cycle=room.payment_cycle or 1,
-                water_amount=utility_status['water_amount'],
-                electricity_amount=utility_status['electricity_amount'],
-                water_reading=utility_status['water_reading'],
-                electricity_reading=utility_status['electricity_reading'],
-                include_utilities=True
-            )
-            
-            # 异步发送微信消息
-            try:
-                await send_wechat_message(message)
-            except Exception as e:
-                print(f"[Warning] Failed to send WeChat message: {str(e)}")
+        if room:
+            from app.utils.notification_service import send_rent_notification_if_complete
+            await send_rent_notification_if_complete(db, room, batch_data.reading_date)
     
     return BatchUtilityReadingResponse(
         success_count=success_count,

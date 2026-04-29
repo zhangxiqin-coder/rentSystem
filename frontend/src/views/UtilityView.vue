@@ -1,156 +1,30 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ref, onMounted } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
-import { utilityApi } from '@/api/utility'
-import { roomApi } from '@/api/room'
-import { paymentApi } from '@/api/payment'
-import { useAmountVisibility } from '@/composables/useAmountVisibility'
+
+// Composables
+import { useAmountFormatting } from '@/composables/useAmountFormatting'
+import { useRoomData } from '@/composables/useRoomData'
+import { useUtilityReadings } from '@/composables/useUtilityReadings'
+import { useOverdueManagement } from '@/composables/useOverdueManagement'
+import { useReadingForm } from '@/composables/useReadingForm'
+import { useReadingEdit } from '@/composables/useReadingEdit'
+import { usePaymentData } from '@/composables/usePaymentData'
+import { useMessageGeneration } from '@/composables/useMessageGeneration'
+import { useBatchOperations } from '@/composables/useBatchOperations'
+
+// Child components
 import UtilityReadingForm from '@/components/UtilityReadingForm.vue'
-import type { UtilityReading, Room, Payment as RentPayment } from '@/types'
-import axios from 'axios'
+import RentManagementCard from '@/components/RentManagementCard.vue'
+import ReadingsTable from '@/components/ReadingsTable.vue'
+import BatchEntryDialog from '@/components/BatchEntryDialog.vue'
+import PaymentDialog from '@/components/PaymentDialog.vue'
+import BatchPaymentDialog from '@/components/BatchPaymentDialog.vue'
+import EditReadingDialog from '@/components/EditReadingDialog.vue'
+import MessageDialog from '@/components/MessageDialog.vue'
+import RentReminderDialog from '@/components/RentReminderDialog.vue'
 
-// 活动标签页
-const activeTab = ref('readings')
-const { hideAmounts, formatAmount } = useAmountVisibility()
-
-// 水电记录列表（原始数据）
-const readings = ref<UtilityReading[]>([])
-const allReadings = ref<UtilityReading[]>([])
-const loading = ref(false)
-
-// 支付记录（用于判断是否已收租）
-const payments = ref<RentPayment[]>([])
-
-// 所有房间（用于计算欠租）
-const allRooms = ref<Room[]>([])
-
-// 欠租房间
-const ADVANCE_RENT_COLLECTION_DAYS = 1 // 收租提前天数：例如应交日28号，则27号开始计入欠租管理
-const OVERDUE_IGNORE_BEFORE_TS = new Date('2026-04-22T00:00:00').getTime() // 历史账务豁免日期（不含当天）
-const latestUnpaidUtilityAmountByRoom = computed(() => {
-  const roomAmountMap = new Map<number, number>()
-  const mergedList = mergeReadings(allReadings.value)
-
-  // mergeReadings 已按日期倒序，首条即最近记录
-  mergedList.forEach(item => {
-    if (roomAmountMap.has(item.room_id)) return
-    if (item.is_paid) return
-    const utilityAmount =
-      Number(item.water_reading?.amount || 0) +
-      Number(item.electricity_reading?.amount || 0)
-    roomAmountMap.set(item.room_id, utilityAmount)
-  })
-
-  return roomAmountMap
-})
-
-const overdueRooms = computed(() => {
-  const overdue: Array<{
-    room: Room
-    overdueDays: number
-    overdueAmount: number
-    lastPaymentDate: string
-    nextPaymentDate: string
-  }> = []
-
-  allRooms.value.forEach(room => {
-    if (room.status !== 'occupied') return
-    if (hasPaidThisMonth(room)) return
-    if (hasRecentRentPayment(room.id)) return
-
-    const { targetDue } = getPaymentDueContext(room)
-    // 业务规则：4/22之前应交的历史账务不再追踪，但 502-2 继续保留在欠租管理
-    if (room.room_number !== '502-2' && targetDue.getTime() < OVERDUE_IGNORE_BEFORE_TS) return
-
-    const nextPaymentDate = getNextPaymentDate(room)
-    const nextPaymentDays = getNextPaymentDays(room)
-
-    // 如果距离应交日 <= 提前收租天数，计入欠租管理（支持提前1天收租）
-    if (nextPaymentDays <= ADVANCE_RENT_COLLECTION_DAYS) {
-      const overdueDays = Math.max(0, -nextPaymentDays)
-      const lastPaymentDate = room.last_payment_date || room.lease_start
-
-      // 计算欠费总额（房租 + 最近未结清水电）
-      const utilityAmount = latestUnpaidUtilityAmountByRoom.value.get(room.id) || 0
-      const cycle = Math.max(1, Number(room.payment_cycle || 1))
-      const overdueAmount = Number(room.monthly_rent || 0) * cycle + utilityAmount
-
-      overdue.push({
-        room,
-        overdueDays,
-        overdueAmount,
-        lastPaymentDate: formatDate(lastPaymentDate),
-        nextPaymentDate: formatDate(nextPaymentDate)
-      })
-    }
-  })
-
-  // 按欠租天数排序（天数越多越靠前）
-  return overdue.sort((a, b) => b.overdueDays - a.overdueDays)
-})
-
-// 即将到期房间（2~7天内；提前1天及当天已归入欠租管理）
-const expiringRooms = computed(() => {
-  return allRooms.value
-    .filter(room => room.status === 'occupied')
-    .filter(room => !hasPaidThisMonth(room))
-    .filter(room => !hasRecentRentPayment(room.id))
-    .filter(room => {
-      const days = getNextPaymentDays(room)
-      return days > ADVANCE_RENT_COLLECTION_DAYS && days <= 7
-    })
-    .sort((a, b) => getNextPaymentDays(a) - getNextPaymentDays(b))
-})
-
-// 收租对话框
-const paymentDialogVisible = ref(false)
-const paymentForm = ref({
-  room_id: 0,
-  reading_date: '',
-  rent_original: 0,
-  rent_amount: 0,
-  water_original: 0,
-  water_amount: 0,
-  electricity_original: 0,
-  electricity_amount: 0,
-  payment_method: '现金',
-  notes: ''
-})
-const paymentLoading = ref(false)
-
-// 编辑对话框
-const editDialogVisible = ref(false)
-const editLoading = ref(false)
-const editForm = ref({
-  water_reading_id: null as number | null,
-  electricity_reading_id: null as number | null,
-  water_reading: 0,
-  electricity_reading: 0,
-  notes: '',
-})
-const editOriginalData = ref<MergedReading | null>(null)
-
-// 消息输出对话框
-const messageDialogVisible = ref(false)
-const currentMessage = ref('')
-const sendingWechat = ref(false)
-
-// 催租消息预览
-const rentReminderPreview = ref('')
-const rentReminderVisible = ref(false)
-
-// 批量录入对话框
-const batchDialogVisible = ref(false)
-const batchLoading = ref(false)
-const selectedRooms = ref<number[]>([])
-const batchForm = ref({
-  reading_date: new Date().toISOString().split('T')[0], // 默认今天
-  utility_type: 'both', // 默认水电全录
-  notes: ''
-})
-
-// 扩展Room类型，添加临时读数字段
+// Extend Room type for batch entry temporary fields
 declare module '@/types' {
   interface Room {
     water_reading?: number
@@ -158,1255 +32,96 @@ declare module '@/types' {
   }
 }
 
-// 显示批量录入表单
-const showBatchForm = () => {
-  // 清空之前的选择
-  selectedRooms.value = []
-  // 重置所有房间的读数
-  allRooms.value.forEach(room => {
-    room.water_reading = 0
-    room.electricity_reading = 0
-  })
-  batchDialogVisible.value = true
-}
+// Activity tab
+const activeTab = ref('readings')
 
-// 全选房间
-const selectAllRooms = () => {
-  selectedRooms.value = allRooms.value.map(r => r.id)
-}
+// 1. Amount formatting
+const { hideAmounts, formatAmount, maskedAmount, maskedRate } = useAmountFormatting()
 
-// 清空选择
-const clearRoomSelection = () => {
-  selectedRooms.value = []
-}
+// 2. Room data
+const {
+  allRooms, roomOptions, roomsLoading, roomMap,
+  loadRooms, getRoomNumber, getRoomInfo, getRoom,
+} = useRoomData()
 
-// 仅选择已租房间
-const selectOccupiedRooms = () => {
-  selectedRooms.value = allRooms.value
-    .filter(r => r.status === 'occupied')
-    .map(r => r.id)
-}
-
-// 计算总记录数
-const calculateTotalRecords = () => {
-  const roomCount = selectedRooms.value.length
-  if (batchForm.value.utility_type === 'both') {
-    return roomCount * 2
-  }
-  return roomCount
-}
-
-const maskedAmount = (value: number | string | null | undefined) => {
-  if (value === null || value === undefined || value === '') return '-'
-  return formatAmount(Number(value))
-}
-
-const maskedRate = (value: number | string | null | undefined, unit: string) => {
-  if (hideAmounts.value) return `****/${unit}`
-  return `¥${Number(value || 0).toFixed(2)}/${unit}`
-}
-
-// 提交批量录入
-const submitBatch = async () => {
-  if (selectedRooms.value.length === 0) {
-    ElMessage.warning('请至少选择一个房间')
-    return
-  }
-
-  batchLoading.value = true
-  try {
-    // 构建批量数据
-    const readings: any[] = []
-
-    selectedRooms.value.forEach(roomId => {
-      const room = allRooms.value.find(r => r.id === roomId)
-      if (!room) return
-
-      // 水费读数
-      if ((batchForm.value.utility_type === 'water' || batchForm.value.utility_type === 'both') && room.water_reading > 0) {
-        readings.push({
-          room_id: roomId,
-          utility_type: 'water',
-          reading: room.water_reading
-        })
-      }
-
-      // 电费读数
-      if ((batchForm.value.utility_type === 'electricity' || batchForm.value.utility_type === 'both') && room.electricity_reading > 0) {
-        readings.push({
-          room_id: roomId,
-          utility_type: 'electricity',
-          reading: room.electricity_reading
-        })
-      }
-    })
-
-    if (readings.length === 0) {
-      ElMessage.warning('请至少录入一条读数')
-      batchLoading.value = false
-      return
-    }
-
-    // 调用批量API
-    const result = await utilityApi.batchCreate({
-      readings,
-      reading_date: batchForm.value.reading_date,
-      notes: batchForm.value.notes
-    })
-
-    // 显示结果
-    if (result.failed_count > 0) {
-      ElMessage.warning(`成功 ${result.success_count} 条，失败 ${result.failed_count} 条`)
-      if (result.errors.length > 0) {
-        console.error('批量录入错误:', result.errors)
-      }
-    } else {
-      ElMessage.success(`批量录入成功！共 ${result.success_count} 条记录，总金额 ${formatAmount(Number(result.total_amount || 0))}`)
-    }
-
-    // 关闭对话框并刷新列表
-    batchDialogVisible.value = false
-    loadReadings()
-    loadPayments() // 刷新支付记录
-
-  } catch (error: any) {
-    console.error('批量录入失败:', error)
-    ElMessage.error(error.response?.data?.detail || '批量录入失败')
-  } finally {
-    batchLoading.value = false
-  }
-}
-
-// 自动生成并发送微信消息
-// 生成催租消息文本（用于预览）
-const generateRentReminder = (merged: MergedReading): string => {
-  const roomNumber = getRoomNumber(merged.room_id)
-  const date = new Date(merged.reading_date).toLocaleDateString('zh-CN')
-
-  const cycle = Math.max(1, Number(merged.payment_cycle || 1))
-  const rentAmount = Number(merged.monthly_rent || 0) * cycle
-  const rentLabel = cycle > 1 ? `房租（${cycle}个月）` : '房租'
-  const waterAmount = Number(merged.water_reading?.amount || 0)
-  const electricityAmount = Number(merged.electricity_reading?.amount || 0)
-  const total = rentAmount + waterAmount + electricityAmount
-
-  let message = `【${roomNumber} 收租明细】\n抄表日期：${date}\n\n💰 合计：${formatAmount(total)}\n`
-
-  if (rentAmount > 0) {
-    message += `🏠 ${rentLabel}：${formatAmount(rentAmount)}\n`
-  }
-
-  if (merged.water_reading) {
-    const prev = Number(merged.water_reading.previous_reading || 0)
-    const curr = Number(merged.water_reading.reading || 0)
-    const usage = Number(merged.water_reading.usage ?? Math.max(0, curr - prev))
-    const rate = Number(
-      merged.water_reading.rate_used ?? getRoomInfo(merged.room_id, 'water_rate') ?? 0
-    )
-    const amount = Number(merged.water_reading.amount || 0)
-    message += `💧 水费：${prev}→${curr}（用量${usage}吨 × ${hideAmounts.value ? '****/吨' : `¥${rate}/吨`} = ${formatAmount(amount)}）\n`
-  }
-
-  if (merged.electricity_reading) {
-    const prev = Number(merged.electricity_reading.previous_reading || 0)
-    const curr = Number(merged.electricity_reading.reading || 0)
-    const usage = Number(merged.electricity_reading.usage ?? Math.max(0, curr - prev))
-    const rate = Number(
-      merged.electricity_reading.rate_used ?? getRoomInfo(merged.room_id, 'electricity_rate') ?? 0
-    )
-    const amount = Number(merged.electricity_reading.amount || 0)
-    message += `⚡ 电费：${prev}→${curr}（用量${usage}度 × ${hideAmounts.value ? '****/度' : `¥${rate}/度`} = ${formatAmount(amount)}）\n`
-  }
-
-  return message
-}
-
-const showRentReminder = (row: MergedReading) => {
-  rentReminderPreview.value = generateRentReminder(row)
-  rentReminderVisible.value = true
-}
-
-// 复制催租消息到剪贴板
-const copyRentReminder = async () => {
-  try {
-    await navigator.clipboard.writeText(rentReminderPreview.value)
-    ElMessage.success('已复制到剪贴板')
-  } catch (error) {
-    console.error('Failed to copy:', error)
-    ElMessage.error('复制失败，请手动复制')
-  }
-}
-
-const autoGenerateAndSendWechat = async (merged: MergedReading) => {
-  try {
-    // 生成消息
-    const message = generateMessageText(merged)
-    currentMessage.value = message
-    messageDialogVisible.value = true
-
-    // 注意：后端在水电录入时已经自动发送消息到飞书了
-    // 这里只显示消息，不再重复调用后端API
-    sendingWechat.value = true
-    ElMessage.success('消息已自动生成并推送到飞书')
-  } catch (error: any) {
-    console.error('Failed to generate wechat message:', error)
-    ElMessage.warning('消息生成失败')
-  } finally {
-    sendingWechat.value = false
-  }
-}
-
-// 生成消息文本
-const generateMessageText = (merged: MergedReading): string => {
-  const roomNumber = getRoomNumber(merged.room_id)
-  const date = new Date(merged.reading_date).toLocaleDateString('zh-CN')
-  const cycle = Math.max(1, Number(merged.payment_cycle || 1))
-  const rentDue = Number(merged.monthly_rent || 0) * cycle
-  const rentLabel = cycle > 1 ? `房租（${cycle}个月）` : '房租'
-
-  let message = `【收租通知】\n房间：${roomNumber}\n抄表日期：${date}\n`
-
-  if (rentDue > 0) {
-    message += `\n🏠 ${rentLabel}：${formatAmount(rentDue)}\n`
-  }
-
-  if (merged.water_reading) {
-    message += `\n💧 水费：\n`
-    message += `  上次读数：${merged.water_reading.previous_reading} 吨\n`
-    message += `  本次读数：${merged.water_reading.reading} 吨\n`
-    message += `  用量：${merged.water_reading.usage} 吨\n`
-    message += `  费用：${formatAmount(Number(merged.water_reading.amount || 0))}\n`
-  }
-
-  if (merged.electricity_reading) {
-    message += `\n⚡ 电费：\n`
-    message += `  上次读数：${merged.electricity_reading.previous_reading} 度\n`
-    message += `  本次读数：${merged.electricity_reading.reading} 度\n`
-    message += `  用量：${merged.electricity_reading.usage} 度\n`
-    message += `  费用：${formatAmount(Number(merged.electricity_reading.amount || 0))}\n`
-  }
-
-  message += `\n💰 应付总额：${formatAmount(merged.total_amount)}`
-
-  if (merged.notes) {
-    message += `\n\n备注：${merged.notes}`
-  }
-
-  message += `\n\n请及时缴纳费用，谢谢！\n${'='.repeat(30)}\n`
-
-  return message
-}
-
-// 发送微信通知（调用后端API）
-const sendWechatNotification = async (merged: MergedReading, message: string) => {
-  // 调用后端API发送微信通知
-  const payload = {
-    room_id: merged.room_id,
-    reading_date: merged.reading_date,
-    message,
-  }
-
-  await utilityApi.request({
-    method: 'POST',
-    url: '/api/v1/utility/send-wechat-notification',
-    data: payload,
-  })
-}
-
-// 复制消息到剪贴板
-const copyMessage = () => {
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(currentMessage.value)
-    ElMessage.success('消息已复制到剪贴板')
-  } else {
-    ElMessage.warning('自动复制失败，请手动复制')
-  }
-}
-
-// 合并水和电的记录（用于自动发送微信）
-const mergeReadings = (readings: UtilityReading[]): MergedReading[] => {
-  const map = new Map<string, MergedReading>()
-
-  readings.forEach(reading => {
-    const key = `${reading.room_id}_${reading.reading_date}`
-
-    if (!map.has(key)) {
-      const room = roomOptions.value.find(r => r.id === reading.room_id)
-      map.set(key, {
-        room_id: reading.room_id,
-        reading_date: reading.reading_date,
-        water_reading: reading.utility_type === 'water' ? reading : undefined,
-        electricity_reading: reading.utility_type === 'electricity' ? reading : undefined,
-        monthly_rent: room?.monthly_rent,
-        payment_cycle: room?.payment_cycle,
-        total_amount: 0,
-        notes: '',
-      })
-    } else {
-      const merged = map.get(key)!
-      if (reading.utility_type === 'water') {
-        merged.water_reading = reading
-      } else if (reading.utility_type === 'electricity') {
-        merged.electricity_reading = reading
-      }
-    }
-  })
-
-  // 计算总费用
-  Array.from(map.values()).forEach(merged => {
-    const cycle = Math.max(1, merged.payment_cycle || 1)
-    let total = (merged.monthly_rent || 0) * cycle
-
-    if (merged.water_reading) {
-      total += merged.water_reading.amount || 0
-    }
-
-    if (merged.electricity_reading) {
-      total += merged.electricity_reading.amount || 0
-    }
-
-    merged.total_amount = total
-    merged.notes = merged.water_reading?.notes || merged.electricity_reading?.notes || ''
-
-    // 检查是否已支付（任意一个水电记录有payment_id即视为已支付）
-    merged.is_paid = !!(
-      (merged.water_reading && merged.water_reading.payment_id) ||
-      (merged.electricity_reading && merged.electricity_reading.payment_id)
-    )
-  })
-
-  return Array.from(map.values()).sort((a, b) =>
-    new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime()
-  )
-}
-
-// 批量选择
-const tableRef = ref()
-const selectedRows = ref<MergedReading[]>([])
-
-// 批量收租对话框
-const batchPaymentDialogVisible = ref(false)
-const batchPaymentLoading = ref(false)
-const batchPayments = ref<Array<{
-  room_id: number
-  reading_date: string
-  rent_original: number
-  rent_amount: number
-  water_original: number
-  water_amount: number
-  electricity_original: number
-  electricity_amount: number
-  payment_method: string
-  notes: string
-}>>([])
-
-// 计算是否可以批量收租（所有选中行都必须有水电数据）
-const canBatchPay = computed(() => {
-  return selectedRows.value.length > 0 &&
-    selectedRows.value.every(row => row.water_reading || row.electricity_reading)
+// 3. Message generation (needs getRoomNumber, getRoomInfo, hideAmounts, formatAmount)
+const {
+  messageDialogVisible, currentMessage, sendingWechat,
+  rentReminderPreview, rentReminderVisible,
+  generateRentReminder, showRentReminder, copyRentReminder,
+  autoGenerateAndSendWechat, generateMessageText,
+  copyMessage, showCopyFallback,
+} = useMessageGeneration({
+  getRoomNumber,
+  getRoomInfo,
+  hideAmounts,
+  formatAmount,
 })
 
-// 合并后的记录列表（水和电在同一行）
-interface MergedReading {
-  room_id: number
-  reading_date: string
-  water_reading?: UtilityReading
-  electricity_reading?: UtilityReading
-  monthly_rent?: number  // 月租金
-  payment_cycle?: number  // 付款周期（月数）
-  total_amount: number
-  notes: string
-  is_paid?: boolean  // 是否已收租
-}
+// 4. Utility readings (needs roomOptions)
+const {
+  readings, allReadings, loading, payments, pagination, filters,
+  loadReadings, handleFilter, resetFilter,
+  handlePageChange, handleSizeChange, mergedReadings,
+} = useUtilityReadings({ roomOptions })
 
-const mergedReadings = computed(() => {
-  const map = new Map<string, MergedReading>()
+// 5. Payment data (needs formatAmount, loadReadings, loadRooms)
+const {
+  paymentDialogVisible, paymentForm, paymentLoading,
+  showPaymentDialog, submitPayment,
+} = usePaymentData({ formatAmount, loadReadings, loadRooms })
 
-  readings.value.forEach(reading => {
-    const key = `${reading.room_id}_${reading.reading_date}`
-    
-    if (!map.has(key)) {
-      // 获取房间信息（包含房租）
-      const room = roomOptions.value.find(r => r.id === reading.room_id)
-      const cycle = Math.max(1, Number(room?.payment_cycle || 1))
-      map.set(key, {
-        room_id: reading.room_id,
-        reading_date: reading.reading_date,
-        monthly_rent: room?.monthly_rent,
-        payment_cycle: room?.payment_cycle,
-        total_amount: Number(room?.monthly_rent || 0) * cycle,  // 总计包含房租，按周期计算
-        notes: reading.notes || ''
-      })
-    }
-
-    const merged = map.get(key)!
-
-    if (reading.utility_type === 'water') {
-      merged.water_reading = reading
-    } else if (reading.utility_type === 'electricity') {
-      merged.electricity_reading = reading
-    }
-
-    // 累加水电费到总计（房租已在初始化时添加）
-    merged.total_amount += Number(reading.amount || 0)
-    if (reading.notes) {
-      merged.notes = merged.notes ? `${merged.notes}; ${reading.notes}` : reading.notes
-    }
-  })
-
-  // 检查每条记录是否已收租（使用payment_id字段）
-  const result = Array.from(map.values())
-  result.forEach(merged => {
-    // 使用payment_id字段判断是否已支付（更准确）
-    const waterPaid = merged.water_reading?.payment_id
-    const elecPaid = merged.electricity_reading?.payment_id
-    merged.is_paid = !!(waterPaid || elecPaid)
-  })
-
-  // 返回所有记录（包括已支付的），按日期倒序排列
-  return result.sort((a, b) =>
-    new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime()
-  )
+// 6. Overdue management (needs allRooms, payments, allReadings, roomOptions, formatAmount, mergedReadings, showPaymentDialog)
+const {
+  overdueRooms, expiringRooms,
+  canMarkExpiringRoomPaid, markExpiringRoomPaid,
+  sendReminder, getNextPaymentDays,
+} = useOverdueManagement({
+  allRooms, payments, allReadings, roomOptions, formatAmount,
+  mergedReadings, showPaymentDialog,
 })
 
-// 房间选项（用于筛选）
-const roomOptions = ref<Room[]>([])
-const roomsLoading = ref(false)
+// 7. Reading edit (needs loadReadings, autoGenerateAndSendWechat)
+const {
+  editDialogVisible, editLoading, editForm,
+  showEditDialog, saveEdit, handleDelete,
+} = useReadingEdit({ loadReadings, autoGenerateAndSendWechat })
 
-// 房间信息映射（用于显示房间号）
-const roomMap = computed(() => {
-  const map = new Map<number, Room>()
-  roomOptions.value.forEach(room => {
-    map.set(room.id, room)
-  })
-  return map
+// 8. Reading form (needs roomOptions, getRoomNumber, getRoomInfo, hideAmounts, formatAmount, loadReadings, generateRentReminder, autoGenerateAndSendWechat)
+const {
+  showFormDialog, formSuccess, selectedRoomId,
+  openUtilityForm, showAddForm,
+  handleFormSuccessWithReminder,
+} = useReadingForm({
+  roomOptions, getRoomNumber, getRoomInfo, hideAmounts, formatAmount,
+  loadReadings, generateRentReminder, autoGenerateAndSendWechat,
 })
 
-// 分页
-const pagination = ref({
-  page: 1,
-  size: 20,
-  total: 0,
+// 9. Batch operations (needs allRooms, formatAmount, getRoomNumber, loadReadings, loadRooms, generateMessageText, showCopyFallback)
+const {
+  batchDialogVisible, batchLoading, selectedRooms, batchForm,
+  showBatchForm, selectAllRooms, clearRoomSelection, selectOccupiedRooms,
+  submitBatch, tableRef, selectedRows, canBatchPay,
+  handleSelectionChange, clearSelection,
+  batchPaymentDialogVisible, batchPaymentLoading, batchPayments,
+  showBatchPaymentDialog, submitBatchPayment,
+  batchGenerateMessages, batchDelete,
+} = useBatchOperations({
+  allRooms, formatAmount, getRoomNumber, loadReadings, loadRooms,
+  generateMessageText, showCopyFallback,
 })
 
-// 筛选条件
-const filters = ref({
-  room_id: undefined as number | undefined,
-  start_date: '',
-  end_date: '',
-})
-
-// 表单对话框
-const showFormDialog = ref(false)
-const formSuccess = ref(false)
-const selectedRoomId = ref<number | undefined>(undefined)
-
-// 打开录入水电对话框（可传入固定房间ID）
-const openUtilityForm = (roomId?: number) => {
-  selectedRoomId.value = roomId
-  showFormDialog.value = true
-}
-
-// 加载水电记录列表
-const loadAllReadings = async () => {
-  const loaded: UtilityReading[] = []
-  let page = 1
-  let hasMore = true
-
-  while (hasMore) {
-    const res = await utilityApi.getReadings({ page, size: 100 })
-    const items = res.data.items || []
-    loaded.push(...items)
-
-    hasMore = items.length === 100
-    page += 1
-  }
-
-  return loaded
-}
-
-const loadReadings = async () => {
-  loading.value = true
-  try {
-    const params: any = {
-      page: pagination.value.page,
-      size: pagination.value.size,
-    }
-
-    if (filters.value.room_id) {
-      params.room_id = filters.value.room_id
-    }
-    if (filters.value.start_date) {
-      params.start_date = filters.value.start_date
-    }
-    if (filters.value.end_date) {
-      params.end_date = filters.value.end_date
-    }
-
-    const [res, allItems, paymentsRes] = await Promise.all([
-      utilityApi.getReadings(params),
-      loadAllReadings(),
-      paymentApi.getPayments({ size: 1000 })
-    ])
-
-    readings.value = res.data.items || []
-    allReadings.value = allItems
-    pagination.value.total = res.data.total || 0
-
-    // 同时加载支付记录，用于判断是否已收租
-    payments.value = paymentsRes.data.items || []
-  } catch (error) {
-    console.error('Failed to load readings:', error)
-    ElMessage.error('加载水电记录失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-// 加载房间列表（用于筛选和显示房间号）
-const loadRooms = async () => {
-  roomsLoading.value = true
-  try {
-    // 后端API限制size最大为100，需要分页加载
-    let loadedRooms: Room[] = []
-    let page = 1
-    let hasMore = true
-    
-    while (hasMore) {
-      const res = await roomApi.getRooms({ page, size: 100 })
-      const items = res.data.items || []
-      loadedRooms = [...loadedRooms, ...items]
-      
-      // 如果返回的数据少于100条，说明没有更多数据了
-      hasMore = items.length === 100
-      page++
-    }
-    
-    roomOptions.value = loadedRooms
-    allRooms.value = loadedRooms // 设置所有房间，用于计算欠租/即将到期
-  } catch (error) {
-    console.error('Failed to load rooms:', error)
-    ElMessage.error('加载房间列表失败')
-  } finally {
-    roomsLoading.value = false
-  }
-}
-
-// 即将到期房间：若近2天已录入水电，则允许直接“标记已收”（等价于下方表格的“标记已收”）
-const RECENT_READING_DAYS = 2
-
-const getRecentUnpaidReadingForRoom = (roomId: number): MergedReading | undefined => {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  return mergedReadings.value
-    .filter(item => item.room_id === roomId && !item.is_paid && (item.water_reading || item.electricity_reading))
-    .filter(item => {
-      const readingDate = new Date(item.reading_date)
-      readingDate.setHours(0, 0, 0, 0)
-      const diffDays = Math.floor((today.getTime() - readingDate.getTime()) / (1000 * 60 * 60 * 24))
-      return diffDays >= 0 && diffDays <= RECENT_READING_DAYS
-    })
-    .sort((a, b) => new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime())[0]
-}
-
-const canMarkExpiringRoomPaid = (room: Room) => {
-  return !!getRecentUnpaidReadingForRoom(room.id)
-}
-
-const markExpiringRoomPaid = (room: Room) => {
-  const row = getRecentUnpaidReadingForRoom(room.id)
-  if (!row) {
-    ElMessage.warning(`房间 ${room.room_number} 暂无近${RECENT_READING_DAYS}天未收租的水电记录`)
-    return
-  }
-  showPaymentDialog(row)
-}
-
-// 计算距离到期天数
-const getDaysDiff = (leaseEnd: string) => {
-  const today = new Date()
-  const endDate = new Date(leaseEnd)
-  const diff = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-  return Math.max(0, diff)
-}
-
-// 格式化日期
-const formatDate = (dateStr: string) => {
-  return new Date(dateStr).toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
+// Form success handler that shows rent reminder preview
+const onFormSuccess = (result: any) => {
+  handleFormSuccessWithReminder(result, {
+    setRentReminderPreview: (value: string) => { rentReminderPreview.value = value },
+    setRentReminderVisible: (value: boolean) => { rentReminderVisible.value = value },
   })
 }
 
-// 获取最近一次收租明细文本（用于催租消息）
-const getLatestCollectionDetailText = async (room: Room) => {
-  try {
-    const res = await utilityApi.getReadingsByRoom(room.id, { page: 1, size: 50 })
-    const mergedList = mergeReadings(res.data.items || [])
-    const latest = mergedList[0]
-    const cycle = Math.max(1, Number(room.payment_cycle || 1))
-    const rentDue = Number(room.monthly_rent || 0) * cycle
-    const rentLabel = cycle > 1 ? `房租（${cycle}个月）` : '房租'
-    if (!latest) return `【${room.room_number} 收租明细】\n抄表日期：-\n\n💰 合计：${formatAmount(rentDue)}\n🏠 ${rentLabel}：${formatAmount(rentDue)}\n💧 水费：暂无抄表记录\n⚡ 电费：暂无抄表记录`
-
-    const date = new Date(latest.reading_date).toLocaleDateString('zh-CN')
-    const rent = rentDue
-    const water = latest.water_reading
-    const electric = latest.electricity_reading
-
-    const waterPrev = Number(water?.previous_reading || 0)
-    const waterCurr = Number(water?.reading || 0)
-    const waterUsage = Number(water?.usage ?? Math.max(0, waterCurr - waterPrev))
-    const waterRate = Number(water?.rate_used ?? room.water_rate ?? 0)
-    const waterAmount = Number(water?.amount || 0)
-
-    const elecPrev = Number(electric?.previous_reading || 0)
-    const elecCurr = Number(electric?.reading || 0)
-    const elecUsage = Number(electric?.usage ?? Math.max(0, elecCurr - elecPrev))
-    const elecRate = Number(electric?.rate_used ?? room.electricity_rate ?? 0)
-    const elecAmount = Number(electric?.amount || 0)
-
-    const total = rent + waterAmount + elecAmount
-
-    const waterLine = water
-      ? `💧 水费：${waterPrev}→${waterCurr}（用量${waterUsage}吨 × ¥${waterRate}/吨 = ${formatAmount(waterAmount)}）`
-      : '💧 水费：暂无抄表记录'
-    const electricLine = electric
-      ? `⚡ 电费：${elecPrev}→${elecCurr}（用量${elecUsage}度 × ¥${elecRate}/度 = ${formatAmount(elecAmount)}）`
-      : '⚡ 电费：暂无抄表记录'
-
-    return `【${room.room_number} 收租明细】\n抄表日期：${date}\n\n💰 合计：${formatAmount(total)}\n🏠 ${rentLabel}：${formatAmount(rent)}\n${waterLine}\n${electricLine}`
-  } catch {
-    return `【${room.room_number} 收租明细】\n抄表日期：-\n\n💰 合计：${formatAmount(rentDue)}\n🏠 ${rentLabel}：${formatAmount(rentDue)}\n💧 水费：获取失败\n⚡ 电费：获取失败`
-  }
-}
-
-// 一键催租
-const sendReminder = async (room: Room, type: 'overdue' | 'upcoming') => {
-  try {
-    let message = ''
-
-    message = await getLatestCollectionDetailText(room)
-
-    // 复制到剪贴板
-    await navigator.clipboard.writeText(message)
-    ElMessage.success('催租消息已复制到剪贴板，请发送给租客')
-
-    // 可选：同时发送微信通知（如果集成了微信推送）
-    // await sendWechatNotification(message)
-  } catch (error) {
-    console.error('Failed to send reminder:', error)
-    ElMessage.error('发送催租消息失败')
-  }
-}
-
-const toStartOfDay = (date: Date) => {
-  const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
-  return d
-}
-
-const RECENT_PAYMENT_DAYS = 7
-const hasRecentRentPayment = (roomId: number) => {
-  const today = toStartOfDay(new Date())
-  return payments.value.some(payment => {
-    if (payment.room_id !== roomId) return false
-    if (!payment.payment_date) return false
-    if (payment.status === 'cancelled') return false
-
-    const paymentDate = toStartOfDay(new Date(payment.payment_date))
-    const diffDays = Math.floor((today.getTime() - paymentDate.getTime()) / (1000 * 60 * 60 * 24))
-    return diffDays >= 0 && diffDays <= RECENT_PAYMENT_DAYS
-  })
-}
-
-const isSameMonth = (a: Date, b: Date) => {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()
-}
-
-const hasPaidThisMonth = (room: Room) => {
-  const today = toStartOfDay(new Date())
-
-  // 历史导入场景：没有 payment 记录，但 last_payment_date 已更新，视为本月已收
-  if (room.last_payment_date) {
-    const lastPaid = toStartOfDay(new Date(room.last_payment_date))
-    if (isSameMonth(lastPaid, today)) return true
-  }
-
-  return payments.value.some(payment => {
-    if (payment.room_id !== room.id) return false
-    if (!payment.payment_date) return false
-    if (payment.status === 'cancelled') return false
-    const paymentDate = toStartOfDay(new Date(payment.payment_date))
-    return isSameMonth(paymentDate, today)
-  })
-}
-
-const buildDueDate = (year: number, month: number, day: number) => {
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  return new Date(year, month, Math.min(day, daysInMonth))
-}
-
-const addMonthsByDueDay = (base: Date, months: number, dueDay: number) => {
-  const d = new Date(base)
-  d.setDate(1)
-  d.setMonth(d.getMonth() + months)
-  const adjusted = buildDueDate(d.getFullYear(), d.getMonth(), dueDay)
-  adjusted.setHours(0, 0, 0, 0)
-  return adjusted
-}
-
-const getPaymentDueContext = (room: Room) => {
-  const today = toStartOfDay(new Date())
-  const cycleMonths = Math.max(1, Number(room.payment_cycle || 1))
-  const anchorSource = room.lease_start || room.last_payment_date || new Date().toISOString().split('T')[0]
-  const anchorDate = toStartOfDay(new Date(anchorSource))
-  const dueDay = anchorDate.getDate()
-
-  let cursor = buildDueDate(anchorDate.getFullYear(), anchorDate.getMonth(), dueDay)
-  cursor = toStartOfDay(cursor)
-  let previousDue: Date | null = null
-
-  while (cursor <= today) {
-    previousDue = cursor
-    cursor = addMonthsByDueDay(cursor, cycleMonths, dueDay)
-  }
-
-  const nextDue = cursor
-  const currentCycleDue = previousDue || buildDueDate(today.getFullYear(), today.getMonth(), dueDay)
-  const currentCycleDueStart = toStartOfDay(currentCycleDue)
-  const lastPaid = room.last_payment_date ? toStartOfDay(new Date(room.last_payment_date)) : null
-  const paidCurrentCycle =
-    hasRecentRentPayment(room.id) ||
-    !!(lastPaid && lastPaid >= currentCycleDueStart)
-
-  const targetDue = paidCurrentCycle ? nextDue : currentCycleDueStart
-  const daysToDue = Math.ceil((targetDue.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-
-  return { targetDue, nextDue, currentCycleDue: currentCycleDueStart, paidCurrentCycle, daysToDue }
-}
-
-// 计算收租目标日期（当前周期未收则显示当前应交日；已收则显示下一次应交日）
-const getNextPaymentDate = (room: Room) => {
-  const { targetDue } = getPaymentDueContext(room)
-  return targetDue.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
-}
-
-// 计算距离收租目标日期的天数（正数=未到期，0=当天，负数=已逾期）
-const getNextPaymentDays = (room: Room) => {
-  return getPaymentDueContext(room).daysToDue
-}
-
-// 获取房间号
-const getRoomNumber = (roomId: number) => {
-  const room = roomMap.value.get(roomId)
-  return room?.room_number || `房间${roomId}`
-}
-
-// 获取房间信息
-const getRoomInfo = (roomId: number, field: keyof Room) => {
-  const room = roomMap.value.get(roomId)
-  if (!room) return undefined
-  return room[field]
-}
-
-// 获取房间信息
-const getRoom = (roomId: number) => {
-  return roomMap.value.get(roomId)
-}
-
-// 显示录入表单
-const showAddForm = () => {
-  openUtilityForm() // 不传roomId，让用户自由选择
-}
-
-// 表单成功回调
-const handleFormSuccess = async (result: any) => {
-  formSuccess.value = true
-  showFormDialog.value = false
-  selectedRoomId.value = undefined
-  await loadReadings()
-
-  // 生成催租消息预览
-  setTimeout(async () => {
-    try {
-      const readings = await utilityApi.getReadingsByRoom(result.room_id, {
-        page: 1,
-        size: 10,
-      })
-
-      // 找到对应日期的记录
-      const mergedList = mergeReadings(readings.data.items || [])
-      const merged = mergedList.find(m => m.reading_date === result.reading_date)
-
-      if (merged) {
-        // 生成催租消息预览
-        const reminder = generateRentReminder(merged)
-        rentReminderPreview.value = reminder
-        rentReminderVisible.value = true
-
-        // 同时也发送微信消息（原有功能）
-        await autoGenerateAndSendWechat(merged)
-      }
-    } catch (error) {
-      console.error('Failed to generate rent reminder:', error)
-    }
-  }, 500)
-}
-
-// 筛选
-const handleFilter = () => {
-  pagination.value.page = 1
-  loadReadings()
-}
-
-// 重置筛选
-const resetFilter = () => {
-  filters.value = {
-    room_id: undefined,
-    start_date: '',
-    end_date: '',
-  }
-  pagination.value.page = 1
-  loadReadings()
-}
-
-// 显示编辑对话框
-const showEditDialog = (merged: MergedReading) => {
-  editOriginalData.value = merged
-  editForm.value = {
-    water_reading_id: merged.water_reading?.id || null,
-    electricity_reading_id: merged.electricity_reading?.id || null,
-    water_reading: Number(merged.water_reading?.reading || 0),
-    electricity_reading: Number(merged.electricity_reading?.reading || 0),
-    notes: merged.notes || '',
-  }
-  editDialogVisible.value = true
-}
-
-// 保存编辑
-const saveEdit = async () => {
-  try {
-    editLoading.value = true
-    const updatePromises: Promise<any>[] = []
-
-    // 更新水表读数
-    if (editForm.value.water_reading_id !== null && editForm.value.water_reading > 0) {
-      updatePromises.push(
-        utilityApi.updateReading(editForm.value.water_reading_id, {
-          reading: editForm.value.water_reading,
-          notes: editForm.value.notes,
-        })
-      )
-    }
-
-    // 更新电表读数
-    if (editForm.value.electricity_reading_id !== null && editForm.value.electricity_reading > 0) {
-      updatePromises.push(
-        utilityApi.updateReading(editForm.value.electricity_reading_id, {
-          reading: editForm.value.electricity_reading,
-          notes: editForm.value.notes,
-        })
-      )
-    }
-
-    // 如果只有水或只有电，只更新备注
-    if (editForm.value.water_reading_id === null && editForm.value.electricity_reading_id !== null) {
-      updatePromises.push(
-        utilityApi.updateReading(editForm.value.electricity_reading_id, {
-          notes: editForm.value.notes,
-        })
-      )
-    }
-    if (editForm.value.electricity_reading_id === null && editForm.value.water_reading_id !== null) {
-      updatePromises.push(
-        utilityApi.updateReading(editForm.value.water_reading_id, {
-          notes: editForm.value.notes,
-        })
-      )
-    }
-
-    await Promise.all(updatePromises)
-    ElMessage.success('编辑成功')
-    editDialogVisible.value = false
-
-    // 自动生成并发送微信消息
-    await autoGenerateAndSendWechat(editOriginalData.value!)
-    loadReadings()
-  } catch (error: any) {
-    console.error('Failed to update reading:', error)
-    const errorMsg = error.response?.data?.detail || '编辑失败，请重试'
-    ElMessage.error(errorMsg)
-  } finally {
-    editLoading.value = false
-  }
-}
-
-// 打开收租对话框
-// 删除水电记录
-const handleDelete = async (row: MergedReading) => {
-  try {
-    await ElMessageBox.confirm(
-      '确定要删除这条水电记录吗？删除后无法恢复。',
-      '删除确认',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
-
-    loading.value = true
-
-    // 删除水费记录
-    if (row.water_reading) {
-      await utilityApi.deleteReading(row.water_reading.id)
-    }
-
-    // 删除电费记录
-    if (row.electricity_reading) {
-      await utilityApi.deleteReading(row.electricity_reading.id)
-    }
-
-    ElMessage.success('删除成功')
-    await loadReadings()
-  } catch (error) {
-    if (error !== 'cancel') {
-      console.error('删除失败:', error)
-      ElMessage.error('删除失败')
-    }
-  } finally {
-    loading.value = false
-  }
-}
-
-const showPaymentDialog = (row: MergedReading) => {
-  const water_amount = Number(row.water_reading?.amount || 0)
-  const electricity_amount = Number(row.electricity_reading?.amount || 0)
-  const cycle = Math.max(1, Number(row.payment_cycle || 1))
-  const rent_amount = Number(row.monthly_rent || 0) * cycle
-  
-  paymentForm.value = {
-    room_id: row.room_id,
-    reading_date: row.reading_date,
-    rent_original: rent_amount,
-    rent_amount: rent_amount,
-    water_original: water_amount,
-    water_amount: water_amount,
-    electricity_original: electricity_amount,
-    electricity_amount: electricity_amount,
-    payment_method: '现金',
-    notes: ''
-  }
-  paymentDialogVisible.value = true
-}
-
-// 提交收租记录
-const submitPayment = async () => {
-  paymentLoading.value = true
-  try {
-    const payload: any = {
-      room_id: paymentForm.value.room_id,
-      reading_date: paymentForm.value.reading_date || new Date().toISOString().split('T')[0],  // 如果没有就用今天
-      rent_amount: paymentForm.value.rent_amount,
-      rent_original: paymentForm.value.rent_original,
-      payment_method: paymentForm.value.payment_method,
-      notes: paymentForm.value.notes
-    }
-    
-    // 添加水电费（如果有金额）
-    if (paymentForm.value.water_amount > 0) {
-      payload.water_charge = {
-        utility_type: 'water',
-        amount: Number(paymentForm.value.water_amount),
-        original_amount: Number(paymentForm.value.water_original),
-        discount: Number(paymentForm.value.water_original) - Number(paymentForm.value.water_amount)
-      }
-    }
-    
-    if (paymentForm.value.electricity_amount > 0) {
-      payload.electricity_charge = {
-        utility_type: 'electricity',
-        amount: Number(paymentForm.value.electricity_amount),
-        original_amount: Number(paymentForm.value.electricity_original),
-        discount: Number(paymentForm.value.electricity_original) - Number(paymentForm.value.electricity_amount)
-      }
-    }
-    
-    // 添加调试日志
-    console.log('📤 [Bulk Payment] Payload:', payload)
-    
-    const response = await paymentApi.createBulkPayment(payload)
-    
-    console.log('✅ [Bulk Payment] Response:', response.data)
-    
-    if (response.data.success) {
-      ElMessage.success(`收租记录创建成功！实收：${formatAmount(Number(response.data.total_actual || 0))}`)
-      paymentDialogVisible.value = false
-      // 刷新列表与房间状态（用于重新计算欠租/到期）
-      loadReadings()
-      loadRooms()
-    }
-  } catch (error: any) {
-    console.error('Failed to create payment:', error)
-    ElMessage.error(error.response?.data?.detail || '创建收租记录失败')
-  } finally {
-    paymentLoading.value = false
-  }
-}
-
-// 批量选择变化处理
-const handleSelectionChange = (selection: MergedReading[]) => {
-  selectedRows.value = selection
-}
-
-// 清除选择
-const clearSelection = () => {
-  tableRef.value?.clearSelection()
-}
-
-// 显示批量收租对话框
-const showBatchPaymentDialog = () => {
-  batchPayments.value = selectedRows.value.map(row => {
-    const water_amount = Number(row.water_reading?.amount || 0)
-    const electricity_amount = Number(row.electricity_reading?.amount || 0)
-    const cycle = Math.max(1, Number(row.payment_cycle || 1))
-    const rent_amount = Number(row.monthly_rent || 0) * cycle
-
-    return {
-      room_id: row.room_id,
-      reading_date: row.reading_date,
-      rent_original: rent_amount,
-      rent_amount: rent_amount,
-      water_original: water_amount,
-      water_amount: water_amount,
-      electricity_original: electricity_amount,
-      electricity_amount: electricity_amount,
-      payment_method: '现金',
-      notes: ''
-    }
-  })
-  batchPaymentDialogVisible.value = true
-}
-
-// 提交批量收租
-const submitBatchPayment = async () => {
-  try {
-    batchPaymentLoading.value = true
-
-    const totalOriginal = batchPayments.value.reduce((sum, p) =>
-      sum + p.rent_original + p.water_original + p.electricity_original, 0
-    )
-    const totalActual = batchPayments.value.reduce((sum, p) =>
-      sum + p.rent_amount + p.water_amount + p.electricity_amount, 0
-    )
-
-    await ElMessageBox.confirm(
-      `确认批量收租 ${batchPayments.value.length} 个房间？\n原始总额：${formatAmount(totalOriginal)}\n实收总额：${formatAmount(totalActual)}`,
-      '批量收租确认',
-      { type: 'warning' }
-    )
-
-    // 逐个创建收租记录
-    const promises = batchPayments.value.map(payment => {
-      const payload: any = {
-        room_id: payment.room_id,
-        payment_date: new Date().toISOString().split('T')[0],
-        amount: payment.rent_amount,
-        payment_method: payment.payment_method,
-        notes: payment.notes
-      }
-
-      if (payment.water_original > 0) {
-        payload.water_charge = {
-          utility_type: 'water',
-          amount: payment.water_amount,
-          original_amount: payment.water_original,
-          discount: payment.water_original - payment.water_amount
-        }
-      }
-
-      if (payment.electricity_original > 0) {
-        payload.electricity_charge = {
-          utility_type: 'electricity',
-          amount: payment.electricity_amount,
-          original_amount: payment.electricity_original,
-          discount: payment.electricity_original - payment.electricity_amount
-        }
-      }
-
-      return paymentApi.createBulkPayment(payload)
-    })
-
-    await Promise.all(promises)
-    ElMessage.success(`批量收租成功！共处理 ${batchPayments.value.length} 个房间`)
-    batchPaymentDialogVisible.value = false
-    clearSelection()
-    loadReadings()
-  } catch (error: any) {
-    if (error !== 'cancel') {
-      console.error('Batch payment failed:', error)
-      ElMessage.error(error.response?.data?.detail || '批量收租失败')
-    }
-  } finally {
-    batchPaymentLoading.value = false
-  }
-}
-
-// 批量生成消息
-const batchGenerateMessages = async () => {
-  try {
-    await ElMessageBox.confirm(
-      `确定要为选中的 ${selectedRows.value.length} 条记录生成微信消息吗？`,
-      '批量生成消息',
-      { type: 'info' }
-    )
-
-    let allMessages = ''
-    selectedRows.value.forEach((row, index) => {
-      const roomNumber = getRoomNumber(row.room_id)
-      const date = new Date(row.reading_date).toLocaleDateString('zh-CN')
-      const cycle = Math.max(1, Number(row.payment_cycle || 1))
-      const rentDue = Number(row.monthly_rent || 0) * cycle
-      const rentLabel = cycle > 1 ? `房租（${cycle}个月）` : '房租'
-
-      let message = `\n【收租通知 ${index + 1}/${selectedRows.value.length}】\n房间：${roomNumber}\n抄表日期：${date}\n`
-
-      if (rentDue > 0) {
-        message += `\n🏠 ${rentLabel}：${formatAmount(rentDue)}\n`
-      }
-
-      if (row.water_reading) {
-        message += `\n💧 水费：\n`
-        message += `  上次读数：${row.water_reading.previous_reading} 吨\n`
-        message += `  本次读数：${row.water_reading.reading} 吨\n`
-        message += `  用量：${row.water_reading.usage} 吨\n`
-        message += `  费用：${formatAmount(Number(row.water_reading.amount || 0))}\n`
-      }
-
-      if (row.electricity_reading) {
-        message += `\n⚡ 电费：\n`
-        message += `  上次读数：${row.electricity_reading.previous_reading} 度\n`
-        message += `  本次读数：${row.electricity_reading.reading} 度\n`
-        message += `  用量：${row.electricity_reading.usage} 度\n`
-        message += `  费用：${formatAmount(Number(row.electricity_reading.amount || 0))}\n`
-      }
-
-      message += `\n💰 应付总额：${formatAmount(row.total_amount)}`
-
-      if (row.notes) {
-        message += `\n\n备注：${row.notes}`
-      }
-
-      message += `\n\n请及时缴纳费用，谢谢！\n${'='.repeat(30)}\n`
-
-      allMessages += message
-    })
-
-    // 复制到剪贴板
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(allMessages)
-      ElMessage.success(`已生成 ${selectedRows.value.length} 条消息并复制到剪贴板`)
-    } else {
-      showCopyFallback(allMessages)
-      ElMessage.success(`已生成 ${selectedRows.value.length} 条消息`)
-    }
-  } catch (error: any) {
-    if (error !== 'cancel') {
-      console.error('Batch generate messages failed:', error)
-      ElMessage.error('批量生成消息失败')
-    }
-  }
-}
-
-// 批量删除
-const batchDelete = async () => {
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除选中的 ${selectedRows.value.length} 条记录吗？这将删除这些房间在对应日期的所有水电记录。`,
-      '批量删除确认',
-      { type: 'warning' }
-    )
-
-    const deletePromises: Promise<any>[] = []
-    selectedRows.value.forEach(row => {
-      if (row.water_reading) {
-        deletePromises.push(utilityApi.deleteReading(row.water_reading.id))
-      }
-      if (row.electricity_reading) {
-        deletePromises.push(utilityApi.deleteReading(row.electricity_reading.id))
-      }
-    })
-
-    await Promise.all(deletePromises)
-    ElMessage.success(`批量删除成功！共删除 ${selectedRows.value.length} 条记录`)
-    clearSelection()
-    loadReadings()
-  } catch (error: any) {
-    if (error !== 'cancel') {
-      console.error('Batch delete failed:', error)
-      ElMessage.error('批量删除失败')
-    }
-  }
-}
-
-// Fallback：显示消息内容并提供复制提示
-const showCopyFallback = (message: string) => {
-  // 创建一个临时文本框来复制
-  const textArea = document.createElement('textarea')
-  textArea.value = message
-  textArea.style.position = 'fixed'
-  textArea.style.left = '-9999px'
-  document.body.appendChild(textArea)
-  textArea.select()
-  
-  try {
-    const successful = document.execCommand('copy')
-    document.body.removeChild(textArea)
-    
-    if (successful) {
-      ElMessage.success('微信消息已复制到剪贴板')
-    } else {
-      throw new Error('Copy failed')
-    }
-  } catch (err) {
-    document.body.removeChild(textArea)
-    ElMessage.warning('自动复制失败，请手动复制以下内容：')
-    console.log('Generated message:', message)
-    
-    // 显示消息内容对话框
-    ElMessageBox.alert(
-      message,
-      '水电费通知消息',
-      {
-        confirmButtonText: '关闭',
-        type: 'info',
-      }
-    )
-  }
-}
-
-// 分页改变
-const handlePageChange = (page: number) => {
-  pagination.value.page = page
-  loadReadings()
-}
-
-const handleSizeChange = (size: number) => {
-  pagination.value.size = size
-  pagination.value.page = 1
-  loadReadings()
-}
-
-// 初始化
+// Initialize
 onMounted(() => {
-  loadRooms() // 先加载房间列表
+  loadRooms()
   loadReadings()
 })
 </script>
@@ -1427,87 +142,23 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 收租提醒 - 始终显示 -->
-    <el-card class="expiring-card" shadow="hover">
-      <template #header>
-        <div class="card-header">
-          <span class="title">💰 收租管理</span>
-          <div class="tags">
-            <el-tag type="danger" size="small">欠租: {{ overdueRooms.length }} 个</el-tag>
-            <el-tag type="warning" size="small">即将到期: {{ expiringRooms.length }} 个</el-tag>
-          </div>
-        </div>
-      </template>
-
-      <!-- 欠租房间列表 -->
-      <div class="reminder-section">
-        <div class="section-header overdue-header">
-          <span class="section-title">🚨 欠租房间（已逾期）</span>
-        </div>
-        <div v-if="overdueRooms.length > 0" class="expiring-list">
-          <div v-for="item in overdueRooms" :key="item.room.id" class="expiring-item overdue-item">
-            <div class="room-info">
-              <span class="room-number">{{ item.room.room_number }}</span>
-              <span class="room-rent">{{ hideAmounts ? '****/月' : `¥${item.room.monthly_rent}/月` }}</span>
-              <el-tag size="small" type="danger">逾期{{ item.overdueDays }}天</el-tag>
-            </div>
-            <div class="lease-info">
-              <span class="overdue-amount">欠费总额: {{ maskedAmount(item.overdueAmount) }}</span>
-              <el-button type="danger" size="small" @click="sendReminder(item.room, 'overdue')">
-                📱 催租
-              </el-button>
-            </div>
-          </div>
-        </div>
-        <div v-else class="empty-state">
-          <el-text type="info">✅ 暂无欠租房间</el-text>
-        </div>
-      </div>
-
-      <!-- 即将到期房间列表 -->
-      <div class="reminder-section">
-        <div class="section-header upcoming-header">
-          <span class="section-title">📅 即将到期（7天内需收租）</span>
-        </div>
-        <div v-if="expiringRooms.length > 0" class="expiring-list">
-          <div v-for="room in expiringRooms" :key="room.id" class="expiring-item">
-            <div class="room-info">
-              <span class="room-number">{{ room.room_number }}</span>
-              <span class="room-rent">{{ hideAmounts ? '****/月' : `¥${room.monthly_rent}/月` }}</span>
-              <el-tag size="small" type="info">{{ room.payment_cycle === 1 ? '月付' : room.payment_cycle === 3 ? '季付' : '年付' }}</el-tag>
-            </div>
-            <div class="lease-info">
-              <el-tag :type="getNextPaymentDays(room) <= 3 ? 'danger' : 'warning'" size="small">
-                {{ getNextPaymentDays(room) }}天后需收租
-              </el-tag>
-              <el-button
-                v-if="canMarkExpiringRoomPaid(room)"
-                type="success"
-                size="small"
-                @click="markExpiringRoomPaid(room)"
-              >
-                ✅ 标记已收
-              </el-button>
-              <el-button
-                v-else
-                type="primary"
-                size="small"
-                @click="openUtilityForm(room.id)"
-              >
-                录入水电
-              </el-button>
-            </div>
-          </div>
-        </div>
-        <div v-else class="empty-state">
-          <el-text type="info">✅ 暂无即将到期房间</el-text>
-        </div>
-      </div>
-    </el-card>
+    <!-- Rent management card -->
+    <RentManagementCard
+      :overdue-rooms="overdueRooms"
+      :expiring-rooms="expiringRooms"
+      :hide-amounts="hideAmounts"
+      :format-amount="formatAmount"
+      :masked-amount="maskedAmount"
+      :get-next-payment-days="getNextPaymentDays"
+      :can-mark-expiring-room-paid="canMarkExpiringRoomPaid"
+      @send-reminder="sendReminder"
+      @mark-paid="markExpiringRoomPaid"
+      @open-utility-form="openUtilityForm"
+    />
 
     <el-tabs v-model="activeTab">
       <el-tab-pane label="水电记录" name="readings">
-        <!-- 筛选条件 -->
+        <!-- Filters -->
         <el-card class="filter-card">
           <el-form :inline="true">
             <el-form-item label="房间号">
@@ -1550,7 +201,7 @@ onMounted(() => {
           </el-form>
         </el-card>
 
-        <!-- 批量操作栏 -->
+        <!-- Batch actions bar -->
         <el-card v-if="selectedRows.length > 0" class="batch-actions-card">
           <div class="batch-actions">
             <span class="selected-info">
@@ -1573,137 +224,25 @@ onMounted(() => {
           </div>
         </el-card>
 
-        <!-- 数据表格 -->
-        <el-table
+        <!-- Readings table -->
+        <ReadingsTable
           ref="tableRef"
-          v-loading="loading"
+          :loading="loading"
           :data="mergedReadings"
-          stripe
-          class="utility-table"
+          :room-map="roomMap"
+          :hide-amounts="hideAmounts"
+          :format-amount="formatAmount"
+          :masked-amount="maskedAmount"
+          :get-room-number="getRoomNumber"
+          :get-room-info="getRoomInfo"
+          @show-reminder="showRentReminder"
+          @show-payment="showPaymentDialog"
+          @edit="showEditDialog"
+          @delete="handleDelete"
           @selection-change="handleSelectionChange"
-        >
-          <el-table-column type="selection" width="55" />
+        />
 
-          <el-table-column prop="reading_date" label="抄表日期" width="120">
-            <template #default="{ row }">
-              {{ new Date(row.reading_date).toLocaleDateString('zh-CN') }}
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="room_id" label="房间号" width="120">
-            <template #default="{ row }">
-              {{ getRoomNumber(row.room_id) }}
-            </template>
-          </el-table-column>
-
-          <el-table-column label="💰 月租金" width="110">
-            <template #default="{ row }">
-              <span class="rent-amount">{{ maskedAmount(getRoomInfo(row.room_id, 'monthly_rent')) }}</span>
-            </template>
-          </el-table-column>
-
-          <el-table-column label="💧 水表" width="200">
-            <template #default="{ row }">
-              <div v-if="row.water_reading" class="reading-cell">
-                <!-- 如果水费为0，说明是无水电费房间 -->
-                <div v-if="row.water_reading.amount === 0 || row.water_reading.amount === '0'" class="no-data">
-                  无水电费
-                </div>
-                <div v-else>
-                  <div class="reading-row">
-                    <span class="label">上次:</span>
-                    <span>{{ row.water_reading.previous_reading }}</span>
-                  </div>
-                  <div class="reading-row">
-                    <span class="label">本次:</span>
-                    <span>{{ row.water_reading.reading }}</span>
-                  </div>
-                  <div class="reading-row highlight">
-                    <span class="label">用量:</span>
-                    <span>{{ row.water_reading.usage }}</span>
-                  </div>
-                </div>
-              </div>
-              <span v-else class="no-data">未录入</span>
-            </template>
-          </el-table-column>
-
-          <el-table-column label="⚡ 电表" width="200">
-            <template #default="{ row }">
-              <div v-if="row.electricity_reading" class="reading-cell">
-                <!-- 如果电费为0，说明是无水电费房间 -->
-                <div v-if="row.electricity_reading.amount === 0 || row.electricity_reading.amount === '0'" class="no-data">
-                  无水电费
-                </div>
-                <div v-else>
-                  <div class="reading-row">
-                    <span class="label">上次:</span>
-                    <span>{{ row.electricity_reading.previous_reading }}</span>
-                  </div>
-                  <div class="reading-row">
-                    <span class="label">本次:</span>
-                    <span>{{ row.electricity_reading.reading }}</span>
-                  </div>
-                  <div class="reading-row highlight">
-                    <span class="label">用量:</span>
-                    <span>{{ row.electricity_reading.usage }}</span>
-                  </div>
-                </div>
-              </div>
-              <span v-else class="no-data">未录入</span>
-            </template>
-          </el-table-column>
-
-          <el-table-column label="费用" width="150">
-            <template #default="{ row }">
-              <div class="amount-cell">
-                <div v-if="row.water_reading" class="amount-row">
-                  <span class="amount-label">水费:</span>
-                  <span class="amount">{{ formatAmount(Number(row.water_reading.amount || 0)) }}</span>
-                </div>
-                <div v-if="row.electricity_reading" class="amount-row">
-                  <span class="amount-label">电费:</span>
-                  <span class="amount">{{ formatAmount(Number(row.electricity_reading.amount || 0)) }}</span>
-                </div>
-                <div class="total-amount">
-                  <span class="amount-label">总计:</span>
-                  <span class="amount total">{{ formatAmount(Number(row.total_amount || 0)) }}</span>
-                </div>
-              </div>
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="notes" label="备注" min-width="150" show-overflow-tooltip />
-
-          <el-table-column label="操作" width="250" fixed="right">
-            <template #default="{ row }">
-              <el-button
-                type="info"
-                size="small"
-                @click="showRentReminder(row)"
-              >
-                催租消息
-              </el-button>
-              <el-button
-                type="success"
-                size="small"
-                :disabled="row.is_paid"
-                @click="showPaymentDialog(row)"
-              >
-                {{ row.is_paid ? '已收租' : '标记已收' }}
-              </el-button>
-              <el-button
-                type="danger"
-                size="small"
-                @click="handleDelete(row)"
-              >
-                删除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-
-        <!-- 分页 -->
+        <!-- Pagination -->
         <div class="pagination-container">
           <el-pagination
             v-model:current-page="pagination.page"
@@ -1718,7 +257,7 @@ onMounted(() => {
       </el-tab-pane>
     </el-tabs>
 
-    <!-- 录入表单对话框 -->
+    <!-- Reading form dialog -->
     <el-dialog
       v-model="showFormDialog"
       title="录入水电表读数"
@@ -1729,437 +268,68 @@ onMounted(() => {
       <UtilityReadingForm
         v-if="showFormDialog"
         :room-id="selectedRoomId"
-        @success="handleFormSuccess"
+        @success="onFormSuccess"
         @cancel="showFormDialog = false; selectedRoomId = undefined"
       />
     </el-dialog>
 
-    <!-- 批量录入对话框 -->
-    <el-dialog
+    <!-- Batch entry dialog -->
+    <BatchEntryDialog
       v-model="batchDialogVisible"
-      title="批量录入水电读数"
-      width="800px"
-      :close-on-click-modal="false"
-    >
-      <el-form :model="batchForm" label-width="100px">
-        <el-form-item label="抄表日期">
-          <el-date-picker
-            v-model="batchForm.reading_date"
-            type="date"
-            placeholder="选择日期"
-            format="YYYY-MM-DD"
-            value-format="YYYY-MM-DD"
-          />
-        </el-form-item>
+      :all-rooms="allRooms"
+      :batch-form="batchForm"
+      :batch-loading="batchLoading"
+      :selected-rooms="selectedRooms"
+      :hide-amounts="hideAmounts"
+      :masked-rate="maskedRate"
+      @submit="submitBatch"
+      @select-all="selectAllRooms"
+      @clear="clearRoomSelection"
+      @select-occupied="selectOccupiedRooms"
+    />
 
-        <el-form-item label="水电类型">
-          <el-radio-group v-model="batchForm.utility_type">
-            <el-radio label="water">仅水费</el-radio>
-            <el-radio label="electricity">仅电费</el-radio>
-            <el-radio label="both">水电全录</el-radio>
-          </el-radio-group>
-        </el-form-item>
-
-        <el-divider content-position="left">选择房间并录入读数</el-divider>
-
-        <el-form-item>
-          <el-button @click="selectAllRooms" size="small">全选</el-button>
-          <el-button @click="clearRoomSelection" size="small">清空</el-button>
-          <el-button @click="selectOccupiedRooms" size="small" type="primary">仅选已租</el-button>
-        </el-form-item>
-
-        <div class="batch-room-list">
-          <el-checkbox-group v-model="selectedRooms">
-            <div
-              v-for="room in allRooms"
-              :key="room.id"
-              class="batch-room-item"
-              :class="{ 'selected': selectedRooms.includes(room.id) }"
-            >
-              <el-checkbox :label="room.id">
-                <span class="room-number">{{ room.room_number }}</span>
-                <el-tag size="small" :type="room.status === 'occupied' ? 'success' : 'info'">
-                  {{ room.status === 'occupied' ? '已租' : '空置' }}
-                </el-tag>
-                <span class="room-rent">{{ hideAmounts ? '****/月' : `¥${room.monthly_rent}/月` }}</span>
-              </el-checkbox>
-
-              <!-- 选中时显示读数输入框 -->
-              <div v-if="selectedRooms.includes(room.id)" class="room-readings">
-                <div v-if="batchForm.utility_type === 'water' || batchForm.utility_type === 'both'" class="reading-input">
-                  <span class="label">💧 水表读数:</span>
-                  <el-input-number
-                    v-model="room.water_reading"
-                    :min="0"
-                    :precision="1"
-                    :step="0.1"
-                    size="small"
-                  />
-                  <span class="rate">费率: {{ maskedRate(room.water_rate || 0, '吨') }}</span>
-                </div>
-                <div v-if="batchForm.utility_type === 'electricity' || batchForm.utility_type === 'both'" class="reading-input">
-                  <span class="label">⚡ 电表读数:</span>
-                  <el-input-number
-                    v-model="room.electricity_reading"
-                    :min="0"
-                    :precision="1"
-                    :step="1"
-                    size="small"
-                  />
-                  <span class="rate">费率: {{ maskedRate(room.electricity_rate || 0, '度') }}</span>
-                </div>
-              </div>
-            </div>
-          </el-checkbox-group>
-        </div>
-
-        <el-form-item label="统一备注">
-          <el-input
-            v-model="batchForm.notes"
-            type="textarea"
-            :rows="2"
-            placeholder="可选：填写备注（将应用到所有记录）"
-          />
-        </el-form-item>
-
-        <div class="batch-summary" v-if="selectedRooms.length > 0">
-          <div>已选择: <strong>{{ selectedRooms.length }}</strong> 个房间</div>
-          <div>预计录入: <strong>{{ calculateTotalRecords() }}</strong> 条记录</div>
-        </div>
-      </el-form>
-
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="batchDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="submitBatch" :loading="batchLoading" :disabled="selectedRooms.length === 0">
-            批量录入 ({{ selectedRooms.length }}个房间)
-          </el-button>
-        </span>
-      </template>
-    </el-dialog>
-
-    <!-- 收租对话框 -->
-    <el-dialog
+    <!-- Payment dialog -->
+    <PaymentDialog
       v-model="paymentDialogVisible"
-      title="💰 标记已收（支持打折）"
-      width="500px"
-      :close-on-click-modal="false"
-    >
-      <el-form :model="paymentForm" label-width="100px">
-        <el-form-item label="房间号">
-          <span>{{ getRoomNumber(paymentForm.room_id) }}</span>
-        </el-form-item>
+      :payment-form="paymentForm"
+      :payment-loading="paymentLoading"
+      :format-amount="formatAmount"
+      :get-room-number="getRoomNumber"
+      @submit="submitPayment"
+    />
 
-        <el-form-item label="抄表日期">
-          <span>{{ paymentForm.reading_date }}</span>
-        </el-form-item>
-
-        <el-divider content-position="left">🏠 房租</el-divider>
-
-        <el-form-item label="原始房租">
-          <span class="original-amount">{{ formatAmount(Number(paymentForm.rent_original || 0)) }}</span>
-        </el-form-item>
-
-        <el-form-item label="实收房租">
-          <el-input-number
-            v-model="paymentForm.rent_amount"
-            :min="0"
-            :max="Number(paymentForm.rent_original || 0)"
-            :precision="2"
-            :step="10"
-          />
-          <span v-if="Number(paymentForm.rent_amount || 0) < Number(paymentForm.rent_original || 0)" class="discount-hint">
-            打折：{{ formatAmount(Number(paymentForm.rent_original || 0) - Number(paymentForm.rent_amount || 0)) }}
-          </span>
-        </el-form-item>
-
-        <el-divider content-position="left">💧 水费</el-divider>
-
-        <el-form-item label="原始水费">
-          <span class="original-amount">{{ formatAmount(Number(paymentForm.water_original || 0)) }}</span>
-        </el-form-item>
-
-        <el-form-item label="实收水费">
-          <el-input-number
-            v-model="paymentForm.water_amount"
-            :min="0"
-            :max="Number(paymentForm.water_original || 0)"
-            :precision="2"
-            :step="1"
-          />
-          <span v-if="Number(paymentForm.water_amount || 0) < Number(paymentForm.water_original || 0)" class="discount-hint">
-            打折：{{ formatAmount(Number(paymentForm.water_original || 0) - Number(paymentForm.water_amount || 0)) }}
-          </span>
-        </el-form-item>
-
-        <el-divider content-position="left">⚡ 电费</el-divider>
-
-        <el-form-item label="原始电费">
-          <span class="original-amount">{{ formatAmount(Number(paymentForm.electricity_original || 0)) }}</span>
-        </el-form-item>
-
-        <el-form-item label="实收电费">
-          <el-input-number
-            v-model="paymentForm.electricity_amount"
-            :min="0"
-            :max="Number(paymentForm.electricity_original || 0)"
-            :precision="2"
-            :step="1"
-          />
-          <span v-if="Number(paymentForm.electricity_amount || 0) < Number(paymentForm.electricity_original || 0)" class="discount-hint">
-            打折：{{ formatAmount(Number(paymentForm.electricity_original || 0) - Number(paymentForm.electricity_amount || 0)) }}
-          </span>
-        </el-form-item>
-
-        <el-divider />
-
-        <el-form-item label="总计">
-          <div class="total-summary">
-            <div>原始总额：{{ formatAmount(Number(paymentForm.rent_original || 0) + Number(paymentForm.water_original || 0) + Number(paymentForm.electricity_original || 0)) }}</div>
-            <div class="actual-total">实收总额：{{ formatAmount(Number(paymentForm.rent_amount || 0) + Number(paymentForm.water_amount || 0) + Number(paymentForm.electricity_amount || 0)) }}</div>
-            <div v-if="(Number(paymentForm.rent_amount || 0) + Number(paymentForm.water_amount || 0) + Number(paymentForm.electricity_amount || 0)) < (Number(paymentForm.rent_original || 0) + Number(paymentForm.water_original || 0) + Number(paymentForm.electricity_original || 0))" class="total-discount">
-              总折扣：{{ formatAmount((Number(paymentForm.rent_original || 0) + Number(paymentForm.water_original || 0) + Number(paymentForm.electricity_original || 0)) - (Number(paymentForm.rent_amount || 0) + Number(paymentForm.water_amount || 0) + Number(paymentForm.electricity_amount || 0))) }}
-            </div>
-          </div>
-        </el-form-item>
-
-        <el-form-item label="收款方式">
-          <el-select v-model="paymentForm.payment_method">
-            <el-option label="现金" value="现金" />
-            <el-option label="微信支付" value="微信支付" />
-            <el-option label="支付宝" value="支付宝" />
-            <el-option label="银行转账" value="银行转账" />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item label="备注">
-          <el-input
-            v-model="paymentForm.notes"
-            type="textarea"
-            :rows="2"
-            placeholder="可选，如：提前付款、部分付款等"
-          />
-        </el-form-item>
-      </el-form>
-
-      <template #footer>
-        <el-button @click="paymentDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="paymentLoading" @click="submitPayment">
-          确认收款
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 编辑对话框 -->
-    <el-dialog
+    <!-- Edit reading dialog -->
+    <EditReadingDialog
       v-model="editDialogVisible"
-      title="编辑水电记录"
-      width="600px"
-      :close-on-click-modal="false"
-    >
-      <el-form label-width="120px">
-        <el-alert
-          title="编辑提示"
-          type="info"
-          :closable="false"
-          style="margin-bottom: 20px"
-        >
-          修改读数会自动重新计算用量和费用
-        </el-alert>
+      :edit-form="editForm"
+      :edit-loading="editLoading"
+      @submit="saveEdit"
+    />
 
-        <template v-if="editForm.water_reading_id !== null">
-          <el-divider content-position="left">💧 水表</el-divider>
-          <el-form-item label="水表读数（吨）">
-            <el-input-number
-              v-model="editForm.water_reading"
-              :min="0"
-              :precision="1"
-              :step="1"
-              style="width: 200px"
-            />
-          </el-form-item>
-        </template>
-
-        <template v-if="editForm.electricity_reading_id !== null">
-          <el-divider content-position="left">⚡ 电表</el-divider>
-          <el-form-item label="电表读数（度）">
-            <el-input-number
-              v-model="editForm.electricity_reading"
-              :min="0"
-              :precision="0"
-              :step="1"
-              style="width: 200px"
-            />
-          </el-form-item>
-        </template>
-
-        <el-divider content-position="left">📝 备注</el-divider>
-        <el-form-item label="备注">
-          <el-input
-            v-model="editForm.notes"
-            type="textarea"
-            :rows="3"
-            placeholder="请输入备注信息"
-          />
-        </el-form-item>
-      </el-form>
-
-      <template #footer>
-        <el-button @click="editDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="editLoading" @click="saveEdit">
-          保存
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 消息输出对话框 -->
-    <el-dialog
+    <!-- Message dialog -->
+    <MessageDialog
       v-model="messageDialogVisible"
-      title="📱 收租消息（已自动推送到微信）"
-      width="600px"
-    >
-      <el-alert
-        title="消息已生成"
-        type="success"
-        :closable="false"
-        style="margin-bottom: 15px"
-      >
-        消息已自动推送到企业微信群，并复制到剪贴板
-      </el-alert>
+      :message="currentMessage"
+      :sending-wechat="sendingWechat"
+      @copy="copyMessage"
+    />
 
-      <el-input
-        v-model="currentMessage"
-        type="textarea"
-        :rows="15"
-        readonly
-        style="font-family: 'Courier New', monospace; font-size: 14px"
-      />
-
-      <template #footer>
-        <el-button type="primary" @click="copyMessage">
-          📋 复制消息
-        </el-button>
-        <el-button @click="messageDialogVisible = false">
-          关闭
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 批量收租对话框 -->
-    <el-dialog
+    <!-- Batch payment dialog -->
+    <BatchPaymentDialog
       v-model="batchPaymentDialogVisible"
-      title="批量收租"
-      width="900px"
-      :close-on-click-modal="false"
-    >
-      <el-table :data="batchPayments" max-height="400">
-        <el-table-column prop="room_id" label="房间" width="100">
-          <template #default="{ row }">
-            {{ getRoomNumber(row.room_id) }}
-          </template>
-        </el-table-column>
+      :batch-payments="batchPayments"
+      :batch-payment-loading="batchPaymentLoading"
+      :format-amount="formatAmount"
+      :get-room-number="getRoomNumber"
+      @submit="submitBatchPayment"
+    />
 
-        <el-table-column label="房租" width="150">
-          <template #default="{ row }">
-            <el-input-number
-              v-model="row.rent_amount"
-              :min="0"
-              :max="row.rent_original"
-              :precision="2"
-              :step="10"
-              size="small"
-            />
-          </template>
-        </el-table-column>
-
-        <el-table-column label="水费" width="150">
-          <template #default="{ row }">
-            <el-input-number
-              v-model="row.water_amount"
-              :min="0"
-              :max="row.water_original"
-              :precision="2"
-              :step="1"
-              size="small"
-              :disabled="row.water_original === 0"
-            />
-          </template>
-        </el-table-column>
-
-        <el-table-column label="电费" width="150">
-          <template #default="{ row }">
-            <el-input-number
-              v-model="row.electricity_amount"
-              :min="0"
-              :max="row.electricity_original"
-              :precision="2"
-              :step="1"
-              size="small"
-              :disabled="row.electricity_original === 0"
-            />
-          </template>
-        </el-table-column>
-
-        <el-table-column label="收款方式" width="130">
-          <template #default="{ row }">
-            <el-select v-model="row.payment_method" size="small">
-              <el-option label="现金" value="现金" />
-              <el-option label="微信支付" value="微信支付" />
-              <el-option label="支付宝" value="支付宝" />
-              <el-option label="银行转账" value="银行转账" />
-            </el-select>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="备注" min-width="150">
-          <template #default="{ row }">
-            <el-input v-model="row.notes" size="small" placeholder="备注" />
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <el-divider />
-
-      <div class="batch-summary">
-        <div>
-          <span>原始总额：</span>
-          <span class="amount">{{ formatAmount(batchPayments.reduce((sum, p) => sum + p.rent_original + p.water_original + p.electricity_original, 0)) }}</span>
-        </div>
-        <div>
-          <span>实收总额：</span>
-          <span class="amount actual">{{ formatAmount(batchPayments.reduce((sum, p) => sum + p.rent_amount + p.water_amount + p.electricity_amount, 0)) }}</span>
-        </div>
-      </div>
-
-      <template #footer>
-        <el-button @click="batchPaymentDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="batchPaymentLoading" @click="submitBatchPayment">
-          确认批量收款
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 催租消息预览对话框 -->
-    <el-dialog
+    <!-- Rent reminder dialog -->
+    <RentReminderDialog
       v-model="rentReminderVisible"
-      title="📢 催租消息预览"
-      width="600px"
-    >
-      <div class="rent-reminder-preview">
-        <el-input
-          v-model="rentReminderPreview"
-          type="textarea"
-          :rows="10"
-          readonly
-        />
-      </div>
-      <template #footer>
-        <el-button @click="rentReminderVisible = false">关闭</el-button>
-        <el-button type="primary" @click="copyRentReminder">
-          📋 复制消息
-        </el-button>
-      </template>
-    </el-dialog>
+      :preview="rentReminderPreview"
+      @copy="copyRentReminder"
+    />
   </div>
 </template>
 
@@ -2191,251 +361,12 @@ onMounted(() => {
   color: #909399;
 }
 
-.utility-table {
-  margin-bottom: 20px;
-}
-
-.reading-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.reading-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.reading-row .label {
-  color: #909399;
-  font-weight: 500;
-}
-
-.reading-row.highlight {
-  color: #409eff;
-  font-weight: 600;
-  margin-top: 2px;
-}
-
-.no-data {
-  color: #c0c4cc;
-  font-size: 13px;
-}
-
-.amount-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.amount-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.amount-label {
-  color: #909399;
-  font-weight: 500;
-}
-
-.amount {
-  color: #f56c6c;
-  font-weight: 600;
-}
-
-.total-amount {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px dashed #dcdfe6;
-}
-
-.amount.total {
-  color: #f56c6c;
-  font-size: 15px;
-  font-weight: 700;
-}
-
 .pagination-container {
   display: flex;
   justify-content: center;
 }
 
-/* 即将到期提醒卡片样式 */
-.expiring-card {
-  margin-bottom: 20px;
-  border: 1px solid #e6a23c;
-  background: linear-gradient(135deg, #fff7e6 0%, #ffffff 100%);
-}
-
-.expiring-card .card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.expiring-card .title {
-  font-weight: 600;
-  color: #e6a23c;
-}
-
-.expiring-card .tags {
-  display: flex;
-  gap: 8px;
-}
-
-/* 欠租管理区块样式 */
-.reminder-section {
-  margin-bottom: 16px;
-}
-
-.reminder-section:last-child {
-  margin-bottom: 0;
-}
-
-.section-header {
-  padding: 8px 12px;
-  border-radius: 6px;
-  margin-bottom: 12px;
-  background: white;
-  border-left: 4px solid;
-}
-
-.section-header.overdue-header {
-  border-left-color: #f56c6c;
-  background: linear-gradient(135deg, #fef0f0 0%, #ffffff 100%);
-}
-
-.section-header.upcoming-header {
-  border-left-color: #e6a23c;
-  background: linear-gradient(135deg, #fff7e6 0%, #ffffff 100%);
-}
-
-.section-title {
-  font-weight: 600;
-  font-size: 14px;
-  color: #606266;
-}
-
-.overdue-item {
-  background: linear-gradient(135deg, #fef0f0 0%, #ffffff 100%);
-  border-color: #fbc4c4;
-}
-
-.overdue-amount {
-  font-size: 13px;
-  color: #f56c6c;
-  font-weight: 600;
-  margin-right: 8px;
-}
-
-.expiring-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 12px;
-}
-
-.empty-state {
-  padding: 24px;
-  text-align: center;
-  background: #f9f9f9;
-  border-radius: 6px;
-  border: 1px dashed #dcdfe6;
-}
-
-.expiring-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px;
-  background: white;
-  border-radius: 6px;
-  border: 1px solid #f5dab1;
-  transition: all 0.2s;
-}
-
-.expiring-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 2px 8px rgba(230, 162, 60, 0.2);
-}
-
-.expiring-item .room-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.expiring-item .room-number {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.expiring-item .room-rent {
-  font-size: 13px;
-  color: #909399;
-}
-
-.expiring-item .lease-info {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.expiring-item .lease-date {
-  font-size: 12px;
-  color: #909399;
-}
-
-/* 收租对话框样式 */
-.original-amount {
-  font-size: 16px;
-  color: #909399;
-  text-decoration: line-through;
-}
-
-.discount-hint {
-  margin-left: 10px;
-  font-size: 13px;
-  color: #e6a23c;
-  font-weight: 500;
-}
-
-.total-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-}
-
-.total-summary > div {
-  padding: 8px 12px;
-  background: #f5f7fa;
-  border-radius: 4px;
-  font-size: 14px;
-}
-
-.actual-total {
-  font-size: 18px !important;
-  font-weight: 700;
-  color: #67c23a !important;
-  background: #f0f9ff !important;
-}
-
-.total-discount {
-  color: #e6a23c;
-  font-weight: 600;
-  background: #fff7e6 !important;
-}
-
-/* 批量操作样式 */
+/* Batch actions styles */
 .batch-actions-card {
   margin-bottom: 20px;
   border: 2px solid #409eff;
@@ -2467,108 +398,8 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
-.batch-summary {
-  display: flex;
-  justify-content: space-around;
-  padding: 16px;
-  background: #f5f7fa;
-  border-radius: 6px;
-  font-size: 16px;
-}
-
-.batch-summary > div {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.batch-summary .amount {
-  font-size: 20px;
-  font-weight: 700;
-  color: #303133;
-}
-
-.batch-summary .amount.actual {
-  font-size: 24px;
-  color: #67c23a;
-}
-
-/* 批量录入对话框样式 */
 .header-buttons {
   display: flex;
   gap: 8px;
 }
-
-.batch-room-list {
-  max-height: 400px;
-  overflow-y: auto;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  padding: 12px;
-  background: #f5f7fa;
-}
-
-.batch-room-item {
-  padding: 12px;
-  margin-bottom: 8px;
-  background: white;
-  border-radius: 4px;
-  border: 1px solid #e4e7ed;
-  transition: all 0.3s;
-}
-
-.batch-room-item:hover {
-  border-color: #409eff;
-  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.1);
-}
-
-.batch-room-item.selected {
-  border-color: #409eff;
-  background: #ecf5ff;
-}
-
-.batch-room-item .room-number {
-  font-weight: 600;
-  margin-right: 8px;
-  font-size: 16px;
-}
-
-.batch-room-item .room-rent {
-  margin-left: 8px;
-  color: #909399;
-  font-size: 14px;
-}
-
-.room-readings {
-  margin-top: 12px;
-  padding: 8px;
-  background: #f9fafc;
-  border-radius: 4px;
-}
-
-.reading-input {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-
-.reading-input:last-child {
-  margin-bottom: 0;
-}
-
-.reading-input .label {
-  min-width: 80px;
-  font-weight: 500;
-  color: #606266;
-}
-
-.reading-input .rate {
-  margin-left: auto;
-  color: #909399;
-  font-size: 12px;
-}
-
 </style>

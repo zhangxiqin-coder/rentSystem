@@ -26,6 +26,7 @@ class PaymentMethod(str, Enum):
 class UserRole(str, Enum):
     """用户角色枚举"""
     ADMIN = "admin"
+    SUPER_LANDLORD = "super_landlord"
     LANDLORD = "landlord"
     TENANT = "tenant"
 

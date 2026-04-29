@@ -13,16 +13,14 @@ def get_user_owner_filter(user: User):
     获取用户的数据过滤条件
 
     规则：
-    - admin角色：可以看到所有数据（返回None，不过滤）
-    - testuser3用户（房东姐姐）：可以看到所有数据（返回None，不过滤）
-    - 其他landlord角色：只能看到自己创建的数据（owner_id == user.id）
+    - admin/super_landlord角色：可以看到所有数据（返回None，不过滤）
+    - landlord角色：只能看到自己创建的数据（owner_id == user.id）
     - tenant角色：无权访问（在API层返回403）
 
     Returns:
         过滤条件表达式，或None（不过滤）
     """
-    # admin和房东姐姐可以看到所有数据
-    if user.role == "admin" or user.username == "testuser3":
+    if user.role in ("admin", "super_landlord"):
         return None
 
     # 其他房东只能看到自己创建的数据
@@ -46,7 +44,7 @@ def apply_room_filter(query, user: User):
     """
     filter_result = get_user_owner_filter(user)
 
-    # admin和房东姐姐不过滤
+    # admin和super_landlord不过滤
     if filter_result is None:
         return query
 
@@ -71,7 +69,7 @@ def apply_payment_filter(query, user: User):
     """
     filter_result = get_user_owner_filter(user)
 
-    # admin和房东姐姐不过滤
+    # admin和super_landlord不过滤
     if filter_result is None:
         return query
 
@@ -96,7 +94,7 @@ def apply_utility_reading_filter(query, user: User):
     """
     filter_result = get_user_owner_filter(user)
 
-    # admin和房东姐姐不过滤
+    # admin和super_landlord不过滤
     if filter_result is None:
         return query
 

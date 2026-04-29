@@ -18,7 +18,7 @@ export interface User {
   username: string
   email?: string
   full_name?: string
-  role: 'admin' | 'landlord' | 'tenant'
+  role: 'admin' | 'super_landlord' | 'landlord' | 'tenant'
   is_active: boolean
   created_at: string
   updated_at: string

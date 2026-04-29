@@ -110,7 +110,7 @@ def get_expiring_rooms(
     filtered_rooms = []
     for room in rooms:
         # 检查用户是否有权限查看这个房间
-        if current_user.role == "admin" or current_user.username == "testuser3":
+        if current_user.role in ("admin", "super_landlord"):
             filtered_rooms.append(room)
         elif current_user.role == "landlord" and room.owner_id == current_user.id:
             filtered_rooms.append(room)
@@ -296,10 +296,8 @@ def delete_room(
     if not room:
         raise HTTPException(status_code=404, detail="房间不存在")
     
-    # 与列表权限保持一致：testuser3（房东姐姐）可操作所有房间
     if (
         current_user.role == "landlord"
-        and current_user.username != "testuser3"
         and room.owner_id != current_user.id
     ):
         raise HTTPException(status_code=403, detail="无权删除此房间")
