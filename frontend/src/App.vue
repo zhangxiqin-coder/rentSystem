@@ -51,6 +51,9 @@ onMounted(() => {
           {{ hideAmounts ? '显示金额' : '隐藏金额' }}
         </el-button>
         <span class="username">{{ authStore.displayName }}</span>
+        <router-link to="/settings" class="settings-link">
+          <el-button type="info" plain size="small">设置</el-button>
+        </router-link>
         <el-button type="danger" size="small" @click="handleLogout">退出登录</el-button>
       </div>
     </header>
@@ -97,5 +100,9 @@ onMounted(() => {
 .username {
   color: #606266;
   font-size: 14px;
+}
+
+.settings-link {
+  text-decoration: none;
 }
 </style>

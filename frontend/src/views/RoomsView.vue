@@ -48,6 +48,10 @@ const filteredRooms = computed(() => {
   return result
 })
 
+const totalMonthlyRent = computed(() => {
+  return rooms.value.reduce((sum, room) => sum + Number(room.monthly_rent || 0), 0)
+})
+
 const paginatedRooms = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
   const end = start + pageSize.value
@@ -84,8 +88,8 @@ const handle编辑 = (room: Room) => {
     deposit_amount: Number(room.deposit_amount) || 0,
     floor: Number(room.floor) || 0,
     payment_cycle: Number(room.payment_cycle) || 1,
-    water_rate: Number(room.water_rate) || 5,
-    electricity_rate: Number(room.electricity_rate) || 1,
+    water_rate: Number(room.water_rate) ?? 5,
+    electricity_rate: Number(room.electricity_rate) ?? 1,
   }
   dialogVisible.value = true
 }
@@ -339,7 +343,7 @@ onMounted(() => {
       <div class="header-content">
         <div class="title-section">
           <h2>房间管理</h2>
-          <p>管理您的租赁房间和租客</p>
+          <p>管理您的租赁房间和租客 · 月租总计 <strong>{{ formatAmount(totalMonthlyRent) }}</strong></p>
         </div>
         <el-button type="primary" size="large" @click="handleCreate">
           <el-icon><Plus /></el-icon>
@@ -406,12 +410,12 @@ onMounted(() => {
         </el-table-column>
         <el-table-column prop="water_rate" label="水费率 (元/吨)" width="120">
           <template #default="{ row }">
-            {{ Number(row.water_rate || 5).toFixed(2) }}
+            {{ Number(row.water_rate ?? 5).toFixed(2) }}
           </template>
         </el-table-column>
         <el-table-column prop="electricity_rate" label="电费率 (元/度)" width="120">
           <template #default="{ row }">
-            {{ Number(row.electricity_rate || 1).toFixed(2) }}
+            {{ Number(row.electricity_rate ?? 1).toFixed(2) }}
           </template>
         </el-table-column>
         <el-table-column prop="payment_cycle" label="付款周期" width="120">

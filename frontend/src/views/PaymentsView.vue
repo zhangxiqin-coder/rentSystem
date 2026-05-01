@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { paymentApi } from '@/api/payment'
 import { roomApi } from '@/api/room'
+import { useOverdueConfig } from '@/composables/useOverdueConfig'
 import type { Payment } from '@/types'
 import type { Room } from '@/types'
 import { useAmountVisibility } from '@/composables/useAmountVisibility'
@@ -37,46 +38,117 @@ const { hideAmounts, formatAmount } = useAmountVisibility()
 const selectedGroups = ref<string[]>([])
 const selectAll = ref(false)
 
-// 缴费提醒：月付查当月，季付查近3个月
-const unpaidRentRooms = computed(() => {
+const { overdueCutoffDate } = useOverdueConfig()
+
+// 收租概况：按月分组，区分已收/未收
+const rentCollectionByMonth = computed(() => {
   const today = new Date()
+  today.setHours(0, 0, 0, 0)
   const currentYear = today.getFullYear()
   const currentMonth = today.getMonth()
 
-  return rooms.value
-    .filter(room => room.status === 'occupied' && room.monthly_rent > 0)
-    .map(room => {
-      const cycle = Math.max(1, Number(room.payment_cycle || 1))
-      const cycleLabel = cycle > 1 ? `${cycle}个月` : ''
-      // 计算需要检查的月数范围
-      const checkMonths = cycle
-      const rentDue = Number(room.monthly_rent || 0) * cycle
+  const buildDue = (y: number, m: number, day: number) => {
+    const dim = new Date(y, m + 1, 0).getDate()
+    const d = new Date(y, m, Math.min(day, dim))
+    d.setHours(0, 0, 0, 0)
+    return d
+  }
 
-      // 检查最近N个月内是否有房租支付记录（排除refund）
-      const hasPaid = payments.value.some(p => {
-        if (p.room_id !== room.id) return false
-        if (p.payment_type === 'refund') return false
-        if (p.status === 'cancelled') return false
-        if (!p.payment_date) return false
-        const d = new Date(p.payment_date)
-        const monthDiff = (currentYear - d.getFullYear()) * 12 + (currentMonth - d.getMonth())
-        return monthDiff >= 0 && monthDiff < checkMonths
+  type RoomItem = { room: Room; cycle: number; cycleLabel: string; rentDue: number; dueDay: number; dueDateStr: string }
+
+  const months: Array<{
+    key: string
+    label: string
+    unpaid: RoomItem[]
+    paid: RoomItem[]
+    totalRent: number
+    paidRent: number
+  }> = []
+
+  for (let i = 5; i >= 0; i--) {
+    const m = currentMonth - i
+    const year = currentYear + Math.floor(m / 12)
+    const month = ((m % 12) + 12) % 12
+    const isCurrent = (i === 0)
+    const label = isCurrent ? `${month + 1}月（本月）` : `${month + 1}月`
+    const key = `${year}-${String(month + 1).padStart(2, '0')}`
+
+    const unpaidRooms: RoomItem[] = []
+    const paidRooms: RoomItem[] = []
+
+    rooms.value
+      .filter(room => room.status === 'occupied' && room.monthly_rent > 0)
+      .forEach(room => {
+        const cycle = Math.max(1, Number(room.payment_cycle || 1))
+        const anchorSource = room.lease_start || ''
+        const anchor = anchorSource ? new Date(anchorSource) : null
+        const dueDay = anchor ? anchor.getDate() : 0
+        if (!dueDay) return
+
+        const dueDateThisMonth = buildDue(year, month, dueDay)
+        const cutoffDate = new Date(overdueCutoffDate.value)
+        cutoffDate.setHours(0, 0, 0, 0)
+        if (dueDateThisMonth < cutoffDate) return
+
+        // 季付：只检查周期起始月
+        if (cycle > 1) {
+          if (!anchorSource) return
+          const anchorMonth = anchor!.getMonth()
+          const diff = ((month - anchorMonth) % 12 + 12) % 12
+          if (diff % cycle !== 0) return
+        }
+
+        // 租期未开始的跳过
+        if (anchorSource) {
+          const leaseStart = new Date(anchorSource)
+          leaseStart.setHours(0, 0, 0, 0)
+          if (leaseStart > dueDateThisMonth) return
+        }
+
+        // 判断是否首个账单周期（新签租客）
+        const isFirstCycle = anchorSource
+          ? Math.abs(dueDateThisMonth.getTime() - new Date(anchorSource).setHours(0, 0, 0, 0)) < 86400000
+          : false
+
+        // 已收判断：找距应交日最近的 rent payment，距离 <= 半周期天数则视为已收
+        const halfCycleMs = cycle * 15 * 86400000
+
+        const roomRentPayments = payments.value.filter(p =>
+          p.room_id === room.id &&
+          p.payment_type === 'rent' &&
+          p.status !== 'cancelled' &&
+          p.payment_date
+        )
+
+        const isPaid = isFirstCycle
+          ? roomRentPayments.length > 0
+          : roomRentPayments.some(p => {
+              const d = new Date(p.payment_date!)
+              d.setHours(0, 0, 0, 0)
+              return Math.abs(d.getTime() - dueDateThisMonth.getTime()) <= halfCycleMs
+            })
+
+        const rentDue = Number(room.monthly_rent || 0) * cycle
+        const cycleLabel = cycle > 1 ? `${cycle}个月` : ''
+        const item: RoomItem = { room, cycle, cycleLabel, rentDue, dueDay, dueDateStr: `${dueDay}号` }
+
+        if (isPaid) {
+          paidRooms.push(item)
+        } else {
+          unpaidRooms.push(item)
+        }
       })
 
-      // 计算应交日期
-      const anchorSource = room.lease_start || room.last_payment_date || ''
-      let dueDay = 0
-      let dueDateStr = ''
-      if (anchorSource) {
-        const anchor = new Date(anchorSource)
-        dueDay = anchor.getDate()
-        dueDateStr = `${dueDay}号`
-      }
+    if (unpaidRooms.length > 0 || paidRooms.length > 0) {
+      unpaidRooms.sort((a, b) => a.dueDay - b.dueDay)
+      paidRooms.sort((a, b) => a.dueDay - b.dueDay)
+      const totalRent = [...unpaidRooms, ...paidRooms].reduce((s, r) => s + r.rentDue, 0)
+      const paidRent = paidRooms.reduce((s, r) => s + r.rentDue, 0)
+      months.push({ key, label, unpaid: unpaidRooms, paid: paidRooms, totalRent, paidRent })
+    }
+  }
 
-      return { room, cycle, cycleLabel, rentDue, hasPaid, dueDateStr, dueDay }
-    })
-    .filter(item => !item.hasPaid)
-    .sort((a, b) => a.dueDay - b.dueDay)
+  return months
 })
 
 const getStatusLabel = (status: string) => {
@@ -445,17 +517,47 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 未收租提醒 -->
-      <div v-if="unpaidRentRooms.length > 0" class="unpaid-alert">
-        <div class="alert-icon">💰</div>
-        <div class="alert-content">
-          <strong>未收租提醒（{{ unpaidRentRooms.length }}间）：</strong>
-          <div class="unpaid-room-list">
-            <div v-for="item in unpaidRentRooms" :key="item.room.id" class="unpaid-room-item">
-              <span class="room-number">{{ item.room.room_number }}</span>
-              <span class="room-due">应交{{ item.dueDateStr }}</span>
-              <span class="room-cycle" v-if="item.cycle > 1">（{{ item.cycleLabel }}付）</span>
-              <span class="room-rent">{{ hideAmounts ? '****' : `¥${item.rentDue}` }}</span>
+      <!-- 收租概况 -->
+      <div v-if="rentCollectionByMonth.length > 0" class="rent-collection">
+        <div v-for="monthGroup in rentCollectionByMonth" :key="monthGroup.key" class="collection-month">
+          <div class="collection-summary">
+            <span class="collection-month-label">{{ monthGroup.label }}</span>
+            <span class="collection-stat">
+              应收 <strong>{{ monthGroup.unpaid.length + monthGroup.paid.length }}</strong> 间
+              <template v-if="!hideAmounts">
+                <span class="stat-divider">|</span>
+                合计 <strong>¥{{ monthGroup.totalRent }}</strong>
+                <span class="stat-divider">|</span>
+                已收 <strong class="stat-paid">¥{{ monthGroup.paidRent }}</strong>
+                <span class="stat-divider">|</span>
+                未收 <strong class="stat-unpaid">¥{{ monthGroup.totalRent - monthGroup.paidRent }}</strong>
+              </template>
+            </span>
+          </div>
+
+          <!-- 未收 -->
+          <div v-if="monthGroup.unpaid.length > 0" class="unpaid-section">
+            <div class="section-label unpaid-label">未收 {{ monthGroup.unpaid.length }} 间</div>
+            <div class="unpaid-room-list">
+              <div v-for="item in monthGroup.unpaid" :key="`u-${monthGroup.key}-${item.room.id}`" class="unpaid-room-item">
+                <span class="room-number">{{ item.room.room_number }}</span>
+                <span class="room-due">应交{{ item.dueDateStr }}</span>
+                <span class="room-cycle" v-if="item.cycle > 1">（{{ item.cycleLabel }}付）</span>
+                <span class="room-rent">{{ hideAmounts ? '****' : `¥${item.rentDue}` }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 已收 -->
+          <div v-if="monthGroup.paid.length > 0" class="paid-section">
+            <div class="section-label paid-label">已收 {{ monthGroup.paid.length }} 间</div>
+            <div class="paid-room-list">
+              <div v-for="item in monthGroup.paid" :key="`p-${monthGroup.key}-${item.room.id}`" class="paid-room-item">
+                <span class="room-number">{{ item.room.room_number }}</span>
+                <span class="room-due">{{ item.dueDateStr }}交</span>
+                <span class="room-cycle" v-if="item.cycle > 1">（{{ item.cycleLabel }}付）</span>
+                <span class="room-rent paid-rent">{{ hideAmounts ? '****' : `¥${item.rentDue}` }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -613,26 +715,81 @@ td {
   color: #999;
 }
 
-/* 未收租提醒样式 */
-.unpaid-alert {
-  background: #fef0f0;
-  border: 1px solid #f56c6c;
-  border-radius: 8px;
-  padding: 1rem 1.5rem;
+/* 收租概况样式 */
+.rent-collection {
   margin-bottom: 1.5rem;
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
   gap: 1rem;
-  box-shadow: 0 2px 4px rgba(245, 108, 108, 0.2);
 }
 
-.unpaid-alert .alert-content strong {
+.collection-month {
+  background: white;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.collection-summary {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.collection-month-label {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #303133;
+}
+
+.collection-stat {
+  font-size: 0.875rem;
+  color: #606266;
+}
+
+.collection-stat strong {
+  font-size: 1rem;
+}
+
+.stat-divider {
+  color: #dcdfe6;
+  margin: 0 0.25rem;
+}
+
+.stat-paid {
+  color: #67c23a;
+}
+
+.stat-unpaid {
+  color: #f56c6c;
+}
+
+.section-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+  padding-left: 0.25rem;
+}
+
+.unpaid-label {
   color: #c45656;
-  display: block;
-  margin-bottom: 0.5rem;
 }
 
-.unpaid-room-list {
+.paid-label {
+  color: #529b2e;
+}
+
+.unpaid-section {
+  margin-bottom: 0.75rem;
+}
+
+.paid-section {
+}
+
+.unpaid-room-list, .paid-room-list {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
@@ -642,34 +799,49 @@ td {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  background: white;
+  background: #fef0f0;
   border: 1px solid #fbc4c4;
   border-radius: 6px;
   padding: 0.35rem 0.75rem;
   font-size: 0.875rem;
 }
 
-.unpaid-room-item .room-number {
+.paid-room-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #f0f9eb;
+  border: 1px solid #c2e7b0;
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.unpaid-room-item .room-number,
+.paid-room-item .room-number {
   font-weight: 700;
   color: #303133;
 }
 
-.unpaid-room-item .room-tenant {
-  color: #909399;
-}
-
-.unpaid-room-item .room-due {
+.unpaid-room-item .room-due,
+.paid-room-item .room-due {
   color: #e6a23c;
   font-size: 0.8rem;
 }
 
-.unpaid-room-item .room-cycle {
+.unpaid-room-item .room-cycle,
+.paid-room-item .room-cycle {
   color: #e6a23c;
   font-size: 0.8rem;
 }
 
 .unpaid-room-item .room-rent {
   color: #f56c6c;
+  font-weight: 600;
+}
+
+.paid-rent {
+  color: #67c23a;
   font-weight: 600;
 }
 

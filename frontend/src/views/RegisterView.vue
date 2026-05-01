@@ -12,6 +12,7 @@ const form = ref<注册Request & { confirmPassword: string }>({
   email: '',
   password: '',
   full_name: '',
+  role: 'landlord',
   confirmPassword: '',
 })
 
@@ -254,6 +255,24 @@ const handle注册 = async () => {
             :disabled="loading"
             autocomplete="name"
           />
+        </div>
+
+        <div class="form-group">
+          <label>角色 *</label>
+          <div class="role-select">
+            <label class="role-option" :class="{ active: form.role === 'landlord' }">
+              <input type="radio" v-model="form.role" value="landlord" :disabled="loading" />
+              <span class="role-icon">🏠</span>
+              <span class="role-label">房东</span>
+              <span class="role-desc">管理房屋、收租</span>
+            </label>
+            <label class="role-option" :class="{ active: form.role === 'tenant' }">
+              <input type="radio" v-model="form.role" value="tenant" :disabled="loading" />
+              <span class="role-icon">👤</span>
+              <span class="role-label">租客</span>
+              <span class="role-desc">查看账单、缴费</span>
+            </label>
+          </div>
         </div>
 
         <div class="form-group" :class="{ 'has-error': hasError('password') }">
@@ -539,6 +558,52 @@ input:disabled {
 .login-link a:hover {
   color: #764ba2;
   text-decoration: underline;
+}
+
+.role-select {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.role-option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.role-option:hover {
+  border-color: #667eea;
+}
+
+.role-option.active {
+  border-color: #667eea;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+}
+
+.role-option input[type="radio"] {
+  display: none;
+}
+
+.role-icon {
+  font-size: 1.5rem;
+}
+
+.role-label {
+  font-weight: 600;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.role-desc {
+  font-size: 0.75rem;
+  color: #999;
 }
 
 /* Scrollbar styling for the card */

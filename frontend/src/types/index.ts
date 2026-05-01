@@ -40,6 +40,7 @@ export interface RegisterRequest {
   email?: string
   password: string
   full_name?: string
+  role?: 'landlord' | 'tenant'
 }
 
 // Room types（统一前后端）
