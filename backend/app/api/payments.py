@@ -283,6 +283,8 @@ def create_bulk_payment(
         payment_date=actual_payment_date,
         payment_method=data.payment_method,
         description=f"房租 {room.room_number}",
+        period_start=data.period_start,
+        period_end=data.period_end,
         owner_id=current_user.id
     )
     db.add(rent_payment)

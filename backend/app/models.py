@@ -142,6 +142,8 @@ class Payment(Base):
     payment_type = Column(String(20), nullable=False, default="rent")
     payment_date = Column(Date, nullable=False, index=True)
     due_date = Column(Date)
+    period_start = Column(Date)
+    period_end = Column(Date)
     status = Column(String(20), nullable=False, default="completed")
     payment_method = Column(String(50))
     description = Column(Text)

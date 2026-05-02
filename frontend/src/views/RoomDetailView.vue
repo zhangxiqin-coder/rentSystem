@@ -444,6 +444,9 @@ onMounted(async () => {
       <PaymentForm
         :payment="editingPayment"
         :room-id="roomId"
+        :monthly-rent="room?.monthly_rent"
+        :payment-cycle="room?.payment_cycle"
+        :lease-start="room?.lease_start"
         :loading="paymentSubmitting"
         @submit="handleSubmitPayment"
         @cancel="paymentDialogVisible = false"

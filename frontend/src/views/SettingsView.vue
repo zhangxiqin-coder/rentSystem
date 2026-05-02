@@ -12,6 +12,7 @@ const {
   expiringDays, setExpiringDays,
   recentPaymentDays, setRecentPaymentDays,
   recentReadingDays, setRecentReadingDays,
+  lookbackMonths, setLookbackMonths,
   resetDefaults, defaults,
 } = useOverdueConfig()
 
@@ -20,6 +21,7 @@ const tempAdvanceRentDays = ref(advanceRentDays.value)
 const tempExpiringDays = ref(expiringDays.value)
 const tempRecentPaymentDays = ref(recentPaymentDays.value)
 const tempRecentReadingDays = ref(recentReadingDays.value)
+const tempLookbackMonths = ref(lookbackMonths.value)
 
 const tempDisplayName = ref(authStore.user?.full_name || '')
 const savingName = ref(false)
@@ -30,6 +32,7 @@ const handleSave = async () => {
   setExpiringDays(tempExpiringDays.value)
   setRecentPaymentDays(tempRecentPaymentDays.value)
   setRecentReadingDays(tempRecentReadingDays.value)
+  setLookbackMonths(tempLookbackMonths.value)
   ElMessage.success('保存成功，刷新页面后生效')
 }
 
@@ -56,6 +59,7 @@ const handleReset = async () => {
     tempExpiringDays.value = defaults.expiringDays as number
     tempRecentPaymentDays.value = defaults.recentPaymentDays as number
     tempRecentReadingDays.value = defaults.recentReadingDays as number
+    tempLookbackMonths.value = defaults.lookbackMonths as number
     ElMessage.success('已恢复默认值，刷新页面后生效')
   } catch {}
 }
@@ -127,6 +131,16 @@ const handleReset = async () => {
           <div class="setting-desc">到期提醒中，多少天内的水电记录允许"标记已收"（默认 {{ defaults.recentReadingDays }} 天）</div>
         </div>
         <el-input-number v-model="tempRecentReadingDays" :min="1" :max="30" style="width: 150px" />
+      </div>
+
+      <el-divider />
+
+      <div class="setting-item">
+        <div class="setting-info">
+          <div class="setting-label">缴费页回溯月数</div>
+          <div class="setting-desc">缴费记录页收租概况显示最近几个月的数据（默认 {{ defaults.lookbackMonths }} 个月，即当月和上月）</div>
+        </div>
+        <el-input-number v-model="tempLookbackMonths" :min="1" :max="12" style="width: 150px" />
       </div>
 
       <div style="margin-top: 20px; text-align: right;">

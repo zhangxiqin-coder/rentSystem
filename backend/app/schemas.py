@@ -245,6 +245,8 @@ class PaymentBase(BaseModel):
     payment_type: PaymentType
     payment_date: Optional[date] = None
     due_date: Optional[date] = None
+    period_start: Optional[date] = None
+    period_end: Optional[date] = None
     status: Optional[PaymentStatus] = Field(default=PaymentStatus.COMPLETED)
     payment_method: Optional[PaymentMethod] = None
     description: Optional[str] = None
@@ -260,6 +262,8 @@ class PaymentUpdate(BaseModel):
     """支付记录更新 schema"""
     amount: Optional[Decimal] = Field(None, gt=0)
     due_date: Optional[date] = None
+    period_start: Optional[date] = None
+    period_end: Optional[date] = None
     status: Optional[PaymentStatus] = None
     payment_method: Optional[PaymentMethod] = None
     description: Optional[str] = None
@@ -291,6 +295,8 @@ class BulkPaymentCreate(BaseModel):
     reading_date: Optional[date] = None  # 水电抄表日期（可选）
     rent_amount: Decimal  # 房租（可打折）
     rent_original: Decimal  # 房租原始金额
+    period_start: Optional[date] = None  # 房租覆盖起始日
+    period_end: Optional[date] = None  # 房租覆盖结束日
     water_charge: Optional[UtilityPaymentItem] = None  # 水费明细
     electricity_charge: Optional[UtilityPaymentItem] = None  # 电费明细
     payment_date: date = Field(default_factory=date.today)

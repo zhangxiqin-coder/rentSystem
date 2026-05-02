@@ -7,6 +7,9 @@ import type { Payment, CreatePaymentRequest, UpdatePaymentRequest } from '@/type
 interface Props {
   payment?: Payment
   roomId?: number
+  monthlyRent?: number
+  paymentCycle?: number
+  leaseStart?: string
   loading?: boolean
 }
 
@@ -54,6 +57,50 @@ const rules: FormRules<CreatePaymentRequest> = {
 
 const is房租Type = computed(() => formData.value.payment_type === 'rent')
 
+const expectedRent = computed(() => {
+  const rent = Number(props.monthlyRent || 0)
+  const cycle = Math.max(1, Number(props.paymentCycle || 1))
+  return rent * cycle
+})
+
+const autoFillRent = () => {
+  if (is房租Type.value) {
+    formData.value.amount = expectedRent.value
+    autoFillPeriod()
+  }
+}
+
+const autoFillPeriod = () => {
+  if (!props.leaseStart) return
+  const cycle = Math.max(1, Number(props.paymentCycle || 1))
+  const anchor = new Date(props.leaseStart)
+  const dueDay = anchor.getDate()
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const buildDue = (y: number, m: number, d: number) => {
+    const dim = new Date(y, m + 1, 0).getDate()
+    const date = new Date(y, m, Math.min(d, dim))
+    date.setHours(0, 0, 0, 0)
+    return date
+  }
+
+  const addMonths = (base: Date, months: number) => {
+    const d = new Date(base)
+    d.setDate(1)
+    d.setMonth(d.getMonth() + months)
+    return buildDue(d.getFullYear(), d.getMonth(), dueDay)
+  }
+
+  let cursor = buildDue(anchor.getFullYear(), anchor.getMonth(), dueDay)
+  while (cursor <= today) {
+    cursor = addMonths(cursor, cycle)
+  }
+  const periodStart = addMonths(cursor, -cycle)
+  formData.value.period_start = periodStart.toISOString().split('T')[0]
+  formData.value.period_end = new Date(cursor.getTime() - 86400000).toISOString().split('T')[0]
+}
+
 // Watch for payment prop changes to populate form
 watch(
   () => props.payment,
@@ -79,6 +126,16 @@ watch(
   (newRoomId) => {
     if (newRoomId && !props.payment) {
       formData.value.room_id = newRoomId
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  [() => props.monthlyRent, () => props.paymentCycle, () => props.leaseStart],
+  () => {
+    if (!props.payment && is房租Type.value) {
+      autoFillRent()
     }
   },
   { immediate: true },
@@ -119,7 +176,7 @@ const resetForm = () => {
       <el-select
         v-model="formData.payment_type"
         placeholder="请选择付款类型"
-        @change="() => { if (is房租Type) formData.amount = 0 }"
+        @change="autoFillRent"
       >
         <el-option label="房租" value="rent" />
         <el-option label="押金" value="deposit" />
@@ -133,12 +190,31 @@ const resetForm = () => {
         v-model="formData.amount"
         :min="0"
         :precision="2"
-        :disabled="is房租Type"
         placeholder="请输入金额"
       />
-      <span v-if="is房租Type" class="form-tip">
-        金额将根据房间租金自动计算
+      <span v-if="is房租Type && expectedRent > 0" class="form-tip">
+        已自动填入：月租 {{ monthlyRent }} × {{ Math.max(1, Number(paymentCycle || 1)) }} 个月
       </span>
+    </el-form-item>
+
+    <el-form-item v-if="is房租Type" label="覆盖周期" required>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <el-date-picker
+          v-model="formData.period_start"
+          type="date"
+          placeholder="起始日期"
+          value-format="YYYY-MM-DD"
+          style="width: 150px"
+        />
+        <span>至</span>
+        <el-date-picker
+          v-model="formData.period_end"
+          type="date"
+          placeholder="结束日期"
+          value-format="YYYY-MM-DD"
+          style="width: 150px"
+        />
+      </div>
     </el-form-item>
 
     <el-form-item label="交租日期" prop="payment_date">

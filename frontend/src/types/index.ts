@@ -94,6 +94,8 @@ export interface Payment {
   payment_type: 'rent' | 'deposit' | 'utility' | 'other'
   payment_date: string
   due_date?: string
+  period_start?: string
+  period_end?: string
   status: 'pending' | 'completed' | 'overdue' | 'cancelled'
   payment_method?: string
   description?: string
@@ -104,10 +106,12 @@ export interface Payment {
 
 export interface CreatePaymentRequest {
   room_id: number
-  amount?: number  // 租金类型自动计算，其他类型必填
+  amount?: number
   payment_type: 'rent' | 'deposit' | 'utility' | 'other'
   payment_date?: string
   due_date?: string
+  period_start?: string
+  period_end?: string
   status?: 'pending' | 'completed' | 'overdue' | 'cancelled'
   payment_method?: string
   description?: string

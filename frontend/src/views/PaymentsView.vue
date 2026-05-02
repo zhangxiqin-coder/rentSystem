@@ -38,9 +38,9 @@ const { hideAmounts, formatAmount } = useAmountVisibility()
 const selectedGroups = ref<string[]>([])
 const selectAll = ref(false)
 
-const { overdueCutoffDate } = useOverdueConfig()
+const { overdueCutoffDate, lookbackMonths } = useOverdueConfig()
 
-// 收租概况：按月分组，区分已收/未收
+// 收租概况：按月分组，区分已收/未收/不收租
 const rentCollectionByMonth = computed(() => {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -55,17 +55,19 @@ const rentCollectionByMonth = computed(() => {
   }
 
   type RoomItem = { room: Room; cycle: number; cycleLabel: string; rentDue: number; dueDay: number; dueDateStr: string }
+  type SkippedItem = { room: Room; reason: string }
 
   const months: Array<{
     key: string
     label: string
     unpaid: RoomItem[]
     paid: RoomItem[]
+    skipped: SkippedItem[]
     totalRent: number
     paidRent: number
   }> = []
 
-  for (let i = 5; i >= 0; i--) {
+  for (let i = lookbackMonths.value; i >= 0; i--) {
     const m = currentMonth - i
     const year = currentYear + Math.floor(m / 12)
     const month = ((m % 12) + 12) % 12
@@ -75,76 +77,110 @@ const rentCollectionByMonth = computed(() => {
 
     const unpaidRooms: RoomItem[] = []
     const paidRooms: RoomItem[] = []
+    const skippedRooms: SkippedItem[] = []
 
-    rooms.value
-      .filter(room => room.status === 'occupied' && room.monthly_rent > 0)
-      .forEach(room => {
-        const cycle = Math.max(1, Number(room.payment_cycle || 1))
-        const anchorSource = room.lease_start || ''
-        const anchor = anchorSource ? new Date(anchorSource) : null
-        const dueDay = anchor ? anchor.getDate() : 0
-        if (!dueDay) return
+    rooms.value.forEach(room => {
+      // 非已出租状态
+      if (room.status !== 'occupied') {
+        const statusMap: Record<string, string> = { available: '空置', maintenance: '维修中' }
+        skippedRooms.push({ room, reason: statusMap[room.status] || room.status })
+        return
+      }
 
-        const dueDateThisMonth = buildDue(year, month, dueDay)
-        const cutoffDate = new Date(overdueCutoffDate.value)
-        cutoffDate.setHours(0, 0, 0, 0)
-        if (dueDateThisMonth < cutoffDate) return
+      // 无租金
+      if (!room.monthly_rent || room.monthly_rent <= 0) {
+        skippedRooms.push({ room, reason: '无租金' })
+        return
+      }
 
-        // 季付：只检查周期起始月
-        if (cycle > 1) {
-          if (!anchorSource) return
-          const anchorMonth = anchor!.getMonth()
-          const diff = ((month - anchorMonth) % 12 + 12) % 12
-          if (diff % cycle !== 0) return
+      const cycle = Math.max(1, Number(room.payment_cycle || 1))
+      const anchorSource = room.lease_start || ''
+      const anchor = anchorSource ? new Date(anchorSource) : null
+      const dueDay = anchor ? anchor.getDate() : 0
+
+      if (!dueDay) {
+        skippedRooms.push({ room, reason: '无租期信息' })
+        return
+      }
+
+      const dueDateThisMonth = buildDue(year, month, dueDay)
+      const cutoffDate = new Date(overdueCutoffDate.value)
+      cutoffDate.setHours(0, 0, 0, 0)
+
+      if (dueDateThisMonth < cutoffDate) {
+        skippedRooms.push({ room, reason: '豁免日期之前' })
+        return
+      }
+
+      // 租期未开始
+      if (anchorSource) {
+        const leaseStart = new Date(anchorSource)
+        leaseStart.setHours(0, 0, 0, 0)
+        if (leaseStart > dueDateThisMonth) {
+          skippedRooms.push({ room, reason: '租期未开始' })
+          return
         }
+      }
 
-        // 租期未开始的跳过
-        if (anchorSource) {
-          const leaseStart = new Date(anchorSource)
-          leaseStart.setHours(0, 0, 0, 0)
-          if (leaseStart > dueDateThisMonth) return
+      // 季付/半年付：非周期月
+      if (cycle > 1) {
+        if (!anchorSource) {
+          skippedRooms.push({ room, reason: '无租期信息' })
+          return
         }
-
-        // 判断是否首个账单周期（新签租客）
-        const isFirstCycle = anchorSource
-          ? Math.abs(dueDateThisMonth.getTime() - new Date(anchorSource).setHours(0, 0, 0, 0)) < 86400000
-          : false
-
-        // 已收判断：找距应交日最近的 rent payment，距离 <= 半周期天数则视为已收
-        const halfCycleMs = cycle * 15 * 86400000
-
-        const roomRentPayments = payments.value.filter(p =>
-          p.room_id === room.id &&
-          p.payment_type === 'rent' &&
-          p.status !== 'cancelled' &&
-          p.payment_date
-        )
-
-        const isPaid = isFirstCycle
-          ? roomRentPayments.length > 0
-          : roomRentPayments.some(p => {
-              const d = new Date(p.payment_date!)
-              d.setHours(0, 0, 0, 0)
-              return Math.abs(d.getTime() - dueDateThisMonth.getTime()) <= halfCycleMs
-            })
-
-        const rentDue = Number(room.monthly_rent || 0) * cycle
-        const cycleLabel = cycle > 1 ? `${cycle}个月` : ''
-        const item: RoomItem = { room, cycle, cycleLabel, rentDue, dueDay, dueDateStr: `${dueDay}号` }
-
-        if (isPaid) {
-          paidRooms.push(item)
-        } else {
-          unpaidRooms.push(item)
+        const anchorMonth = anchor!.getMonth()
+        const diff = ((month - anchorMonth) % 12 + 12) % 12
+        if (diff % cycle !== 0) {
+          const monthsUntilNext = cycle - (diff % cycle)
+          const nextCycleDiff = diff + monthsUntilNext
+          const nextCycleMonthNum = (anchorMonth + nextCycleDiff) % 12
+          const cycleName = cycle === 3 ? '季付' : cycle === 6 ? '半年付' : `${cycle}个月付`
+          skippedRooms.push({ room, reason: `${cycleName}（下次${nextCycleMonthNum + 1}月收）` })
+          return
         }
-      })
+      }
 
-    if (unpaidRooms.length > 0 || paidRooms.length > 0) {
+      // 判断是否首个账单周期（新签租客）
+      const isFirstCycle = anchorSource
+        ? Math.abs(dueDateThisMonth.getTime() - new Date(anchorSource).setHours(0, 0, 0, 0)) < 86400000
+        : false
+
+      // 已收判断
+      const halfCycleMs = cycle * 15 * 86400000
+
+      const roomRentPayments = payments.value.filter(p =>
+        p.room_id === room.id &&
+        p.payment_type === 'rent' &&
+        p.status !== 'cancelled' &&
+        p.payment_date
+      )
+
+      const isPaid = isFirstCycle
+        ? roomRentPayments.length > 0
+        : roomRentPayments.some(p => {
+            const d = new Date(p.payment_date!)
+            d.setHours(0, 0, 0, 0)
+            return Math.abs(d.getTime() - dueDateThisMonth.getTime()) <= halfCycleMs
+          })
+
+      const rentDue = Number(room.monthly_rent || 0) * cycle
+      const cycleLabel = cycle > 1 ? `${cycle}个月` : ''
+      const item: RoomItem = { room, cycle, cycleLabel, rentDue, dueDay, dueDateStr: `${dueDay}号` }
+
+      if (isPaid) {
+        paidRooms.push(item)
+      } else {
+        unpaidRooms.push(item)
+      }
+    })
+
+    if (unpaidRooms.length > 0 || paidRooms.length > 0 || skippedRooms.length > 0) {
       unpaidRooms.sort((a, b) => a.dueDay - b.dueDay)
       paidRooms.sort((a, b) => a.dueDay - b.dueDay)
+      skippedRooms.sort((a, b) => a.room.room_number.localeCompare(b.room.room_number))
       const totalRent = [...unpaidRooms, ...paidRooms].reduce((s, r) => s + r.rentDue, 0)
       const paidRent = paidRooms.reduce((s, r) => s + r.rentDue, 0)
-      months.push({ key, label, unpaid: unpaidRooms, paid: paidRooms, totalRent, paidRent })
+      months.push({ key, label, unpaid: unpaidRooms, paid: paidRooms, skipped: skippedRooms, totalRent, paidRent })
     }
   }
 
@@ -225,44 +261,61 @@ const groupedPayments = computed(() => {
 // 检测漏交月份的提醒
 const missedPaymentWarnings = computed(() => {
   const warnings: string[] = []
-  
-  // 按房间分组检查
+  const DAY = 86400000
+
+  // 按房间分组
   const roomPayments: { [roomId: number]: any[] } = {}
   payments.value.forEach(payment => {
     if (payment.payment_type === 'rent') {
-      if (!roomPayments[payment.room_id]) {
-        roomPayments[payment.room_id] = []
-      }
+      if (!roomPayments[payment.room_id]) roomPayments[payment.room_id] = []
       roomPayments[payment.room_id].push(payment)
     }
   })
-  
-  // 对每个房间检查是否漏交
+
   Object.keys(roomPayments).forEach(roomId => {
     const room = rooms.value.find(r => r.id === Number(roomId))
     if (!room) return
-    
-    const roomRentPayments = roomPayments[Number(roomId)]
-      .sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())
-    
-    if (roomRentPayments.length < 2) return
-    
-    // 检查连续两次收租之间的月份间隔
-    for (let i = 0; i < roomRentPayments.length - 1; i++) {
-      const currentDate = new Date(roomRentPayments[i].payment_date)
-      const prevDate = new Date(roomRentPayments[i + 1].payment_date)
-      
-      // 计算月份差异
-      const monthDiff = (currentDate.getFullYear() - prevDate.getFullYear()) * 12 + 
-                       (currentDate.getMonth() - prevDate.getMonth())
-      
-      // 如果间隔超过2个月，说明可能漏交了
-      if (monthDiff > 1) {
-        const missedMonths = monthDiff - 1
-        warnings.push(
-          `${room.room_number} 可能有 ${missedMonths} 个月未交租 ` +
-          `(${prevDate.toISOString().split('T')[0]} → ${currentDate.toISOString().split('T')[0]})`
-        )
+
+    const cycle = Math.max(1, Number(room.payment_cycle || 1))
+    const anchorSource = room.lease_start || ''
+    if (!anchorSource) return
+    const anchor = new Date(anchorSource)
+    const dueDay = anchor.getDate()
+    // 预期两次缴费之间的天数（约 cycle 个月）
+    const expectedGapDays = cycle * 30
+
+    const sorted = roomPayments[Number(roomId)]
+      .sort((a, b) => new Date(a.payment_date).getTime() - new Date(b.payment_date).getTime())
+
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = new Date(sorted[i - 1].payment_date)
+      prev.setHours(0, 0, 0, 0)
+      const curr = new Date(sorted[i].payment_date)
+      curr.setHours(0, 0, 0, 0)
+      const gapDays = Math.round((curr.getTime() - prev.getTime()) / DAY)
+
+      // 如果有 period 信息，直接用 period 判断
+      if (sorted[i - 1].period_end && sorted[i].period_start) {
+        const prevEnd = new Date(sorted[i - 1].period_end)
+        prevEnd.setHours(0, 0, 0, 0)
+        const currStart = new Date(sorted[i].period_start)
+        currStart.setHours(0, 0, 0, 0)
+        const gapBetweenPeriods = Math.round((currStart.getTime() - prevEnd.getTime()) / DAY)
+        if (gapBetweenPeriods > 1) {
+          warnings.push(
+            `${room.room_number} 可能有 ${Math.round(gapBetweenPeriods / 30)} 个月未交租 ` +
+            `(${sorted[i - 1].period_end} → ${sorted[i].period_start})`
+          )
+        }
+      } else if (gapDays > expectedGapDays * 1.5) {
+        // 没有 period 信息时，用天数间隔判断（允许50%的容差）
+        const missedMonths = Math.round(gapDays / 30) - cycle
+        if (missedMonths > 0) {
+          warnings.push(
+            `${room.room_number} 可能有 ${missedMonths} 个月未交租 ` +
+            `(${sorted[i - 1].payment_date.split('T')[0]} → ${sorted[i].payment_date.split('T')[0]})`
+          )
+        }
       }
     }
   })
@@ -518,6 +571,18 @@ onMounted(() => {
       </div>
 
       <!-- 收租概况 -->
+      <div class="collection-toolbar">
+        <span class="collection-toolbar-label">收租概况：显示最近</span>
+        <el-input-number
+          v-model="lookbackMonths"
+          :min="1"
+          :max="12"
+          :step="1"
+          size="small"
+          style="width: 100px"
+        />
+        <span class="collection-toolbar-label">个月</span>
+      </div>
       <div v-if="rentCollectionByMonth.length > 0" class="rent-collection">
         <div v-for="monthGroup in rentCollectionByMonth" :key="monthGroup.key" class="collection-month">
           <div class="collection-summary">
@@ -557,6 +622,17 @@ onMounted(() => {
                 <span class="room-due">{{ item.dueDateStr }}交</span>
                 <span class="room-cycle" v-if="item.cycle > 1">（{{ item.cycleLabel }}付）</span>
                 <span class="room-rent paid-rent">{{ hideAmounts ? '****' : `¥${item.rentDue}` }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 不收租 -->
+          <div v-if="monthGroup.skipped.length > 0" class="skipped-section">
+            <div class="section-label skipped-label">不收租 {{ monthGroup.skipped.length }} 间</div>
+            <div class="skipped-room-list">
+              <div v-for="item in monthGroup.skipped" :key="`s-${monthGroup.key}-${item.room.id}`" class="skipped-room-item">
+                <span class="room-number">{{ item.room.room_number }}</span>
+                <span class="room-reason">{{ item.reason }}</span>
               </div>
             </div>
           </div>
@@ -716,6 +792,22 @@ td {
 }
 
 /* 收租概况样式 */
+.collection-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  background: white;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+}
+
+.collection-toolbar-label {
+  font-size: 0.875rem;
+  color: #606266;
+}
+
 .rent-collection {
   margin-bottom: 1.5rem;
   display: flex;
@@ -843,6 +935,41 @@ td {
 .paid-rent {
   color: #67c23a;
   font-weight: 600;
+}
+
+.skipped-section {
+  margin-top: 0.5rem;
+}
+
+.skipped-label {
+  color: #909399;
+}
+
+.skipped-room-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.skipped-room-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #f5f7fa;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.skipped-room-item .room-number {
+  font-weight: 700;
+  color: #909399;
+}
+
+.room-reason {
+  color: #909399;
+  font-size: 0.8rem;
 }
 
 /* 漏交提醒样式 */

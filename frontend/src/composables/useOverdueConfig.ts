@@ -6,6 +6,7 @@ const config = {
   expiringDays: { key: 'expiring_days', default: 7 },
   recentPaymentDays: { key: 'recent_payment_days', default: 7 },
   recentReadingDays: { key: 'recent_reading_days', default: 2 },
+  lookbackMonths: { key: 'lookback_months', default: 1 },
 } as const
 
 function loadVal<T>(key: string, defaultVal: T, parse: (v: string) => T): T {
@@ -18,6 +19,7 @@ const advanceRentDays = ref(loadVal(config.advanceRentDays.key, config.advanceRe
 const expiringDays = ref(loadVal(config.expiringDays.key, config.expiringDays.default, Number))
 const recentPaymentDays = ref(loadVal(config.recentPaymentDays.key, config.recentPaymentDays.default, Number))
 const recentReadingDays = ref(loadVal(config.recentReadingDays.key, config.recentReadingDays.default, Number))
+const lookbackMonths = ref(loadVal(config.lookbackMonths.key, config.lookbackMonths.default, Number))
 
 function makeSetter<T extends string | number>(ref_: Ref<T>, key: string) {
   return (val: T) => {
@@ -38,6 +40,8 @@ export function useOverdueConfig() {
     setRecentPaymentDays: makeSetter(recentPaymentDays, config.recentPaymentDays.key),
     recentReadingDays,
     setRecentReadingDays: makeSetter(recentReadingDays, config.recentReadingDays.key),
+    lookbackMonths,
+    setLookbackMonths: makeSetter(lookbackMonths, config.lookbackMonths.key),
     // Reset all to defaults
     resetDefaults: () => {
       overdueCutoffDate.value = config.overdueCutoffDate.default
@@ -45,6 +49,7 @@ export function useOverdueConfig() {
       expiringDays.value = config.expiringDays.default
       recentPaymentDays.value = config.recentPaymentDays.default
       recentReadingDays.value = config.recentReadingDays.default
+      lookbackMonths.value = config.lookbackMonths.default
       Object.values(config).forEach(c => localStorage.removeItem(c.key))
     },
     // All defaults for display
@@ -54,6 +59,7 @@ export function useOverdueConfig() {
       expiringDays: config.expiringDays.default,
       recentPaymentDays: config.recentPaymentDays.default,
       recentReadingDays: config.recentReadingDays.default,
+      lookbackMonths: config.lookbackMonths.default,
     },
   }
 }
