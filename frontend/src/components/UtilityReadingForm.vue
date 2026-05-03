@@ -294,43 +294,29 @@ const submitForm = async () => {
     return
   }
 
-  // 2501系列房间（费率为0或null）不需要验证水电表，直接创建0读数记录
-  // 其他房间至少需要录入水表或电表读数
-  if (!isZeroRateRoom.value) {
-    if (formData.value.water_reading === 0 && formData.value.electric_reading === 0) {
-      ElMessage.error('请至少录入水表或电表读数')
-      return
-    }
-  }
-
-  // 手动模式下必须输入上次读数
-  if (formData.value.use_manual_water && formData.value.manual_previous_water === null) {
+  // 手动模式下必须输入上次读数（仅当对应读数>0时才校验）
+  if (formData.value.use_manual_water && formData.value.water_reading > 0 && formData.value.manual_previous_water === null) {
     ElMessage.error('请输入上次水表读数，或切换为自动查找')
     return
   }
-  if (formData.value.use_manual_electric && formData.value.manual_previous_electric === null) {
+  if (formData.value.use_manual_electric && formData.value.electric_reading > 0 && formData.value.manual_previous_electric === null) {
     ElMessage.error('请输入上次电表读数，或切换为自动查找')
     return
   }
 
-  // 2501系列房间跳过水电表读数验证
-  if (!isZeroRateRoom.value) {
-    // 验证水表读数
+  // 有读数时才校验不能小于上次
+  if (formData.value.water_reading > 0) {
     const prevWater = displayedPreviousWater.value
-    if (prevWater !== null && formData.value.water_reading > 0) {
-      if (formData.value.water_reading < prevWater) {
-        ElMessage.error('水表读数不能小于上次读数')
-        return
-      }
+    if (prevWater !== null && formData.value.water_reading < prevWater) {
+      ElMessage.error('水表读数不能小于上次读数')
+      return
     }
-
-    // 验证电表读数
+  }
+  if (formData.value.electric_reading > 0) {
     const prevElectric = displayedPreviousElectric.value
-    if (prevElectric !== null && formData.value.electric_reading > 0) {
-      if (formData.value.electric_reading < prevElectric) {
-        ElMessage.error('电表读数不能小于上次读数')
-        return
-      }
+    if (prevElectric !== null && formData.value.electric_reading < prevElectric) {
+      ElMessage.error('电表读数不能小于上次读数')
+      return
     }
   }
 
@@ -339,51 +325,24 @@ const submitForm = async () => {
     // 顺序创建水和电的记录，确保第二次录入时能触发催收消息
     const results: any[] = []
 
-    // 2501系列房间：总是创建0读数记录（用于记录房租）
-    // 其他房间：只有读数>0时才创建记录
-    if (isZeroRateRoom.value) {
-      // 2501系列房间，创建水和电的0读数记录
-      results.push(await utilityApi.createReading({
-          room_id: formData.value.room_id,
-          utility_type: 'water',
-          reading: 0,
-          reading_date: formData.value.reading_date,
-          previous_reading: 0,
-          notes: formData.value.notes || '2501系列房间，无水电费',
-        }),
-      )
-      results.push(await utilityApi.createReading({
-        room_id: formData.value.room_id,
-        utility_type: 'electricity',
-        reading: 0,
-        reading_date: formData.value.reading_date,
-        previous_reading: 0,
-        notes: formData.value.notes || '2501系列房间，无水电费',
-      }),)
-    } else {
-      // 其他房间，按读数创建记录
-      if (formData.value.water_reading > 0) {
-        results.push(await utilityApi.createReading({
-          room_id: formData.value.room_id,
-          utility_type: 'water',
-          reading: formData.value.water_reading,
-          reading_date: formData.value.reading_date,
-          previous_reading: displayedPreviousWater.value ?? undefined,
-          notes: formData.value.notes,
-        }),)
-      }
+    // 始终创建水和电两条记录（平摊房间水电为0也记录，用于追踪催租）
+    results.push(await utilityApi.createReading({
+      room_id: formData.value.room_id,
+      utility_type: 'water',
+      reading: formData.value.water_reading || 0,
+      reading_date: formData.value.reading_date,
+      previous_reading: (formData.value.water_reading > 0 ? displayedPreviousWater.value : 0) ?? 0,
+      notes: formData.value.notes,
+    }))
 
-      if (formData.value.electric_reading > 0) {
-        results.push(await utilityApi.createReading({
-          room_id: formData.value.room_id,
-          utility_type: 'electricity',
-          reading: formData.value.electric_reading,
-          reading_date: formData.value.reading_date,
-          previous_reading: displayedPreviousElectric.value ?? undefined,
-          notes: formData.value.notes,
-        }),)
-      }
-    }
+    results.push(await utilityApi.createReading({
+      room_id: formData.value.room_id,
+      utility_type: 'electricity',
+      reading: formData.value.electric_reading || 0,
+      reading_date: formData.value.reading_date,
+      previous_reading: (formData.value.electric_reading > 0 ? displayedPreviousElectric.value : 0) ?? 0,
+      notes: formData.value.notes,
+    }))
 
     ElMessage.success('水电录入成功')
 
