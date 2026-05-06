@@ -106,8 +106,9 @@ export function useOverdueManagement(deps: {
   const getRecentUnpaidReadingForRoom = (roomId: number): MergedReading | undefined => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
+    const mergedAllReadings = mergeReadings(allReadings.value, roomOptions.value)
 
-    return mergedReadings.value
+    return mergedAllReadings
       .filter(item => item.room_id === roomId && !item.is_paid && (item.water_reading || item.electricity_reading))
       .filter(item => {
         const readingDate = new Date(item.reading_date)
