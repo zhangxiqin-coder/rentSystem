@@ -8,9 +8,9 @@ defineProps<{
   roomMap: Map<number, Room>
   hideAmounts: boolean
   formatAmount: (value: number, currency?: string) => string
-  maskedAmount: (value: number | string | null | undefined) => string
+  maskedAmount: (value: number) => string
   getRoomNumber: (roomId: number) => string
-  getRoomInfo: (roomId: number, field: keyof Room) => any
+  getRoomInfo: (roomId: number) => Room | undefined
 }>()
 
 const emit = defineEmits<{
@@ -49,7 +49,7 @@ const tableRef = defineModel<object>('tableRef')
 
     <el-table-column label="💰 月租金" width="110">
       <template #default="{ row }">
-        <span class="rent-amount">{{ maskedAmount(getRoomInfo(row.room_id, 'monthly_rent')) }}</span>
+        <span class="rent-amount">{{ formatAmount(getRoomInfo(row.room_id)?.monthly_rent || 0) }}</span>
       </template>
     </el-table-column>
 
