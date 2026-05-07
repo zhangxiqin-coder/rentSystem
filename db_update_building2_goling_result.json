@@ -1,0 +1,1 @@
+{"ok": true, "rule": "room_number LIKE '2-%' AND building='2'", "before": 5, "affected": 5, "after_old": 0, "after_new": 5, "samples": [[32, "2-2501-D", "果岭2幢"], [41, "2-2501-A", "果岭2幢"], [42, "2-2501-B", "果岭2幢"], [43, "2-2501-C", "果岭2幢"], [44, "2-2501-E", "果岭2幢"]]}
