@@ -30,7 +30,7 @@ def check_room_permission(user: User, room: Optional[Room] = None):
 @router.get("", response_model=PaginatedResponse[RoomResponse])
 def list_rooms(
     page: int = Query(1, ge=1),
-    size: int = Query(10, ge=1, le=100),
+    size: int = Query(10, ge=1, le=1000),
     search: Optional[str] = None,
     status: Optional[str] = None,
     building: Optional[str] = None,
