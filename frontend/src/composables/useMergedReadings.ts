@@ -26,8 +26,8 @@ export function mergeReadings(readings: UtilityReading[], roomOptions: Room[]): 
         reading_date: reading.reading_date,
         water_reading: reading.utility_type === 'water' ? reading : undefined,
         electricity_reading: reading.utility_type === 'electricity' ? reading : undefined,
-        monthly_rent: room?.monthly_rent,
-        payment_cycle: room?.payment_cycle,
+        monthly_rent: room?.monthly_rent || 0,
+        payment_cycle: room?.payment_cycle || 1,
         total_amount: 0,
         notes: '',
       })

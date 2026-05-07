@@ -132,8 +132,8 @@ export function useUtilityReadings(deps: {
         map.set(key, {
           room_id: reading.room_id,
           reading_date: reading.reading_date,
-          monthly_rent: room?.monthly_rent,
-          payment_cycle: room?.payment_cycle,
+          monthly_rent: room?.monthly_rent || 0,
+          payment_cycle: room?.payment_cycle || 1,
           total_amount: Number(room?.monthly_rent || 0) * cycle,  // 总计包含房租，按周期计算
           notes: reading.notes || ''
         })
