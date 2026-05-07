@@ -68,7 +68,7 @@ const emit = defineEmits<{
               <el-tag size="small" :type="room.status === 'occupied' ? 'success' : 'info'">
                 {{ room.status === 'occupied' ? '已租' : '空置' }}
               </el-tag>
-              <span class="room-rent">{{ hideAmounts ? '****/月' : `¥${room.monthly_rent}/月` }}</span>
+              <span class="room-rent">{{ hideAmounts ? '****/月' : `¥${room.monthly_rent || 0}/月` }}</span>
             </el-checkbox>
 
             <!-- 选中时显示读数输入框 -->

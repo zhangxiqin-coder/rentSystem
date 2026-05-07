@@ -47,7 +47,7 @@ const emit = defineEmits<{
         <div v-for="item in overdueRooms" :key="item.room.id" class="expiring-item overdue-item">
           <div class="room-info">
             <span class="room-number">{{ item.room.room_number }}</span>
-            <span class="room-rent">{{ hideAmounts ? '****/月' : `¥${item.room.monthly_rent}/月` }}</span>
+            <span class="room-rent">{{ hideAmounts ? '****/月' : `¥${item.room.monthly_rent || 0}/月` }}</span>
             <el-tag size="small" type="danger">逾期{{ item.overdueDays }}天</el-tag>
           </div>
           <div class="lease-info">
@@ -90,7 +90,7 @@ const emit = defineEmits<{
         <div v-for="room in expiringRooms" :key="room.id" class="expiring-item">
           <div class="room-info">
             <span class="room-number">{{ room.room_number }}</span>
-            <span class="room-rent">{{ hideAmounts ? '****/月' : `¥${room.monthly_rent}/月` }}</span>
+            <span class="room-rent">{{ hideAmounts ? '****/月' : `¥${room.monthly_rent || 0}/月` }}</span>
             <el-tag size="small" type="info">{{ room.payment_cycle === 1 ? '月付' : room.payment_cycle === 3 ? '季付' : '年付' }}</el-tag>
           </div>
           <div class="lease-info">

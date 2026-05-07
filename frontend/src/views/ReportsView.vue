@@ -192,7 +192,7 @@ onMounted(() => {
             <!-- 房间信息 -->
             <div class="room-info">
               <h3>{{ roomBilling.room.room_number }}</h3>
-              <p>月租金：{{ hideAmounts ? '****' : formatAmount(roomBilling.room.monthly_rent) }}</p>
+              <p>月租金：{{ hideAmounts ? '****' : formatAmount(roomBilling.room.monthly_rent || 0) }}</p>
             </div>
 
             <!-- 账单明细 -->
