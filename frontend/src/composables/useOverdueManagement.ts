@@ -26,9 +26,14 @@ export function useOverdueManagement(deps: {
 
   const { overdueCutoffDate, advanceRentDays, expiringDays, recentPaymentDays, recentReadingDays } = useOverdueConfig()
 
+  // 性能优化：缓存合并结果，避免重复计算
+  const mergedAllReadings = computed(() =>
+    mergeReadings(allReadings.value, roomOptions.value)
+  )
+
   const latestUnpaidUtilityAmountByRoom = computed(() => {
     const roomAmountMap = new Map<number, number>()
-    const mergedList = mergeReadings(allReadings.value, roomOptions.value)
+    const mergedList = mergedAllReadings.value
 
     // mergeReadings 已按日期倒序，首条即最近记录
     mergedList.forEach(item => {
@@ -106,9 +111,8 @@ export function useOverdueManagement(deps: {
   const getRecentUnpaidReadingForRoom = (roomId: number): MergedReading | undefined => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    const mergedAllReadings = mergeReadings(allReadings.value, roomOptions.value)
 
-    return mergedAllReadings
+    return mergedAllReadings.value
       .filter(item => item.room_id === roomId && !item.is_paid && (item.water_reading || item.electricity_reading))
       .filter(item => {
         const readingDate = new Date(item.reading_date)

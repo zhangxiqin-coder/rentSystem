@@ -14,13 +14,16 @@ export interface MergedReading {
 }
 
 export function mergeReadings(readings: UtilityReading[], roomOptions: Room[]): MergedReading[] {
+  // 性能优化：提前创建房间 Map，避免重复 find
+  const roomMap = new Map(roomOptions.map(r => [r.id, r]))
   const map = new Map<string, MergedReading>()
 
   readings.forEach(reading => {
     const key = `${reading.room_id}_${reading.reading_date}`
 
     if (!map.has(key)) {
-      const room = roomOptions.find(r => r.id === reading.room_id)
+      // 从 Map 中快速获取房间信息
+      const room = roomMap.get(reading.room_id)
       map.set(key, {
         room_id: reading.room_id,
         reading_date: reading.reading_date,

@@ -69,18 +69,21 @@ export function useUtilityReadings(deps: {
         params.end_date = filters.value.end_date
       }
 
-      const [res, allItems, paymentsRes] = await Promise.all([
+      // 性能优化：只在首次加载或筛选时加载支付记录，分页时不重复加载
+      const shouldLoadPayments = payments.value.length === 0 || filters.value.room_id
+
+      const [res, paymentsRes] = await Promise.all([
         utilityApi.getReadings(params),
-        loadAllReadings(),
-        paymentApi.getPayments({ size: 1000 })
+        shouldLoadPayments ? paymentApi.getPayments({ size: 1000 }) : Promise.resolve({ data: { items: [] } })
       ])
 
       readings.value = res.data.items || []
-      allReadings.value = allItems
       pagination.value.total = res.data.total || 0
 
-      // 同时加载支付记录，用于判断是否已收租
-      payments.value = paymentsRes.data.items || []
+      // 仅在首次加载或需要时更新支付记录
+      if (shouldLoadPayments && paymentsRes.data.items) {
+        payments.value = paymentsRes.data.items || []
+      }
     } catch (error) {
       console.error('Failed to load readings:', error)
       ElMessage.error('加载水电记录失败')
@@ -120,21 +123,25 @@ export function useUtilityReadings(deps: {
 
   // 合并后的记录列表（水和电在同一行）
   const mergedReadings = computed(() => {
+    // 性能优化：提前创建房间 Map，避免重复 find
+    const roomMap = new Map(roomOptions.value.map(r => [r.id, r]))
+    const paymentMap = new Map(payments.value.map(p => [p.id, p]))
+
     const map = new Map<string, MergedReading>()
 
     readings.value.forEach(reading => {
       const key = `${reading.room_id}_${reading.reading_date}`
 
       if (!map.has(key)) {
-        // 获取房间信息（包含房租）
-        const room = roomOptions.value.find(r => r.id === reading.room_id)
+        // 从 Map 中快速获取房间信息
+        const room = roomMap.get(reading.room_id)
         const cycle = Math.max(1, Number(room?.payment_cycle || 1))
         map.set(key, {
           room_id: reading.room_id,
           reading_date: reading.reading_date,
           monthly_rent: room?.monthly_rent || 0,
           payment_cycle: room?.payment_cycle || 1,
-          total_amount: Number(room?.monthly_rent || 0) * cycle,  // 总计包含房租，按周期计算
+          total_amount: Number(room?.monthly_rent || 0) * cycle,
           notes: reading.notes || ''
         })
       }
@@ -161,33 +168,35 @@ export function useUtilityReadings(deps: {
       const waterPaid = (merged.water_reading as any)?.payment_id
       const elecPaid = (merged.electricity_reading as any)?.payment_id
 
-      // 平摊房间（不收水电费）：以当月租金已收作为“已收租”标记
-      const room = roomOptions.value.find(r => r.id === merged.room_id)
+      // 平摊房间（不收水电费）：以当月租金已收作为"已收租"标记
+      const room = roomMap.get(merged.room_id)
       const isZeroUtilityRoom = !!room &&
         Number(room.water_rate ?? 0) === 0 &&
         Number(room.electricity_rate ?? 0) === 0
       const waterAmount = Number(merged.water_reading?.amount || 0)
       const elecAmount = Number(merged.electricity_reading?.amount || 0)
       const isZeroUtilityChargeRecord = waterAmount + elecAmount === 0
-      const readingDate = new Date(merged.reading_date)
-      const rentPaidInSameMonth = payments.value.some(payment => {
-        if (payment.room_id !== merged.room_id) return false
-        if (payment.payment_type !== 'rent') return false
-        if (payment.status !== 'completed') return false
-        if (!payment.payment_date) return false
 
-        const paidDate = new Date(payment.payment_date)
-        return (
-          paidDate.getFullYear() === readingDate.getFullYear() &&
-          paidDate.getMonth() === readingDate.getMonth()
-        )
-      })
+      // 优化：仅在需要时检查支付记录
+      if (!waterPaid && !elecPaid && (isZeroUtilityRoom || isZeroUtilityChargeRecord)) {
+        const readingDate = new Date(merged.reading_date)
+        const rentPaidInSameMonth = payments.value.some(payment => {
+          if (payment.room_id !== merged.room_id) return false
+          if (payment.payment_type !== 'rent') return false
+          if (payment.status !== 'completed') return false
+          if (!payment.payment_date) return false
 
-      merged.is_paid = !!(
-        waterPaid ||
-        elecPaid ||
-        ((isZeroUtilityRoom || isZeroUtilityChargeRecord) && rentPaidInSameMonth)
-      )
+          const paidDate = new Date(payment.payment_date)
+          return (
+            paidDate.getFullYear() === readingDate.getFullYear() &&
+            paidDate.getMonth() === readingDate.getMonth()
+          )
+        })
+
+        merged.is_paid = rentPaidInSameMonth
+      } else {
+        merged.is_paid = !!(waterPaid || elecPaid)
+      }
     })
 
     // 返回所有记录（包括已支付的），按日期倒序排列
