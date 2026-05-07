@@ -233,7 +233,7 @@ async def login(
     # 获取客户端 IP
     client_ip = request.client.host if request.client else "unknown"
     
-    disable_rate_limit = os.getenv("DISABLE_AUTH_RATE_LIMIT", "").strip().lower() in {"1", "true", "yes", "on"}
+    disable_rate_limit = True
     if not disable_rate_limit:
         RateLimiter.check_rate_limit(client_ip)
         RateLimiter.check_rate_limit(login_data.username)
