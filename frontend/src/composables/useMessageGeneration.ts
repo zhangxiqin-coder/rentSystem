@@ -1,0 +1,138 @@
+import { ref, type Ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { utilityApi } from '@/api/utility'
+import type { Room, UtilityReading } from '@/types'
+
+interface UseMessageGenerationDeps {
+  getRoomNumber: (roomId: number) => string
+  getRoomInfo: (roomId: number) => Room | undefined
+  hideAmounts: Ref<boolean>
+  formatAmount: (value: number, currency?: string) => string
+}
+
+export function useMessageGeneration(deps: UseMessageGenerationDeps) {
+  const {
+    getRoomNumber,
+    getRoomInfo,
+    hideAmounts,
+    formatAmount,
+  } = deps
+
+  // 消息对话框状态
+  const messageDialogVisible = ref(false)
+  const currentMessage = ref('')
+  const sendingWechat = ref(false)
+
+  // 收租提醒相关
+  const rentReminderPreview = ref('')
+  const rentReminderVisible = ref(false)
+
+  // 生成收租提醒消息
+  const generateRentReminder = async (roomId: number, readings: UtilityReading[]): Promise<string> => {
+    const room = getRoomInfo(roomId)
+    if (!room) {
+      ElMessage.error('房间信息不存在')
+      return ''
+    }
+
+    const roomNumber = getRoomNumber(roomId)
+    let message = `**${roomNumber} 本月收租：`
+
+    let totalAmount = 0
+    let waterText = ''
+    let electricityText = ''
+
+    readings.forEach(reading => {
+      if (reading.utility_type === 'water') {
+        const usage = reading.current_reading - reading.previous_reading
+        const cost = hideAmounts.value ? '****' : formatAmount(reading.amount || 0)
+        waterText = `\n水：${reading.previous_reading}→${reading.current_reading}（${usage}吨×${room.water_rate}=${cost}）`
+        totalAmount += reading.amount || 0
+      } else if (reading.utility_type === 'electricity') {
+        const usage = reading.current_reading - reading.previous_reading
+        const cost = hideAmounts.value ? '****' : formatAmount(reading.amount || 0)
+        electricityText = `\n电：${reading.previous_reading}→${reading.current_reading}（${usage}度×${room.electricity_rate}=${cost}）`
+        totalAmount += reading.amount || 0
+      }
+    })
+
+    // 添加房租
+    const cycle = Math.max(1, Number(room.payment_cycle || 1))
+    const rentAmount = Number(room.monthly_rent || 0) * cycle
+    totalAmount += rentAmount
+    const rentText = hideAmounts.value ? '\n房租：****' : `\n房租：${formatAmount(rentAmount)}`
+
+    message += hideAmounts.value ? '**** 元**' : `${formatAmount(totalAmount)} 元**`
+    message += waterText + electricityText + rentText
+
+    currentMessage.value = message
+    rentReminderPreview.value = message
+    return message
+  }
+
+  // 显示收租提醒对话框
+  const showRentReminder = () => {
+    rentReminderVisible.value = true
+  }
+
+  // 复制收租提醒
+  const copyRentReminder = () => {
+    navigator.clipboard.writeText(reentReminderPreview.value)
+      .then(() => ElMessage.success('已复制到剪贴板'))
+      .catch(() => ElMessage.error('复制失败'))
+  }
+
+  // 自动生成并发送微信通知
+  const autoGenerateAndSendWechat = async (roomId: number, readings: UtilityReading[]) => {
+    sendingWechat.value = true
+    try {
+      const message = await generateRentReminder(roomId, readings)
+
+      // 调用后端API发送微信通知
+      await utilityApi.sendWechatNotification({
+        room_id: roomId,
+        message,
+      })
+
+      ElMessage.success('微信通知已发送')
+    } catch (error) {
+      console.error('Failed to send wechat notification:', error)
+      ElMessage.error('发送微信通知失败')
+    } finally {
+      sendingWechat.value = false
+    }
+  }
+
+  // 生成消息文本（通用）
+  const generateMessageText = async (roomId: number, readings: UtilityReading[]): Promise<string> => {
+    return await generateRentReminder(roomId, readings)
+  }
+
+  // 复制消息
+  const copyMessage = (message: string) => {
+    navigator.clipboard.writeText(message)
+      .then(() => ElMessage.success('已复制到剪贴板'))
+      .catch(() => ElMessage.error('复制失败，请手动复制'))
+  }
+
+  // 显示复制失败提示
+  const showCopyFallback = (message: string) => {
+    messageDialogVisible.value = true
+    currentMessage.value = message
+  }
+
+  return {
+    messageDialogVisible,
+    currentMessage,
+    sendingWechat,
+    rentReminderPreview,
+    rentReminderVisible,
+    generateRentReminder,
+    showRentReminder,
+    copyRentReminder,
+    autoGenerateAndSendWechat,
+    generateMessageText,
+    copyMessage,
+    showCopyFallback,
+  }
+}
