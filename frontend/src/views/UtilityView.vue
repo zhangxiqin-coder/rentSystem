@@ -120,9 +120,9 @@ const onFormSuccess = (result: any) => {
 }
 
 // Initialize
-onMounted(() => {
-  loadRooms()
-  loadReadings()
+onMounted(async () => {
+  await loadRooms()  // 先加载房间列表
+  loadReadings()     // 再加载水电记录（此时 roomOptions 已准备好）
 })
 </script>
 
