@@ -46,12 +46,14 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
       if (reading.utility_type === 'water') {
         const usage = reading.current_reading - reading.previous_reading
         const cost = hideAmounts.value ? '****' : formatAmount(reading.amount || 0)
-        waterText = `\n水：${reading.previous_reading}→${reading.current_reading}（${usage}吨×${room.water_rate}=${cost}）`
+        const rate = room.water_rate ?? 5
+        waterText = `\\n水：${reading.previous_reading}→${reading.current_reading}（${usage}吨×${rate}=${cost}）`
         totalAmount += reading.amount || 0
       } else if (reading.utility_type === 'electricity') {
         const usage = reading.current_reading - reading.previous_reading
         const cost = hideAmounts.value ? '****' : formatAmount(reading.amount || 0)
-        electricityText = `\n电：${reading.previous_reading}→${reading.current_reading}（${usage}度×${room.electricity_rate}=${cost}）`
+        const rate = room.electricity_rate ?? 1
+        electricityText = `\\n电：${reading.previous_reading}→${reading.current_reading}（${usage}度×${rate}=${cost}）`
         totalAmount += reading.amount || 0
       }
     })
