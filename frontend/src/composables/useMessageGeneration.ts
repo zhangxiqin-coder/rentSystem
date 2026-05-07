@@ -36,7 +36,11 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
     }
 
     const roomNumber = getRoomNumber(roomId)
-    let message = `**${roomNumber} 本月收租：`
+    
+    // 获取抄表日期（使用第一条读数的日期）
+    const readingDate = readings.length > 0 
+      ? new Date(readings[0].reading_date).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/')
+      : new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/')
 
     let totalAmount = 0
     let waterText = ''
@@ -44,17 +48,21 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
 
     readings.forEach(reading => {
       if (reading.utility_type === 'water') {
-        const usage = reading.current_reading - reading.previous_reading
-        const cost = hideAmounts.value ? '****' : formatAmount(reading.amount || 0)
-        const rate = room.water_rate ?? 5
-        waterText = `\\n水：${reading.previous_reading}→${reading.current_reading}（${usage}吨×${rate}=${cost}）`
-        totalAmount += reading.amount || 0
+        const usage = reading.reading - (reading.previous_reading || 0)
+        const cost = Number(reading.amount || 0)
+        const rate = Number(room.water_rate || 5)
+        const costText = hideAmounts.value ? '****' : formatAmount(cost)
+        const rateText = hideAmounts.value ? '**' : rate.toFixed(2)
+        waterText = `💧 水费：${reading.previous_reading || 0}→${reading.reading}（用量${usage}吨 × ¥${rateText}/吨 = ${costText}）`
+        totalAmount += cost
       } else if (reading.utility_type === 'electricity') {
-        const usage = reading.current_reading - reading.previous_reading
-        const cost = hideAmounts.value ? '****' : formatAmount(reading.amount || 0)
-        const rate = room.electricity_rate ?? 1
-        electricityText = `\\n电：${reading.previous_reading}→${reading.current_reading}（${usage}度×${rate}=${cost}）`
-        totalAmount += reading.amount || 0
+        const usage = reading.reading - (reading.previous_reading || 0)
+        const cost = Number(reading.amount || 0)
+        const rate = Number(room.electricity_rate || 1)
+        const costText = hideAmounts.value ? '****' : formatAmount(cost)
+        const rateText = hideAmounts.value ? '**' : rate.toFixed(2)
+        electricityText = `⚡ 电费：${reading.previous_reading || 0}→${reading.reading}（用量${usage}度 × ¥${rateText}/度 = ${costText}）`
+        totalAmount += cost
       }
     })
 
@@ -62,10 +70,17 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
     const cycle = Math.max(1, Number(room.payment_cycle || 1))
     const rentAmount = Number(room.monthly_rent || 0) * cycle
     totalAmount += rentAmount
-    const rentText = hideAmounts.value ? '\n房租：****' : `\n房租：${formatAmount(rentAmount)}`
-
-    message += hideAmounts.value ? '**** 元**' : `${formatAmount(totalAmount)} 元**`
-    message += waterText + electricityText + rentText
+    
+    // 构建消息
+    let message = `【${roomNumber} 收租明细】\n`
+    message += `抄表日期：${readingDate}\n`
+    message += `💰 合计：${hideAmounts.value ? '****' : formatAmount(totalAmount)}\n`
+    message += `🏠 房租：${hideAmounts.value ? '****' : formatAmount(rentAmount)}\n`
+    if (waterText) message += `${waterText}\n`
+    if (electricityText) message += `${electricityText}\n`
+    
+    // 移除最后一个换行符
+    message = message.trim()
 
     currentMessage.value = message
     rentReminderPreview.value = message
@@ -73,13 +88,14 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
   }
 
   // 显示收租提醒对话框
-  const showRentReminder = () => {
+  const showRentReminder = async (roomId: number, readings: UtilityReading[]) => {
+    await generateRentReminder(roomId, readings)
     rentReminderVisible.value = true
   }
 
   // 复制收租提醒
   const copyRentReminder = () => {
-    navigator.clipboard.writeText(reentReminderPreview.value)
+    navigator.clipboard.writeText(rentReminderPreview.value)
       .then(() => ElMessage.success('已复制到剪贴板'))
       .catch(() => ElMessage.error('复制失败'))
   }

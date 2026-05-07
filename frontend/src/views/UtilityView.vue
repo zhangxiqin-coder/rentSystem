@@ -119,6 +119,18 @@ const onFormSuccess = (result: any) => {
   })
 }
 
+// Handle show reminder event from table
+const handleShowReminder = async (row: any) => {
+  const readings: any[] = []
+  if (row.water_reading) {
+    readings.push(row.water_reading)
+  }
+  if (row.electricity_reading) {
+    readings.push(row.electricity_reading)
+  }
+  await showRentReminder(row.room_id, readings)
+}
+
 // Initialize
 onMounted(async () => {
   await loadRooms()  // 先加载房间列表
@@ -235,7 +247,7 @@ onMounted(async () => {
           :masked-amount="maskedAmount"
           :get-room-number="getRoomNumber"
           :get-room-info="getRoomInfo"
-          @show-reminder="showRentReminder"
+          @show-reminder="handleShowReminder"
           @show-payment="showPaymentDialog"
           @edit="showEditDialog"
           @delete="handleDelete"
