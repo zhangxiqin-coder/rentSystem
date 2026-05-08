@@ -219,17 +219,54 @@ export function useOverdueManagement(deps: {
     }
   }
 
+  // 复制文本到剪贴板的辅助函数（兼容性处理）
+  const copyToClipboard = async (text: string): Promise<boolean> => {
+    // 方法1: 尝试使用 Clipboard API
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text)
+        return true
+      } catch {
+        // Fall through to method 2
+      }
+    }
+
+    // 方法2: 使用传统的 execCommand 方法
+    const textArea = document.createElement('textarea')
+    textArea.value = text
+    textArea.style.position = 'fixed'
+    textArea.style.left = '-999999px'
+    textArea.style.top = '-999999px'
+    document.body.appendChild(textArea)
+    textArea.focus()
+    textArea.select()
+
+    try {
+      const successful = document.execCommand('copy')
+      document.body.removeChild(textArea)
+      return successful
+    } catch {
+      document.body.removeChild(textArea)
+      return false
+    }
+  }
+
   // 一键催租
   const sendReminder = async (room: Room, type: 'overdue' | 'upcoming') => {
     try {
       const message = await getLatestCollectionDetailText(room)
 
       // 复制到剪贴板
-      await navigator.clipboard.writeText(message)
-      ElMessage.success('催租消息已复制到剪贴板，请发送给租客')
+      const success = await copyToClipboard(message)
+      if (success) {
+        ElMessage.success('✅ 催租消息已复制，可直接粘贴发送')
+      } else {
+        ElMessage.error('复制失败，请手动复制消息')
+        console.log('消息内容:', message)
+      }
     } catch (error) {
       console.error('Failed to send reminder:', error)
-      ElMessage.error('发送催租消息失败')
+      ElMessage.error('生成催租消息失败')
     }
   }
 
