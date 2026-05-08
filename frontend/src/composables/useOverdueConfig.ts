@@ -2,7 +2,7 @@ import { ref, type Ref } from 'vue'
 
 const config = {
   overdueCutoffDate: { key: 'overdue_cutoff_date', default: '2026-04-22' },
-  advanceRentDays: { key: 'advance_rent_days', default: 1 },
+  advanceRentDays: { key: 'advance_rent_days', default: 0 },
   expiringDays: { key: 'expiring_days', default: 7 },
   recentPaymentDays: { key: 'recent_payment_days', default: 7 },
   recentReadingDays: { key: 'recent_reading_days', default: 2 },
@@ -29,6 +29,13 @@ function makeSetter<T extends string | number>(ref_: Ref<T>, key: string) {
 }
 
 export function useOverdueConfig() {
+  // 清除旧的 advanceRentDays 配置（如果存在且大于0）
+  const storedAdvanceDays = localStorage.getItem(config.advanceRentDays.key)
+  if (storedAdvanceDays !== null && Number(storedAdvanceDays) > 0) {
+    localStorage.removeItem(config.advanceRentDays.key)
+    advanceRentDays.value = config.advanceRentDays.default
+  }
+
   return {
     overdueCutoffDate,
     setOverdueCutoffDate: makeSetter(overdueCutoffDate, config.overdueCutoffDate.key),
