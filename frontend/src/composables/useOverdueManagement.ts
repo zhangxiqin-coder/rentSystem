@@ -140,9 +140,11 @@ export function useOverdueManagement(deps: {
   }
 
   const canMarkExpiringRoomPaid = (room: Room) => {
-  // 判断房间是否有最近的水电录入（不管是否支付）
-  // 查找最近45天内的水电记录
-  return !!getRecentReadingForRoom(room.id)
+    // 判断房间是否有最近45天内**未支付**的水电记录
+    const recentReading = getRecentReadingForRoom(room.id)
+    // 只有找到未支付的记录时才显示"标记已收"
+    // 如果记录已支付(is_paid=true)或没有记录，显示"录入水电"
+    return !!(recentReading && !recentReading.is_paid)
   }
 
   const markExpiringRoomPaid = (room: Room) => {
