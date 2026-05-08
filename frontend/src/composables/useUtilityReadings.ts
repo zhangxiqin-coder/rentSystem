@@ -80,6 +80,11 @@ export function useUtilityReadings(deps: {
       readings.value = res.data.items || []
       pagination.value.total = res.data.total || 0
 
+      // 加载所有水电记录到allReadings
+      if (allReadings.value.length === 0) {
+        allReadings.value = await loadAllReadings()
+      }
+
       // 仅在首次加载或需要时更新支付记录
       if (shouldLoadPayments && paymentsRes.data.items) {
         payments.value = paymentsRes.data.items || []

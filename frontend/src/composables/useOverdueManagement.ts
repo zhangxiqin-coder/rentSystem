@@ -123,8 +123,26 @@ export function useOverdueManagement(deps: {
       .sort((a, b) => new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime())[0]
   }
 
+  const getRecentReadingForRoom = (roomId: number): MergedReading | undefined => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    return mergedAllReadings.value
+      .filter(item => item.room_id === roomId)
+      .filter(item => {
+        const readingDate = new Date(item.reading_date)
+        readingDate.setHours(0, 0, 0, 0)
+        const diffDays = Math.floor((today.getTime() - readingDate.getTime()) / (1000 * 60 * 60 * 24))
+        // 扩大时间范围到45天，适应实际录入时间浮动
+        return diffDays >= 0 && diffDays <= 45
+      })
+      .sort((a, b) => new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime())[0]
+  }
+
   const canMarkExpiringRoomPaid = (room: Room) => {
-    return !!getRecentUnpaidReadingForRoom(room.id)
+  // 判断房间是否有最近的水电录入（不管是否支付）
+  // 查找最近45天内的水电记录
+  return !!getRecentReadingForRoom(room.id)
   }
 
   const markExpiringRoomPaid = (room: Room) => {
