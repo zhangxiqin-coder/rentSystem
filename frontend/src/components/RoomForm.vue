@@ -37,6 +37,7 @@ const formData = ref<CreateRoomRequest>({
   lease_start: '',
   lease_end: '',
   description: '',
+  series: '',
 })
 
 const rules: FormRules<CreateRoomRequest> = {
@@ -77,6 +78,7 @@ watch(
         lease_start: newRoom.lease_start || '',
         lease_end: newRoom.lease_end || '',
         description: newRoom.description || '',
+        series: newRoom.series || '',
       }
     }
   },
@@ -120,6 +122,10 @@ const resetForm = () => {
 
     <el-form-item label="楼栋" prop="building">
       <el-input v-model="formData.building" placeholder="例如：A栋" />
+    </el-form-item>
+
+    <el-form-item label="系列" prop="series">
+      <el-input v-model="formData.series" placeholder="例如：102、102A、2-2501" />
     </el-form-item>
 
     <el-form-item label="楼层" prop="floor">

@@ -141,6 +141,7 @@ class RoomBase(BaseModel):
     lease_start: Optional[date] = None
     lease_end: Optional[date] = None
     description: Optional[str] = None
+    series: Optional[str] = Field(None, max_length=50, description="房间系列（如102、102A、2-2501等）")
 
 
 class RoomCreate(RoomBase):
@@ -171,6 +172,7 @@ class RoomUpdate(BaseModel):
     lease_start: Optional[date] = None
     lease_end: Optional[date] = None
     description: Optional[str] = None
+    series: Optional[str] = Field(None, max_length=50, description="房间系列（如102、102A、2-2501等）")
 
     @model_validator(mode='after')
     def validate_lease_dates(self):

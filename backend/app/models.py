@@ -116,6 +116,7 @@ class Room(Base):
     last_payment_date = Column(Date)
     description = Column(Text)
     owner_id = Column(Integer, nullable=True, index=True)  # 用户隔离字段
+    series = Column(String(50), nullable=True)  # 房间系列（如102、102A、2-2501等）
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

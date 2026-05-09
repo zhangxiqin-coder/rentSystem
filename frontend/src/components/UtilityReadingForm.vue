@@ -139,6 +139,33 @@ const activeRooms = computed(() => {
   })
 })
 
+// 按系列分组的房间（用于下拉框显示）
+const sortedRooms = computed(() => {
+  // 按系列分组
+  const grouped: Record<string, Room[]> = {}
+  activeRooms.value.forEach(room => {
+    const series = room.series || '其他'
+    if (!grouped[series]) {
+      grouped[series] = []
+    }
+    grouped[series].push(room)
+  })
+
+  // 对每个组内的房间按房间号排序
+  Object.keys(grouped).forEach(series => {
+    grouped[series].sort((a, b) => a.room_number.localeCompare(b.room_number))
+  })
+
+  // 按系列名称排序，然后将所有房间展平
+  const sortedSeries = Object.keys(grouped).sort()
+  const result: Room[] = []
+  sortedSeries.forEach(series => {
+    result.push(...grouped[series])
+  })
+
+  return result
+})
+
 // 总费用
 const totalAmount = computed(() => {
   let total = 0
@@ -452,13 +479,16 @@ loadRooms()
           @change="loadPreviousReadings"
         >
           <el-option
-            v-for="room in activeRooms"
+            v-for="room in sortedRooms"
             :key="room.id"
             :value="room.id"
-            :label="`${room.room_number} - ${room.tenant_name || '空房'}`"
+            :label="`${room.series || ''} ${room.room_number} - ${room.tenant_name || '空房'}`.trim()"
           >
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-              <span>{{ room.room_number }} - {{ room.tenant_name || '空房' }}</span>
+              <span>
+                <span v-if="room.series" style="color: #909399; font-size: 12px; margin-right: 4px;">[{{ room.series }}]</span>
+                {{ room.room_number }} - {{ room.tenant_name || '空房' }}
+              </span>
               <span
                 v-if="roomReadingStatus[room.id]"
                 style="color: #909399; font-size: 12px;"

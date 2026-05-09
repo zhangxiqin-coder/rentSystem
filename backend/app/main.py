@@ -18,6 +18,15 @@ app = FastAPI(
 _LOCAL_ORIGIN_REGEX = re.compile(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$")
 _EXPLICIT_ALLOWED_ORIGINS = {
     "http://43.134.40.91:5173",
+    "http://43.134.40.91",  # 允许不带端口号访问
+    "https://rental.43.134.40.91",  # 如果使用域名
+    "http://rental.43.134.40.91",
+    # 手机访问可能使用的地址
+    "http://43.134.40.91:80",
+    "http://43.134.40.91:443",
+    # 开发环境
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
 }
 
 

@@ -136,6 +136,12 @@ request.interceptors.response.use(
 
       // Handle 401 Unauthorized
       if (status === 401 && originalRequest && !originalRequest._retry) {
+        // 如果是登录或注册请求，直接返回错误，不要尝试刷新token
+        if (originalRequest.url?.includes('/login') || originalRequest.url?.includes('/register')) {
+          console.log('🔐 [Response] Auth request failed, returning error directly')
+          return Promise.reject(data)
+        }
+
         // If this is a refresh token request, clear auth and redirect
         if (originalRequest.url?.includes('/refresh-token')) {
           clearAuthData()

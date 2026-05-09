@@ -62,6 +62,7 @@ export interface Room {
   lease_end?: string
   last_payment_date?: string
   description?: string
+  series?: string
   created_at: string
   updated_at: string
 }
@@ -82,6 +83,7 @@ export interface CreateRoomRequest {
   lease_start?: string
   lease_end?: string
   description?: string
+  series?: string
 }
 
 export interface UpdateRoomRequest extends Partial<CreateRoomRequest> {}

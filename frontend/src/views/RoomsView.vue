@@ -386,6 +386,11 @@ onMounted(() => {
       >
         <el-table-column prop="room_number" label="房间号" width="120" />
         <el-table-column prop="building" label="楼栋" width="100" />
+        <el-table-column prop="series" label="系列" width="100">
+          <template #default="{ row }">
+            {{ row.series || '-' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="tenant_name" label="租客" width="120">
           <template #default="{ row }">
             {{ row.tenant_name || '-' }}
