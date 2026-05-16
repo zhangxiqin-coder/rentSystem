@@ -224,4 +224,83 @@ const tableRef = defineModel<object>('tableRef')
   font-size: 15px;
   font-weight: 700;
 }
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+  /* 取消操作列固定，避免遮挡 */
+  :deep(.el-table__fixed-right) {
+    position: static !important;
+    height: auto !important;
+  }
+
+  :deep(.el-table__fixed-right .el-table__fixed-body-wrapper) {
+    position: static !important;
+    max-height: none !important;
+  }
+
+  /* 调整表格列宽 */
+  :deep(.el-table__body-wrapper) {
+    overflow-x: auto !important;
+  }
+
+  /* 操作列移动端优化 */
+  :deep(.el-table__fixed-right .el-table__fixed-header-wrapper),
+  :deep(.el-table__fixed-right .el-table__fixed-body-wrapper) {
+    position: static !important;
+  }
+
+  /* 操作按钮移动端优化 */
+  .el-button--small {
+    padding: 4px 8px;
+    font-size: 12px;
+    margin: 2px;
+  }
+
+  /* 表格整体横向滚动 */
+  .utility-table {
+    overflow-x: auto;
+  }
+
+  :deep(.el-table__body) {
+    width: 100% !important;
+  }
+}
+
+/* 小屏幕手机进一步优化 */
+@media (max-width: 375px) {
+  /* 操作按钮改为竖向排列 */
+  :deep(.el-table__fixed-right) {
+    position: static !important;
+  }
+
+  /* 操作列自适应宽度 */
+  :deep(.el-table__fixed-right) {
+    width: auto !important;
+  }
+
+  /* 表格支持横向滚动 */
+  :deep(.el-table) {
+    display: block;
+    overflow-x: auto;
+  }
+
+  :deep(.el-table__body-wrapper) {
+    overflow-x: auto !important;
+  }
+
+  /* 操作按钮更紧凑 */
+  .el-button--small {
+    padding: 3px 6px;
+    font-size: 11px;
+    margin: 1px;
+    display: block;
+    width: 100%;
+    margin-bottom: 4px;
+  }
+
+  /* 缩短按钮文字 */
+  :deep(.el-button) {
+    white-space: nowrap;
+  }
+}
 </style>

@@ -119,6 +119,41 @@
     padding: 10px 5px;
   }
 
+  /* 固定列移动端优化 - 取消固定避免遮挡 */
+  .el-table__fixed,
+  .el-table__fixed-left,
+  .el-table__fixed-right {
+    position: static !important;
+    height: auto !important;
+  }
+
+  .el-table__fixed .el-table__fixed-body-wrapper,
+  .el-table__fixed-left .el-table__fixed-body-wrapper,
+  .el-table__fixed-right .el-table__fixed-body-wrapper {
+    position: static !important;
+    max-height: none !important;
+  }
+
+  .el-table__fixed .el-table__fixed-header-wrapper,
+  .el-table__fixed-left .el-table__fixed-header-wrapper,
+  .el-table__fixed-right .el-table__fixed-header-wrapper {
+    position: static !important;
+  }
+
+  /* 表格容器支持横向滚动 */
+  .el-table .el-table__body-wrapper {
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+  }
+
+  .el-table {
+    display: block;
+  }
+
+  .el-table__body {
+    width: 100% !important;
+  }
+
   /* 卡片间距优化 */
   .el-card + .el-card {
     margin-top: 12px;
