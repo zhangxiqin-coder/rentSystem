@@ -33,6 +33,12 @@ const editingUtilityReading = ref<UtilityReading>()
 // Tabs
 const activeTab = ref('details')
 
+// Date Range Filter (默认最近2个月)
+const dateRange = ref<[Date, Date]>([
+  new Date(Date.now() - 60 * 24 * 60 * 60 * 1000), // 2个月前
+  new Date()
+])
+
 const loadRoom = async () => {
   if (!Number.isFinite(roomId.value) || roomId.value <= 0) {
     ElMessage.error('房间ID无效')
@@ -55,9 +61,19 @@ const loadRoom = async () => {
 const loadPayments = async () => {
   paymentsLoading.value = true
   try {
+    // 格式化日期为 YYYY-MM-DD
+    const formatDate = (date: Date) => {
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+
     const response = await paymentApi.getPaymentsByRoom(roomId.value, {
       page: 1,
       size: 50,
+      start_date: formatDate(dateRange.value[0]),
+      end_date: formatDate(dateRange.value[1])
     })
     payments.value = response.data.items
   } catch (error: any) {
@@ -70,9 +86,19 @@ const loadPayments = async () => {
 const loadUtilityReadings = async () => {
   utilityLoading.value = true
   try {
+    // 格式化日期为 YYYY-MM-DD
+    const formatDate = (date: Date) => {
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+
     const response = await utilityApi.getReadingsByRoom(roomId.value, {
       page: 1,
       size: 50,
+      start_date: formatDate(dateRange.value[0]),
+      end_date: formatDate(dateRange.value[1])
     })
     utilityReadings.value = response.data.items
   } catch (error: any) {
@@ -249,6 +275,11 @@ const getPaymentCycleLabel = (cycle: number | null | undefined) => {
   return `${cycleNum}个月`
 }
 
+const handleDateRangeChange = () => {
+  loadPayments()
+  loadUtilityReadings()
+}
+
 onMounted(async () => {
   await loadRoom()
   if (room.value) {
@@ -327,9 +358,20 @@ onMounted(async () => {
           <template #header>
             <div class="card-header">
               <span>缴费记录</span>
-              <el-button type="primary" @click="handleCreatePayment">
-                新增缴费
-              </el-button>
+              <div style="display: flex; gap: 12px; align-items: center;">
+                <el-date-picker
+                  v-model="dateRange"
+                  type="daterange"
+                  range-separator="至"
+                  start-placeholder="开始日期"
+                  end-placeholder="结束日期"
+                  size="small"
+                  @change="handleDateRangeChange"
+                />
+                <el-button type="primary" @click="handleCreatePayment">
+                  新增缴费
+                </el-button>
+              </div>
             </div>
           </template>
 
@@ -386,9 +428,20 @@ onMounted(async () => {
           <template #header>
             <div class="card-header">
               <span>水电抄表</span>
-              <el-button type="primary" @click="handleCreateUtilityReading">
-                新增抄表
-              </el-button>
+              <div style="display: flex; gap: 12px; align-items: center;">
+                <el-date-picker
+                  v-model="dateRange"
+                  type="daterange"
+                  range-separator="至"
+                  start-placeholder="开始日期"
+                  end-placeholder="结束日期"
+                  size="small"
+                  @change="handleDateRangeChange"
+                />
+                <el-button type="primary" @click="handleCreateUtilityReading">
+                  新增抄表
+                </el-button>
+              </div>
             </div>
           </template>
 
@@ -494,5 +547,45 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+  .room-detail-view {
+    padding: 12px;
+  }
+
+  .page-header {
+    margin-bottom: 12px;
+  }
+
+  .title {
+    font-size: 16px;
+  }
+
+  .room-tabs {
+    margin-top: 12px;
+  }
+
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .card-header > div {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  /* 表格横向滚动 */
+  :deep(.el-card__body) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  :deep(.el-table) {
+    min-width: 600px;
+  }
 }
 </style>
