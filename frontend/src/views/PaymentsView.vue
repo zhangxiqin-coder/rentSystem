@@ -1174,4 +1174,41 @@ td {
 .batch-delete-btn:hover {
   background: #f78989;
 }
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+  .payments-list {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .payments-list table {
+    min-width: 800px;
+  }
+
+  .filter-toolbar {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .filter-label {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .room-select,
+  .filter-label .el-date-picker {
+    width: 100% !important;
+  }
+
+  .collection-toolbar {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .collection-toolbar-label {
+    font-size: 14px;
+  }
+}
 </style>
