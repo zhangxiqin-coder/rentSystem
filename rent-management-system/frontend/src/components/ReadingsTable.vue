@@ -26,12 +26,11 @@ const emit = defineEmits<{
 const tableRef = defineModel<object>('tableRef')
 
 // 展开的行，默认展开所有行
-const expandedRows = ref<string[]>([])
+const expandedRows = ref<number[]>([])
 
 // 监听数据变化，默认展开所有行
 watch(() => props.data, (newData) => {
-  // 使用 room_id + reading_date 作为唯一标识
-  expandedRows.value = newData.map(item => `${item.room_id}-${item.reading_date}`)
+  expandedRows.value = newData.map(item => item.id)
 }, { immediate: true })
 
 const handleReminder = (row: MergedReading) => {
@@ -55,7 +54,7 @@ const handleDelete = (row: MergedReading) => {
     stripe
     class="utility-table"
     :expand-row-keys="expandedRows"
-    :row-key="(row: any) => `${row.room_id}-${row.reading_date}`"
+    row-key="id"
     @selection-change="(sel: any[]) => emit('selection-change', sel)"
   >
     <el-table-column type="selection" width="55" />
