@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search } from '@element-plus/icons-vue'
+import { Plus, Search, ArrowDown, Edit, Delete, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import type { Room } from '@/types'
 import { roomApi } from '@/api/room'
 import RoomForm from '@/components/RoomForm.vue'
@@ -428,40 +428,43 @@ onMounted(() => {
             {{ getPaymentCycleLabel(row.payment_cycle) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="300" fixed="right">
+        <el-table-column label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <!-- 已租房间：显示退租按钮 -->
-            <el-button
-              v-if="row.status === 'occupied'"
-              type="warning"
-              size="small"
-              @click.stop="handle退租(row)"
-            >
-              退租
-            </el-button>
-            <!-- 空房：显示入住按钮 -->
-            <el-button
-              v-if="row.status === 'available'"
-              type="success"
-              size="small"
-              @click.stop="handle入住(row)"
-            >
-              入住
-            </el-button>
-            <el-button
-              type="primary"
-              size="small"
-              @click.stop="handle编辑(row)"
-            >
-              编辑
-            </el-button>
-            <el-button
-              type="danger"
-              size="small"
-              @click.stop="handle删除(row)"
-            >
-              删除
-            </el-button>
+            <el-dropdown trigger="click">
+              <el-button size="small" type="primary">
+                操作<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <!-- 已租房间：显示退租 -->
+                  <el-dropdown-item
+                    v-if="row.status === 'occupied'"
+                    @click.native="handle退租(row)"
+                  >
+                    <el-icon><CircleClose /></el-icon>
+                    退租
+                  </el-dropdown-item>
+                  <!-- 空房：显示入住 -->
+                  <el-dropdown-item
+                    v-if="row.status === 'available'"
+                    @click.native="handle入住(row)"
+                  >
+                    <el-icon><CircleCheck /></el-icon>
+                    入住
+                  </el-dropdown-item>
+                  <!-- 编辑 -->
+                  <el-dropdown-item @click.native="handle编辑(row)">
+                    <el-icon><Edit /></el-icon>
+                    编辑
+                  </el-dropdown-item>
+                  <!-- 删除 -->
+                  <el-dropdown-item @click.native="handle删除(row)">
+                    <el-icon><Delete /></el-icon>
+                    删除
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
