@@ -35,6 +35,9 @@ declare module '@/types' {
 // Activity tab
 const activeTab = ref('readings')
 
+// 折叠面板状态
+const activeCollapse = ref(['1', '2', '3', '4'])  // 默认全部展开
+
 // 1. Amount formatting
 const { hideAmounts, formatAmount, maskedAmount, maskedRate } = useAmountFormatting()
 
@@ -155,24 +158,30 @@ onMounted(async () => {
     </div>
 
     <!-- Rent management card -->
-    <RentManagementCard
-      :overdue-rooms="overdueRooms"
-      :expiring-rooms="expiringRooms"
-      :hide-amounts="hideAmounts"
-      :format-amount="formatAmount"
-      :masked-amount="maskedAmount"
-      :get-next-payment-days="getNextPaymentDays"
-      :can-mark-expiring-room-paid="canMarkExpiringRoomPaid"
-      @send-reminder="sendReminder"
-      @mark-paid="markExpiringRoomPaid"
-      @open-utility-form="openUtilityForm"
-    />
+    <el-collapse v-model="activeCollapse" class="mb-3">
+      <el-collapse-item title="🏠 收租管理" name="1">
+        <RentManagementCard
+          :overdue-rooms="overdueRooms"
+          :expiring-rooms="expiringRooms"
+          :hide-amounts="hideAmounts"
+          :format-amount="formatAmount"
+          :masked-amount="maskedAmount"
+          :get-next-payment-days="getNextPaymentDays"
+          :can-mark-expiring-room-paid="canMarkExpiringRoomPaid"
+          @send-reminder="sendReminder"
+          @mark-paid="markExpiringRoomPaid"
+          @open-utility-form="openUtilityForm"
+        />
+      </el-collapse-item>
+    </el-collapse>
 
     <el-tabs v-model="activeTab">
       <el-tab-pane label="水电记录" name="readings">
         <!-- Filters -->
-        <el-card class="filter-card">
-          <el-form :inline="true">
+        <el-collapse v-model="activeCollapse" class="mb-3">
+          <el-collapse-item title="🔍 筛选条件" name="2">
+            <el-card class="filter-card" shadow="never">
+              <el-form :inline="true">
             <el-form-item label="房间号">
               <el-select
                 v-model="filters.room_id"
@@ -210,11 +219,15 @@ onMounted(async () => {
               <el-button type="primary" @click="handleFilter">筛选</el-button>
               <el-button @click="resetFilter">重置</el-button>
             </el-form-item>
-          </el-form>
-        </el-card>
+              </el-form>
+            </el-card>
+          </el-collapse-item>
+        </el-collapse>
 
         <!-- Batch actions bar -->
-        <el-card v-if="selectedRows.length > 0" class="batch-actions-card">
+        <el-collapse v-model="activeCollapse" class="mb-3">
+          <el-collapse-item title="⚡ 批量操作" name="3">
+            <el-card v-if="selectedRows.length > 0" class="batch-actions-card" shadow="never">
           <div class="batch-actions">
             <span class="selected-info">
               已选择 <strong>{{ selectedRows.length }}</strong> 条记录
@@ -234,7 +247,9 @@ onMounted(async () => {
               </el-button>
             </div>
           </div>
-        </el-card>
+            </el-card>
+          </el-collapse-item>
+        </el-collapse>
 
         <!-- Readings table -->
         <ReadingsTable
