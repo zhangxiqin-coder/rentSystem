@@ -158,7 +158,7 @@ const handleShowReminder = async (row: any) => {
 onMounted(async () => {
   await loadRooms()       // 先加载房间列表
   initializeDateRange()   // 初始化日期范围
-  loadReadings()          // 再加载水电记录（此时 roomOptions 和日期范围已准备好）
+  await loadReadings()    // 再加载水电记录（等待加载完成）
   initialized.value = true // 标记初始化完成
 })
 </script>
