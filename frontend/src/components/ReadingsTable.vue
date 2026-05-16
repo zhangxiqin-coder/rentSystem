@@ -67,26 +67,32 @@ const handleDelete = (row: MergedReading) => {
               type="primary"
               size="small"
               :icon="ChatDotRound"
+              class="action-btn"
               @click="handleReminder(row)"
             >
-              催租消息
+              <span class="btn-text-full">催租消息</span>
+              <span class="btn-text-short">催租</span>
             </el-button>
             <el-button
               type="success"
               size="small"
               :icon="CircleCheck"
+              class="action-btn"
               :disabled="row.is_paid"
               @click="handlePayment(row)"
             >
-              {{ row.is_paid ? '已收租' : '标记已收' }}
+              <span class="btn-text-full">{{ row.is_paid ? '已收租' : '标记已收' }}</span>
+              <span class="btn-text-short">{{ row.is_paid ? '已收' : '标记' }}</span>
             </el-button>
             <el-button
               type="danger"
               size="small"
               :icon="Delete"
+              class="action-btn"
               @click="handleDelete(row)"
             >
-              删除
+              <span class="btn-text-full">删除</span>
+              <span class="btn-text-short">删除</span>
             </el-button>
           </div>
         </div>
@@ -199,11 +205,21 @@ const handleDelete = (row: MergedReading) => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  justify-content: flex-start;
+  justify-content: flex-end; /* 电脑端右对齐 */
 }
 
 .action-buttons .el-button {
   margin: 0;
+}
+
+/* 短文字默认隐藏 */
+.btn-text-short {
+  display: none;
+}
+
+/* 完整文字默认显示 */
+.btn-text-full {
+  display: inline;
 }
 
 .reading-cell {
@@ -289,14 +305,26 @@ const handleDelete = (row: MergedReading) => {
     width: 100% !important;
   }
 
-  /* 操作按钮移动端竖向排列 */
+  /* 操作按钮移动端优化：左对齐，缩短宽度 */
   .action-buttons {
-    flex-direction: column;
-    gap: 4px;
+    flex-direction: row; /* 横向排列 */
+    justify-content: flex-start; /* 左对齐 */
+    gap: 6px;
   }
 
   .action-buttons .el-button {
-    width: 100%;
+    width: auto; /* 自动宽度 */
+    min-width: 80px; /* 最小宽度 */
+    max-width: 120px; /* 最大宽度与抄表日期列差不多 */
+  }
+
+  /* 显示短文字，隐藏完整文字 */
+  .btn-text-short {
+    display: inline;
+  }
+
+  .btn-text-full {
+    display: none;
   }
 }
 
@@ -316,11 +344,8 @@ const handleDelete = (row: MergedReading) => {
   .action-buttons .el-button {
     font-size: 11px;
     padding: 4px 6px;
-  }
-
-  /* 缩短按钮文字 */
-  :deep(.el-button) {
-    white-space: nowrap;
+    min-width: 70px;
+    max-width: 110px;
   }
 
   .action-row {
