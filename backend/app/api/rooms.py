@@ -644,14 +644,28 @@ async def batch_import_rooms(
 
                 # 如果有初始水电读数，创建初始记录
                 if initial_water > 0 or initial_electricity > 0:
-                    reading = UtilityReading(
-                        room_id=room.id,
-                        reading_date=date.today(),
-                        water_reading=initial_water,
-                        electricity_reading=initial_electricity,
-                        notes="批量导入：初始读数"
-                    )
-                    db.add(reading)
+                    # 创建水表记录
+                    if initial_water > 0:
+                        water_reading = UtilityReading(
+                            room_id=room.id,
+                            reading_date=date.today(),
+                            utility_type="water",
+                            reading=initial_water,
+                            notes="批量导入：初始水表读数"
+                        )
+                        db.add(water_reading)
+                    
+                    # 创建电表记录
+                    if initial_electricity > 0:
+                        electricity_reading = UtilityReading(
+                            room_id=room.id,
+                            reading_date=date.today(),
+                            utility_type="electricity",
+                            reading=initial_electricity,
+                            notes="批量导入：初始电表读数"
+                        )
+                        db.add(electricity_reading)
+                    
                     db.commit()
 
                 success_count += 1
