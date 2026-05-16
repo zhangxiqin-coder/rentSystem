@@ -44,12 +44,12 @@ onMounted(() => {
       <div class="brand">{{ authStore.displayName }}</div>
       <div class="actions">
         <el-button type="info" plain size="small" @click="toggleHideAmounts">
-          {{ hideAmounts ? '💰' : '💵' }}
+          {{ hideAmounts ? '显示金额' : '隐藏金额' }}
         </el-button>
         <router-link to="/settings" class="settings-link">
-          <el-button type="info" plain size="small" circle>⚙️</el-button>
+          <el-button type="info" plain size="small">设置</el-button>
         </router-link>
-        <el-button type="danger" size="small" circle @click="handleLogout">🚪</el-button>
+        <el-button type="danger" size="small" @click="handleLogout">退出</el-button>
       </div>
     </header>
 
