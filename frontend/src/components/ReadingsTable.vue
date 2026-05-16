@@ -34,10 +34,12 @@ const tableRef = defineModel<object>('tableRef')
 // 展开的行，默认展开所有行
 const expandedRows = ref<string[]>([])
 
-// 监听数据变化，默认展开所有行
+// 监听数据变化，只展开未收租的行
 watch(() => props.data, (newData) => {
-  // 使用 room_id + reading_date 作为唯一标识
-  expandedRows.value = newData.map(item => `${item.room_id}-${item.reading_date}`)
+  // 使用 room_id + reading_date 作为唯一标识，只展开未收租的记录
+  expandedRows.value = newData
+    .filter(item => !item.is_paid)
+    .map(item => `${item.room_id}-${item.reading_date}`)
 }, { immediate: true })
 
 const handleReminder = (row: MergedReading) => {
@@ -103,10 +105,6 @@ const handleDelete = (row: MergedReading) => {
               <span class="btn-text-short">删除</span>
             </el-button>
           </div>
-        </div>
-        <!-- 已收租的显示提示信息 -->
-        <div v-else class="action-row paid-row">
-          <span class="paid-text">✓ 已收租，无需操作</span>
         </div>
       </template>
     </el-table-column>
@@ -193,6 +191,7 @@ const handleDelete = (row: MergedReading) => {
           <div class="total-amount">
             <span class="amount-label">总计:</span>
             <span class="amount total">{{ formatAmount(Number(row.total_amount || 0)) }}</span>
+            <span v-if="row.is_paid" class="paid-badge">已收租</span>
           </div>
         </div>
       </template>
@@ -211,18 +210,6 @@ const handleDelete = (row: MergedReading) => {
   padding: 12px 16px;
   background: #f5f7fa;
   border-top: 1px solid #ebeef5;
-}
-
-.paid-row {
-  padding: 8px 16px;
-  background: #f0f9ff;
-  border-top: 1px solid #ebeef5;
-}
-
-.paid-text {
-  color: #67c23a;
-  font-size: 13px;
-  font-weight: 500;
 }
 
 .action-buttons {
@@ -311,6 +298,16 @@ const handleDelete = (row: MergedReading) => {
   color: #f56c6c;
   font-size: 15px;
   font-weight: 700;
+}
+
+.paid-badge {
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: #67c23a;
+  color: white;
+  font-size: 12px;
+  border-radius: 4px;
+  font-weight: 500;
 }
 
 /* 移动端优化 */
