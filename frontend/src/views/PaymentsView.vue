@@ -31,6 +31,7 @@ use([
 const payments = ref<Payment[]>([])
 const rooms = ref<Room[]>([])
 const loading = ref(false)
+const initialized = ref(false)  // 标记是否已初始化完成
 const selectedRoomId = ref<number | null>(null)
 const { hideAmounts, formatAmount } = useAmountVisibility()
 
@@ -475,6 +476,7 @@ const loadPayments = async () => {
     console.error('加载缴费记录失败:', error)
   } finally {
     loading.value = false
+    initialized.value = true  // 标记初始化完成
   }
 }
 
@@ -605,7 +607,7 @@ onMounted(() => {
         />
         <span class="collection-toolbar-label">个月</span>
       </div>
-      <div v-if="!loading && rentCollectionByMonth.length > 0" class="rent-collection">
+      <div v-if="initialized && !loading && rentCollectionByMonth.length > 0" class="rent-collection">
         <div v-for="monthGroup in rentCollectionByMonth" :key="monthGroup.key" class="collection-month">
           <div class="collection-summary">
             <span class="collection-month-label">{{ monthGroup.label }}</span>
