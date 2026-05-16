@@ -38,6 +38,9 @@ const activeTab = ref('readings')
 // 折叠面板状态
 const activeCollapse = ref(['1', '2', '3', '4'])  // 默认全部展开
 
+// 初始化标志：确保所有数据加载完成后才显示欠租房间
+const initialized = ref(false)
+
 // 1. Amount formatting
 const { hideAmounts, formatAmount, maskedAmount, maskedRate } = useAmountFormatting()
 
@@ -156,6 +159,7 @@ onMounted(async () => {
   await loadRooms()       // 先加载房间列表
   initializeDateRange()   // 初始化日期范围
   loadReadings()          // 再加载水电记录（此时 roomOptions 和日期范围已准备好）
+  initialized.value = true // 标记初始化完成
 })
 </script>
 
@@ -176,7 +180,7 @@ onMounted(async () => {
     </div>
 
     <!-- Rent management card -->
-    <el-collapse v-model="activeCollapse" class="mb-3">
+    <el-collapse v-if="initialized" v-model="activeCollapse" class="mb-3">
       <el-collapse-item title="🏠 收租管理" name="1">
         <RentManagementCard
           :overdue-rooms="overdueRooms"
