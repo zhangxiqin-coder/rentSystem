@@ -11,6 +11,7 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
+  const superAdminMode = ref<boolean>(false)
 
   // Getters
   const isAuthenticated = computed(() => !!token.value && !!user.value)
@@ -22,6 +23,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isAdmin = computed(() => user.value?.role === 'admin')
   const isLandlord = computed(() => user.value?.role === 'landlord')
   const isTenant = computed(() => user.value?.role === 'tenant')
+  const isSuperAdmin = computed(() => superAdminMode.value)
 
   // Actions
   const login = async (credentials: LoginRequest) => {
@@ -121,6 +123,7 @@ export const useAuthStore = defineStore('auth', () => {
   const initializeAuth = () => {
     const storedToken = localStorage.getItem('access_token')
     const storedUser = localStorage.getItem('user')
+    const storedSuperAdminMode = localStorage.getItem('super_admin_mode')
 
     if (storedToken && storedUser) {
       // Decrypt and validate token
@@ -135,6 +138,16 @@ export const useAuthStore = defineStore('auth', () => {
         localStorage.removeItem('user')
       }
     }
+
+    // Load super admin mode from localStorage
+    if (storedSuperAdminMode === 'true') {
+      superAdminMode.value = true
+    }
+  }
+
+  const toggleSuperAdminMode = (enabled: boolean) => {
+    superAdminMode.value = enabled
+    localStorage.setItem('super_admin_mode', String(enabled))
   }
 
   const clearError = () => {
@@ -147,6 +160,7 @@ export const useAuthStore = defineStore('auth', () => {
     token,
     loading,
     error,
+    superAdminMode,
     // Getters
     isAuthenticated,
     userRole,
@@ -154,6 +168,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     isLandlord,
     isTenant,
+    isSuperAdmin,
     // Actions
     login,
     register,
@@ -161,5 +176,6 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     initializeAuth,
     clearError,
+    toggleSuperAdminMode,
   }
 })

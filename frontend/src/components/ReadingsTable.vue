@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { ChatDotRound, CircleCheck, Delete } from '@element-plus/icons-vue'
 import type { MergedReading } from '@/composables/useMergedReadings'
 import type { Room } from '@/types'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
 
 const props = defineProps<{
   loading: boolean
@@ -14,6 +17,9 @@ const props = defineProps<{
   getRoomNumber: (roomId: number) => string
   getRoomInfo: (roomId: number) => Room | undefined
 }>()
+
+// 是否显示删除按钮（仅超级管理员可见）
+const showDeleteButton = computed(() => authStore.isSuperAdmin)
 
 const emit = defineEmits<{
   'show-reminder': [row: MergedReading]
@@ -61,7 +67,8 @@ const handleDelete = (row: MergedReading) => {
     <el-table-column type="selection" width="55" />
     <el-table-column type="expand" width="1">
       <template #default="{ row }">
-        <div class="action-row">
+        <!-- 只有未收租才显示操作按钮 -->
+        <div v-if="!row.is_paid" class="action-row">
           <div class="action-buttons">
             <el-button
               type="primary"
@@ -85,6 +92,7 @@ const handleDelete = (row: MergedReading) => {
               <span class="btn-text-short">{{ row.is_paid ? '已收' : '标记' }}</span>
             </el-button>
             <el-button
+              v-if="showDeleteButton"
               type="danger"
               size="small"
               :icon="Delete"
@@ -95,6 +103,10 @@ const handleDelete = (row: MergedReading) => {
               <span class="btn-text-short">删除</span>
             </el-button>
           </div>
+        </div>
+        <!-- 已收租的显示提示信息 -->
+        <div v-else class="action-row paid-row">
+          <span class="paid-text">✓ 已收租，无需操作</span>
         </div>
       </template>
     </el-table-column>
@@ -199,6 +211,18 @@ const handleDelete = (row: MergedReading) => {
   padding: 12px 16px;
   background: #f5f7fa;
   border-top: 1px solid #ebeef5;
+}
+
+.paid-row {
+  padding: 8px 16px;
+  background: #f0f9ff;
+  border-top: 1px solid #ebeef5;
+}
+
+.paid-text {
+  color: #67c23a;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .action-buttons {

@@ -22,6 +22,7 @@ const tempExpiringDays = ref(expiringDays.value)
 const tempRecentPaymentDays = ref(recentPaymentDays.value)
 const tempRecentReadingDays = ref(recentReadingDays.value)
 const tempLookbackMonths = ref(lookbackMonths.value)
+const tempSuperAdminMode = ref(authStore.superAdminMode)
 
 const tempDisplayName = ref(authStore.user?.full_name || '')
 const savingName = ref(false)
@@ -62,6 +63,28 @@ const handleReset = async () => {
     tempLookbackMonths.value = defaults.lookbackMonths as number
     ElMessage.success('已恢复默认值，刷新页面后生效')
   } catch {}
+}
+
+const handleToggleSuperAdmin = async () => {
+  if (!tempSuperAdminMode.value) {
+    // 关闭超级管理员模式
+    authStore.toggleSuperAdminMode(false)
+    ElMessage.info('超级管理员权限已关闭')
+    return
+  }
+
+  // 开启超级管理员模式 - 需要确认
+  try {
+    await ElMessageBox.confirm(
+      '超级管理员模式开启后可以删除记录（包括收租记录和水电记录），此操作不可恢复。确定开启吗？',
+      '开启超级管理员权限',
+      { type: 'warning', confirmButtonText: '确定开启', cancelButtonText: '取消' }
+    )
+    authStore.toggleSuperAdminMode(true)
+    ElMessage.warning('超级管理员权限已开启，请谨慎操作')
+  } catch {
+    tempSuperAdminMode.value = false
+  }
 }
 </script>
 
@@ -168,6 +191,25 @@ const handleReset = async () => {
             <el-button type="primary" size="small" :loading="savingName" @click="handleSaveName">保存</el-button>
           </div>
         </div>
+      </div>
+    </el-card>
+
+    <el-card style="margin-top: 20px;">
+      <template #header>
+        <span class="card-title">超级管理员权限</span>
+      </template>
+      <div class="setting-item">
+        <div class="setting-info">
+          <div class="setting-label">启用删除权限</div>
+          <div class="setting-desc">开启后可以删除收租记录和水电记录，此操作不可恢复，请谨慎使用</div>
+        </div>
+        <el-switch
+          v-model="tempSuperAdminMode"
+          active-text="已启用"
+          inactive-text="未启用"
+          style="--el-switch-on-color: #f56c6c; --el-switch-off-color: #dcdfe6;"
+          @change="handleToggleSuperAdmin"
+        />
       </div>
     </el-card>
   </div>

@@ -4,9 +4,10 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 import { paymentApi } from '@/api/payment'
 import { roomApi } from '@/api/room'
 import { useOverdueConfig } from '@/composables/useOverdueConfig'
+import { useAmountVisibility } from '@/composables/useAmountVisibility'
+import { useAuthStore } from '@/stores/auth'
 import type { Payment } from '@/types'
 import type { Room } from '@/types'
-import { useAmountVisibility } from '@/composables/useAmountVisibility'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -28,12 +29,16 @@ use([
   GridComponent
 ])
 
+const authStore = useAuthStore()
 const payments = ref<Payment[]>([])
 const rooms = ref<Room[]>([])
 const loading = ref(false)
 const initialized = ref(false)  // 标记是否已初始化完成
 const selectedRoomId = ref<number | null>(null)
 const { hideAmounts, formatAmount } = useAmountVisibility()
+
+// 是否显示删除按钮（仅超级管理员可见）
+const showDeleteButtons = computed(() => authStore.isSuperAdmin)
 
 // 日期范围筛选（默认最近2个月）
 const dateRange = ref<[Date, Date]>(() => {
@@ -737,7 +742,7 @@ onMounted(() => {
               <td>{{ formatAmount(payment.electricity) }}</td>
               <td :class="{ 'negative-amount': payment.total < 0 }"><strong>{{ formatAmount(payment.total) }}</strong></td>
               <td :class="`status-${payment.status}`">{{ getStatusLabel(payment.status) }}</td>
-              <td>
+              <td v-if="showDeleteButtons">
                 <button @click="handleDeleteGroup(payment)" class="delete-btn">
                   🗑️ 删除
                 </button>
@@ -745,7 +750,7 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
-        <div v-if="selectedGroups.length > 0" class="batch-actions">
+        <div v-if="selectedGroups.length > 0 && showDeleteButtons" class="batch-actions">
           <span>已选择 {{ selectedGroups.length }} 条记录</span>
           <button @click="handleBatchDelete" class="batch-delete-btn">
             🗑️ 批量删除
