@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDown, ChatDotRound, CircleCheck, Delete } from '@element-plus/icons-vue'
+import { ChatDotRound, CircleCheck, Delete } from '@element-plus/icons-vue'
 import type { MergedReading } from '@/composables/useMergedReadings'
 import type { Room } from '@/types'
 
@@ -24,18 +24,16 @@ const emit = defineEmits<{
 
 const tableRef = defineModel<object>('tableRef')
 
-const handleCommand = (command: string, row: MergedReading) => {
-  switch (command) {
-    case 'reminder':
-      emit('show-reminder', row)
-      break
-    case 'payment':
-      emit('show-payment', row)
-      break
-    case 'delete':
-      emit('delete', row)
-      break
-  }
+const handleReminder = (row: MergedReading) => {
+  emit('show-reminder', row)
+}
+
+const handlePayment = (row: MergedReading) => {
+  emit('show-payment', row)
+}
+
+const handleDelete = (row: MergedReading) => {
+  emit('delete', row)
 }
 </script>
 
@@ -139,32 +137,35 @@ const handleCommand = (command: string, row: MergedReading) => {
 
     <el-table-column prop="notes" label="备注" min-width="150" show-overflow-tooltip />
 
-    <el-table-column label="操作" width="80" fixed="right">
+    <el-table-column label="操作" width="300" fixed="right">
       <template #default="{ row }">
-        <el-dropdown trigger="click" @command="(cmd: string) => handleCommand(cmd, row)">
-          <el-button type="primary" size="small" text>
-            操作 <el-icon><ArrowDown /></el-icon>
+        <div class="action-buttons">
+          <el-button
+            type="primary"
+            size="small"
+            :icon="ChatDotRound"
+            @click="handleReminder(row)"
+          >
+            催租消息
           </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="reminder">
-                <el-icon><ChatDotRound /></el-icon>
-                催租消息
-              </el-dropdown-item>
-              <el-dropdown-item 
-                command="payment"
-                :disabled="row.is_paid"
-              >
-                <el-icon><CircleCheck /></el-icon>
-                {{ row.is_paid ? '已收租' : '标记已收' }}
-              </el-dropdown-item>
-              <el-dropdown-item command="delete" divided>
-                <el-icon><Delete /></el-icon>
-                删除
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+          <el-button
+            type="success"
+            size="small"
+            :icon="CircleCheck"
+            :disabled="row.is_paid"
+            @click="handlePayment(row)"
+          >
+            {{ row.is_paid ? '已收租' : '标记已收' }}
+          </el-button>
+          <el-button
+            type="danger"
+            size="small"
+            :icon="Delete"
+            @click="handleDelete(row)"
+          >
+            删除
+          </el-button>
+        </div>
       </template>
     </el-table-column>
   </el-table>
@@ -242,6 +243,17 @@ const handleCommand = (command: string, row: MergedReading) => {
   font-weight: 700;
 }
 
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.action-buttons .el-button {
+  margin: 0;
+}
+
 /* 移动端优化 */
 @media (max-width: 768px) {
   /* 取消操作列固定，避免遮挡 */
@@ -281,15 +293,20 @@ const handleCommand = (command: string, row: MergedReading) => {
   :deep(.el-table__body) {
     width: 100% !important;
   }
+
+  /* 操作按钮移动端竖向排列 */
+  .action-buttons {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .action-buttons .el-button {
+    width: 100%;
+  }
 }
 
 /* 小屏幕手机进一步优化 */
 @media (max-width: 375px) {
-  /* 操作按钮改为竖向排列 */
-  :deep(.el-table__fixed-right) {
-    position: static !important;
-  }
-
   /* 操作列自适应宽度 */
   :deep(.el-table__fixed-right) {
     width: auto !important;
@@ -310,14 +327,16 @@ const handleCommand = (command: string, row: MergedReading) => {
     padding: 3px 6px;
     font-size: 11px;
     margin: 1px;
-    display: block;
-    width: 100%;
-    margin-bottom: 4px;
   }
 
   /* 缩短按钮文字 */
   :deep(.el-button) {
     white-space: nowrap;
+  }
+
+  .action-buttons .el-button {
+    font-size: 11px;
+    padding: 4px 6px;
   }
 }
 </style>
