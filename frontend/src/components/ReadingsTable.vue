@@ -191,8 +191,8 @@ const handleDelete = (row: MergedReading) => {
           <div class="total-amount">
             <span class="amount-label">总计:</span>
             <span class="amount total">{{ formatAmount(Number(row.total_amount || 0)) }}</span>
-            <span v-if="row.is_paid" class="paid-badge">已收租</span>
           </div>
+          <div v-if="row.is_paid" class="paid-badge">已收</div>
         </div>
       </template>
     </el-table-column>
@@ -301,13 +301,15 @@ const handleDelete = (row: MergedReading) => {
 }
 
 .paid-badge {
-  margin-left: 8px;
-  padding: 2px 8px;
+  display: block;
+  margin-top: 6px;
+  padding: 4px 12px;
   background: #67c23a;
   color: white;
   font-size: 12px;
   border-radius: 4px;
   font-weight: 500;
+  text-align: center;
 }
 
 /* 移动端优化 */
