@@ -119,15 +119,15 @@ onMounted(() => {
   top: 0;
   z-index: 20;
   padding: 8px 12px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: #f5f7fa;
+  color: #303133;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .mobile-top-nav .brand {
   font-weight: 600;
   font-size: 16px;
-  color: white;
+  color: #303133;
 }
 
 .mobile-top-nav .actions {
@@ -137,14 +137,14 @@ onMounted(() => {
 }
 
 .mobile-top-nav .el-button {
-  border-color: rgba(255, 255, 255, 0.3);
-  color: white;
+  border-color: #dcdfe6;
+  color: #606266;
 }
 
-.mobile-top-nav .el-button--circle {
-  width: 36px;
-  height: 36px;
-  padding: 0;
+.mobile-top-nav .el-button:hover {
+  background-color: #ecf5ff;
+  border-color: #409eff;
+  color: #409eff;
 }
 
 /* 桌面端导航栏 */
