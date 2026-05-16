@@ -93,11 +93,17 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
     rentReminderVisible.value = true
   }
 
-  // 复制收租提醒
+  // 复制收租提醒（带降级方案）
   const copyRentReminder = () => {
-    navigator.clipboard.writeText(rentReminderPreview.value)
-      .then(() => ElMessage.success('已复制到剪贴板'))
-      .catch(() => ElMessage.error('复制失败'))
+    // 先尝试使用现代 Clipboard API
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(rentReminderPreview.value)
+        .then(() => ElMessage.success('已复制到剪贴板'))
+        .catch(() => fallbackCopy(rentReminderPreview.value))
+    } else {
+      // 降级到传统方法
+      fallbackCopy(rentReminderPreview.value)
+    }
   }
 
   // 自动生成并发送微信通知
@@ -126,11 +132,42 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
     return await generateRentReminder(roomId, readings)
   }
 
-  // 复制消息
+  // 复制消息（带降级方案）
   const copyMessage = (message: string) => {
-    navigator.clipboard.writeText(message)
-      .then(() => ElMessage.success('已复制到剪贴板'))
-      .catch(() => ElMessage.error('复制失败，请手动复制'))
+    // 先尝试使用现代 Clipboard API
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(message)
+        .then(() => ElMessage.success('已复制到剪贴板'))
+        .catch(() => fallbackCopy(message))
+    } else {
+      // 降级到传统方法
+      fallbackCopy(message)
+    }
+  }
+
+  // 降级复制方法
+  const fallbackCopy = (message: string) => {
+    const textArea = document.createElement('textarea')
+    textArea.value = message
+    textArea.style.position = 'fixed'
+    textArea.style.left = '-999999px'
+    textArea.style.top = '-999999px'
+    document.body.appendChild(textArea)
+    textArea.focus()
+    textArea.select()
+    
+    try {
+      const successful = document.execCommand('copy')
+      if (successful) {
+        ElMessage.success('已复制到剪贴板')
+      } else {
+        ElMessage.error('复制失败，请手动复制')
+      }
+    } catch (err) {
+      ElMessage.error('复制失败，请手动复制')
+    }
+    
+    document.body.removeChild(textArea)
   }
 
   // 显示复制失败提示

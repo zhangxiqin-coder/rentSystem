@@ -338,7 +338,7 @@ onMounted(async () => {
       v-model="messageDialogVisible"
       :message="currentMessage"
       :sending-wechat="sendingWechat"
-      @copy="copyMessage"
+      @copy="copyMessage(currentMessage)"
     />
 
     <!-- Batch payment dialog -->
