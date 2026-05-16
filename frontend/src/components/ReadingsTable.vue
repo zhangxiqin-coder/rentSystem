@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ArrowDown, ChatDotRound, CircleCheck, Delete } from '@element-plus/icons-vue'
 import type { MergedReading } from '@/composables/useMergedReadings'
 import type { Room } from '@/types'
 
@@ -22,6 +23,20 @@ const emit = defineEmits<{
 }>()
 
 const tableRef = defineModel<object>('tableRef')
+
+const handleCommand = (command: string, row: MergedReading) => {
+  switch (command) {
+    case 'reminder':
+      emit('show-reminder', row)
+      break
+    case 'payment':
+      emit('show-payment', row)
+      break
+    case 'delete':
+      emit('delete', row)
+      break
+  }
+}
 </script>
 
 <template>
@@ -124,30 +139,32 @@ const tableRef = defineModel<object>('tableRef')
 
     <el-table-column prop="notes" label="备注" min-width="150" show-overflow-tooltip />
 
-    <el-table-column label="操作" width="250" fixed="right">
+    <el-table-column label="操作" width="80" fixed="right">
       <template #default="{ row }">
-        <el-button
-          type="info"
-          size="small"
-          @click="emit('show-reminder', row)"
-        >
-          催租消息
-        </el-button>
-        <el-button
-          type="success"
-          size="small"
-          :disabled="row.is_paid"
-          @click="emit('show-payment', row)"
-        >
-          {{ row.is_paid ? '已收租' : '标记已收' }}
-        </el-button>
-        <el-button
-          type="danger"
-          size="small"
-          @click="emit('delete', row)"
-        >
-          删除
-        </el-button>
+        <el-dropdown trigger="click" @command="(cmd: string) => handleCommand(cmd, row)">
+          <el-button type="primary" size="small" text>
+            操作 <el-icon><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="reminder">
+                <el-icon><ChatDotRound /></el-icon>
+                催租消息
+              </el-dropdown-item>
+              <el-dropdown-item 
+                command="payment"
+                :disabled="row.is_paid"
+              >
+                <el-icon><CircleCheck /></el-icon>
+                {{ row.is_paid ? '已收租' : '标记已收' }}
+              </el-dropdown-item>
+              <el-dropdown-item command="delete" divided>
+                <el-icon><Delete /></el-icon>
+                删除
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </template>
     </el-table-column>
   </el-table>
