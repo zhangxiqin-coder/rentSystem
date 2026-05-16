@@ -131,13 +131,15 @@ def get_payments(
     room_id: Optional[int] = Query(None, description="房间ID筛选"),
     payment_type: Optional[str] = Query(None, description="支付类型筛选"),
     status: Optional[str] = Query(None, description="状态筛选"),
+    start_date: Optional[str] = Query(None, description="开始日期，格式YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="结束日期，格式YYYY-MM-DD"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     获取支付记录列表（分页）
 
-    支持按房间、支付类型、状态筛选
+    支持按房间、支付类型、状态、日期范围筛选
     """
     # 构建查询条件
     # super_landlord可以查看所有支付记录
@@ -152,6 +154,10 @@ def get_payments(
         query = query.filter(Payment.payment_type == payment_type)
     if status:
         query = query.filter(Payment.status == status)
+    if start_date:
+        query = query.filter(Payment.payment_date >= start_date)
+    if end_date:
+        query = query.filter(Payment.payment_date <= end_date)
 
     # 计算总数
     total = query.count()

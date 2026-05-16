@@ -34,6 +34,14 @@ const loading = ref(false)
 const selectedRoomId = ref<number | null>(null)
 const { hideAmounts, formatAmount } = useAmountVisibility()
 
+// 日期范围筛选（默认最近2个月）
+const dateRange = ref<[Date, Date]>(() => {
+  const end = new Date()
+  const start = new Date()
+  start.setMonth(start.getMonth() - 2)
+  return [start, end]
+})
+
 // 批量选择相关
 const selectedGroups = ref<string[]>([])
 const selectAll = ref(false)
@@ -443,8 +451,22 @@ const chartOption = computed(() => {
 const loadPayments = async () => {
   loading.value = true
   try {
+    // 格式化日期为 YYYY-MM-DD
+    const formatDate = (date: Date) => {
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+
+    const params: any = { page: 1, size: 1000 }
+    if (dateRange.value && dateRange.value.length === 2) {
+      params.start_date = formatDate(dateRange.value[0])
+      params.end_date = formatDate(dateRange.value[1])
+    }
+
     const [paymentsRes, roomsRes] = await Promise.all([
-      paymentApi.getPayments({ page: 1, size: 1000 }),
+      paymentApi.getPayments(params),
       roomApi.getRooms({ page: 1, size: 100 })
     ])
     payments.value = paymentsRes.data.items
@@ -643,16 +665,30 @@ onMounted(() => {
       <div class="filter-toolbar">
         <label class="filter-label">
           筛选房号：
-          <select v-model="selectedRoomId" class="room-select">
+          <select v-model="selectedRoomId" class="room-select" @change="loadPayments">
             <option :value="null">全部房间</option>
             <option v-for="room in rooms" :key="room.id" :value="room.id">
               {{ room.room_number }}
             </option>
           </select>
         </label>
+        <label class="filter-label">
+          日期范围：
+          <el-date-picker
+            v-model="dateRange"
+            type="daterange"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            @change="loadPayments"
+            style="width: 240px"
+          />
+        </label>
         <span v-if="selectedRoomId" class="filter-info">
           已选择：{{ rooms.find(r => r.id === selectedRoomId)?.room_number }}
-          <button @click="selectedRoomId = null" class="clear-btn">清除</button>
+          <button @click="selectedRoomId = null; loadPayments()" class="clear-btn">清除</button>
         </span>
       </div>
 

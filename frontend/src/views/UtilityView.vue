@@ -68,6 +68,23 @@ const {
   handlePageChange, handleSizeChange, mergedReadings,
 } = useUtilityReadings({ roomOptions })
 
+// 初始化日期范围为最近2个月
+const initializeDateRange = () => {
+  const end = new Date()
+  const start = new Date()
+  start.setMonth(start.getMonth() - 2)
+
+  const formatDate = (date: Date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  filters.value.start_date = formatDate(start)
+  filters.value.end_date = formatDate(end)
+}
+
 // 5. Payment data (needs formatAmount, loadReadings, loadRooms)
 const {
   paymentDialogVisible, paymentForm, paymentLoading,
@@ -136,8 +153,9 @@ const handleShowReminder = async (row: any) => {
 
 // Initialize
 onMounted(async () => {
-  await loadRooms()  // 先加载房间列表
-  loadReadings()     // 再加载水电记录（此时 roomOptions 已准备好）
+  await loadRooms()       // 先加载房间列表
+  initializeDateRange()   // 初始化日期范围
+  loadReadings()          // 再加载水电记录（此时 roomOptions 和日期范围已准备好）
 })
 </script>
 
