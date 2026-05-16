@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, ArrowDown, Edit, Delete, CircleCheck, CircleClose } from '@element-plus/icons-vue'
+import { Plus, Search, ArrowDown, Edit, Delete, CircleCheck, CircleClose, UploadFilled } from '@element-plus/icons-vue'
 import type { Room } from '@/types'
 import { roomApi } from '@/api/room'
 import RoomForm from '@/components/RoomForm.vue'
@@ -16,9 +16,13 @@ const { formatAmount } = useAmountVisibility()
 const rooms = ref<Room[]>([])
 const loading = ref(false)
 const dialogVisible = ref(false)
+const batchImportDialogVisible = ref(false)
 const submitting = ref(false)
 const editingRoom = ref<Room>()
 const searchQuery = ref('')
+const uploading = ref(false)
+const fileList = ref<any[]>([])
+const importResult = ref<any>(null)
 
 // Pagination
 const currentPage = ref(1)
@@ -77,6 +81,60 @@ const loadRooms = async () => {
 const handleCreate = () => {
   editingRoom.value = undefined
   dialogVisible.value = true
+}
+
+const handleBatchImport = () => {
+  importResult.value = null
+  fileList.value = []
+  batchImportDialogVisible.value = true
+}
+
+const handleDownloadTemplate = () => {
+  const csvContent = '房间号,楼栋,租金,水费率,电费率,付款周期,租客,租约开始,租约结束,初始水表,初始电表\n301,1栋,1500,5,0.8,1个月,张三,2025-06-19,2026-06-19,100,500\n302,1栋,1800,,,1个月,,,110,600'
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const link = document.createElement('a')
+  const url = URL.createObjectURL(blob)
+  link.setAttribute('href', url)
+  link.setAttribute('download', '房间批量导入模板.csv')
+  link.style.visibility = 'hidden'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
+
+const handleFileChange = (file: any) => {
+  fileList.value = [file]
+}
+
+const handleUpload = async () => {
+  if (fileList.value.length === 0) {
+    ElMessage.warning('请选择要上传的CSV文件')
+    return
+  }
+
+  uploading.value = true
+  importResult.value = null
+
+  try {
+    const formData = new FormData()
+    formData.append('file', fileList.value[0].raw)
+
+    const response = await roomApi.batchImport(formData)
+
+    importResult.value = response.data
+
+    if (response.data.failed_count === 0) {
+      ElMessage.success(`批量导入成功！共导入 ${response.data.success_count} 条记录`)
+      batchImportDialogVisible.value = false
+      await loadRooms()
+    } else {
+      ElMessage.warning(`导入完成：成功 ${response.data.success_count} 条，失败 ${response.data.failed_count} 条`)
+    }
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '批量导入失败')
+  } finally {
+    uploading.value = false
+  }
 }
 
 const handle编辑 = (room: Room) => {
@@ -345,10 +403,23 @@ onMounted(() => {
           <h2>房间管理</h2>
           <p>管理您的租赁房间和租客 · 月租总计 <strong>{{ formatAmount(totalMonthlyRent) }}</strong></p>
         </div>
-        <el-button type="primary" size="large" @click="handleCreate">
-          <el-icon><Plus /></el-icon>
-          添加房间
-        </el-button>
+        <div class="button-group">
+          <el-button type="primary" size="large" @click="handleCreate">
+            <el-icon><Plus /></el-icon>
+            添加房间
+          </el-button>
+          <el-dropdown @command="handleBatchImport">
+            <el-button type="success" size="large">
+              批量导入<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="upload">上传CSV文件</el-dropdown-item>
+                <el-dropdown-item command="download" @click="handleDownloadTemplate">下载模板</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </div>
     </el-card>
 
@@ -620,6 +691,91 @@ onMounted(() => {
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 批量导入对话框 -->
+    <el-dialog
+      v-model="batchImportDialogVisible"
+      title="批量导入房间"
+      width="700px"
+    >
+      <div class="batch-import-content">
+        <!-- 步骤说明 -->
+        <el-alert
+          title="导入步骤"
+          type="info"
+          :closable="false"
+          style="margin-bottom: 20px"
+        >
+          <ol style="margin: 10px 0 0 20px; padding: 0;">
+            <li>下载CSV模板文件</li>
+            <li>按照模板格式填写房间信息</li>
+            <li>上传填写好的CSV文件</li>
+            <li>查看导入结果</li>
+          </ol>
+        </el-alert>
+
+        <!-- 模板下载 -->
+        <div style="margin-bottom: 20px;">
+          <el-button type="primary" @click="handleDownloadTemplate">
+            <el-icon><Plus /></el-icon>
+            下载CSV模板
+          </el-button>
+          <el-text type="info" size="small" style="margin-left: 10px;">
+            请先下载模板，按照格式填写后再上传
+          </el-text>
+        </div>
+
+        <!-- 文件上传 -->
+        <el-upload
+          ref="uploadRef"
+          :auto-upload="false"
+          :on-change="handleFileChange"
+          :file-list="fileList"
+          :limit="1"
+          accept=".csv"
+          drag
+          style="margin-bottom: 20px"
+        >
+          <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+          <div class="el-upload__text">
+            拖拽CSV文件到此处，或<em>点击上传</em>
+          </div>
+          <template #tip>
+            <div class="el-upload__tip">
+              只支持CSV格式文件，文件大小不超过10MB
+            </div>
+          </template>
+        </el-upload>
+
+        <!-- 导入结果 -->
+        <div v-if="importResult" class="import-result">
+          <el-alert
+            :title="importResult.message"
+            :type="importResult.failed_count === 0 ? 'success' : 'warning'"
+            :closable="false"
+            style="margin-bottom: 10px"
+          />
+
+          <div v-if="importResult.errors.length > 0" class="error-list">
+            <el-text type="danger" size="small">错误详情：</el-text>
+            <el-scrollbar max-height="200px">
+              <ul style="margin: 5px 0 0 20px; padding: 0; font-size: 12px;">
+                <li v-for="(error, index) in importResult.errors" :key="index" style="margin-bottom: 5px;">
+                  {{ error }}
+                </li>
+              </ul>
+            </el-scrollbar>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="batchImportDialogVisible = false">关闭</el-button>
+        <el-button type="primary" :loading="uploading" @click="handleUpload">
+          开始导入
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -649,6 +805,26 @@ onMounted(() => {
   margin: 0;
   color: #909399;
   font-size: 14px;
+}
+
+.button-group {
+  display: flex;
+  gap: 10px;
+}
+
+.batch-import-content {
+  padding: 10px 0;
+}
+
+.import-result {
+  margin-top: 20px;
+}
+
+.error-list {
+  margin-top: 10px;
+  padding: 10px;
+  background-color: #fef0f0;
+  border-radius: 4px;
 }
 
 .content-card {
@@ -757,6 +933,16 @@ onMounted(() => {
 
   :deep(.el-dialog__body) {
     padding: 15px;
+  }
+
+  /* 批量导入按钮移动端优化 */
+  .button-group {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .button-group .el-button {
+    width: 100%;
   }
 }
 

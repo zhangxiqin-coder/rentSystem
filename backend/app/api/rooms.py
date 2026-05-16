@@ -1,11 +1,13 @@
 """
 房间管理 API 路由
 """
-from typing import Optional
+from typing import Optional, List
 from datetime import date, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from dateutil.relativedelta import relativedelta
+import csv
+import io
 
 from app.core.deps import get_db, get_current_user
 from app.core.permissions import apply_room_filter
@@ -484,3 +486,189 @@ def checkin_room(
         "lease_start": room.lease_start,
         "lease_end": room.lease_end
     }
+
+
+@router.post("/batch-import", status_code=201)
+async def batch_import_rooms(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    批量导入房间信息（CSV格式）
+
+    CSV格式（10列）：
+    房间号,楼栋,租金,水费率,电费率,付款周期,租客,租约开始,租约结束,初始水表,初始电表
+
+    规则：
+    - 房间号+楼栋组合必须唯一
+    - 租客为空时自动使用房间号
+    - 租约开始+租约结束都为空时为空置状态
+    - 初始水电为空时默认为0
+    - 水费率默认5，电费率默认1，付款周期默认"1个月"
+    """
+    check_room_permission(current_user)
+
+    # 检查文件类型
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="只支持CSV文件格式")
+
+    try:
+        # 读取CSV内容
+        content = await file.read()
+        csv_text = content.decode('utf-8')
+        csv_reader = csv.reader(io.StringIO(csv_text))
+
+        # 读取表头
+        headers = next(csv_reader)
+
+        # 验证表头
+        expected_headers = ['房间号', '楼栋', '租金', '水费率', '电费率', '付款周期', '租客', '租约开始', '租约结束', '初始水表', '初始电表']
+        if headers != expected_headers:
+            raise HTTPException(
+                status_code=400,
+                detail=f"CSV格式错误。期望列：{expected_headers}"
+            )
+
+        # 处理每一行数据
+        success_count = 0
+        failed_count = 0
+        errors = []
+
+        for row_num, row in enumerate(csv_reader, start=2):  # start=2 因为第1行是表头
+            try:
+                if len(row) != 11:
+                    errors.append(f"第{row_num}行：列数不正确，期望11列，实际{len(row)}列")
+                    failed_count += 1
+                    continue
+
+                # 解析数据
+                room_number = row[0].strip()
+                building = row[1].strip()
+                monthly_rent = float(row[2]) if row[2].strip() else 0
+
+                # 可选字段
+                water_rate = float(row[3]) if row[3].strip() else 5.0
+                electricity_rate = float(row[4]) if row[4].strip() else 1.0
+                payment_cycle = row[5].strip() or "1个月"
+
+                # 租客（空则用房间号）
+                tenant_name = row[6].strip() or room_number
+
+                # 租约日期
+                lease_start_str = row[7].strip()
+                lease_end_str = row[8].strip()
+
+                lease_start = None
+                lease_end = None
+
+                if lease_start_str:
+                    try:
+                        lease_start = date.fromisoformat(lease_start_str)
+                    except ValueError:
+                        errors.append(f"第{row_num}行：租约开始日期格式错误 '{lease_start_str}'，应为YYYY-MM-DD")
+                        failed_count += 1
+                        continue
+
+                if lease_end_str:
+                    try:
+                        lease_end = date.fromisoformat(lease_end_str)
+                    except ValueError:
+                        errors.append(f"第{row_num}行：租约结束日期格式错误 '{lease_end_str}'，应为YYYY-MM-DD")
+                        failed_count += 1
+                        continue
+
+                # 初始水电
+                initial_water = float(row[9]) if row[9].strip() else 0.0
+                initial_electricity = float(row[10]) if row[10].strip() else 0.0
+
+                # 验证必填字段
+                if not room_number:
+                    errors.append(f"第{row_num}行：房间号不能为空")
+                    failed_count += 1
+                    continue
+
+                if not building:
+                    errors.append(f"第{row_num}行：楼栋不能为空")
+                    failed_count += 1
+                    continue
+
+                if monthly_rent <= 0:
+                    errors.append(f"第{row_num}行：租金必须大于0")
+                    failed_count += 1
+                    continue
+
+                # 检查房间号+楼栋是否已存在
+                existing = db.query(Room).filter(
+                    Room.room_number == room_number,
+                    Room.building == building
+                ).first()
+
+                if existing:
+                    errors.append(f"第{row_num}行：房间 {building}-{room_number} 已存在")
+                    failed_count += 1
+                    continue
+
+                # 解析付款周期（提取月数）
+                if "3" in payment_cycle or "季" in payment_cycle:
+                    payment_cycle_months = 3
+                elif "6" in payment_cycle or "半年" in payment_cycle:
+                    payment_cycle_months = 6
+                elif "12" in payment_cycle or "年" in payment_cycle:
+                    payment_cycle_months = 12
+                else:
+                    payment_cycle_months = 1
+
+                # 创建房间
+                room = Room(
+                    room_number=room_number,
+                    building=building,
+                    series=room_number[:3],  # 取前3位作为系列
+                    tenant_name=tenant_name,
+                    monthly_rent=monthly_rent,
+                    deposit_amount=0,  # 批量导入时不设置押金
+                    water_rate=water_rate,
+                    electricity_rate=electricity_rate,
+                    payment_cycle=payment_cycle_months,
+                    lease_start=lease_start,
+                    lease_end=lease_end,
+                    owner_id=current_user.id
+                )
+
+                # 自动设置状态
+                update_room_status(room)
+
+                db.add(room)
+                db.commit()
+                db.refresh(room)
+
+                # 如果有初始水电读数，创建初始记录
+                if initial_water > 0 or initial_electricity > 0:
+                    reading = UtilityReading(
+                        room_id=room.id,
+                        reading_date=date.today(),
+                        water_reading=initial_water,
+                        electricity_reading=initial_electricity,
+                        notes="批量导入：初始读数"
+                    )
+                    db.add(reading)
+                    db.commit()
+
+                success_count += 1
+
+            except Exception as e:
+                errors.append(f"第{row_num}行：处理失败 - {str(e)}")
+                failed_count += 1
+                continue
+
+        return {
+            "message": f"批量导入完成：成功 {success_count} 条，失败 {failed_count} 条",
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "errors": errors[:20]  # 只返回前20条错误
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"批量导入失败：{str(e)}")

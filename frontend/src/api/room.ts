@@ -48,4 +48,18 @@ export const roomApi = {
     deposit_amount?: number
     payment_cycle?: number
   }) => request.post<ApiResponse<Room>>(`/api/v1/rooms/${id}/checkin`, data),
+
+  // 批量导入房间
+  batchImport: (formData: FormData) => {
+    return request.post<ApiResponse<{
+      message: string
+      success_count: number
+      failed_count: number
+      errors: string[]
+    }>>('/api/v1/rooms/batch-import', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
 }
