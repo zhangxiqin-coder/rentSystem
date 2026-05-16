@@ -39,7 +39,22 @@ onMounted(() => {
 
 <template>
   <div id="app">
-    <header v-if="showTopTabs" class="top-nav">
+    <!-- 移动端顶部栏 -->
+    <header v-if="showTopTabs" class="mobile-top-nav">
+      <div class="brand">{{ authStore.displayName }}</div>
+      <div class="actions">
+        <el-button type="info" plain size="small" @click="toggleHideAmounts">
+          {{ hideAmounts ? '💰' : '💵' }}
+        </el-button>
+        <router-link to="/settings" class="settings-link">
+          <el-button type="info" plain size="small" circle>⚙️</el-button>
+        </router-link>
+        <el-button type="danger" size="small" circle @click="handleLogout">🚪</el-button>
+      </div>
+    </header>
+
+    <!-- 桌面端导航栏 -->
+    <header v-if="showTopTabs" class="desktop-nav">
       <div class="brand">租赁管理系统</div>
       <el-tabs :model-value="activeTab" class="nav-tabs" @tab-change="handleTabChange">
         <el-tab-pane label="房间管理" name="rooms" />
@@ -57,7 +72,38 @@ onMounted(() => {
         <el-button type="danger" size="small" @click="handleLogout">退出登录</el-button>
       </div>
     </header>
-    <router-view />
+
+    <main class="main-content" :class="{ 'with-mobile-nav': showTopTabs }">
+      <router-view />
+    </main>
+
+    <!-- 移动端底部导航 -->
+    <nav v-if="showTopTabs" class="mobile-bottom-nav">
+      <div
+        class="nav-item"
+        :class="{ active: activeTab === 'rooms' }"
+        @click="handleTabChange('rooms')"
+      >
+        <span class="icon">🏠</span>
+        <span class="label">房间</span>
+      </div>
+      <div
+        class="nav-item"
+        :class="{ active: activeTab === 'payments' }"
+        @click="handleTabChange('payments')"
+      >
+        <span class="icon">💰</span>
+        <span class="label">收租</span>
+      </div>
+      <div
+        class="nav-item"
+        :class="{ active: activeTab === 'utility' }"
+        @click="handleTabChange('utility')"
+      >
+        <span class="icon">⚡</span>
+        <span class="label">水电</span>
+      </div>
+    </nav>
   </div>
 </template>
 
@@ -66,11 +112,47 @@ onMounted(() => {
   min-height: 100vh;
 }
 
-.top-nav {
+/* 移动端顶部栏 */
+.mobile-top-nav {
+  display: none;
   position: sticky;
   top: 0;
   z-index: 20;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.mobile-top-nav .brand {
+  font-weight: 600;
+  font-size: 16px;
+  color: white;
+}
+
+.mobile-top-nav .actions {
   display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.mobile-top-nav .el-button {
+  border-color: rgba(255, 255, 255, 0.3);
+  color: white;
+}
+
+.mobile-top-nav .el-button--circle {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+}
+
+/* 桌面端导航栏 */
+.desktop-nav {
+  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 20;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -104,5 +186,97 @@ onMounted(() => {
 
 .settings-link {
   text-decoration: none;
+}
+
+/* 主内容区域 */
+.main-content {
+  min-height: calc(100vh - 60px);
+}
+
+.main-content.with-mobile-nav {
+  min-height: calc(100vh - 120px);
+  padding-bottom: 60px;
+}
+
+/* 移动端底部导航 */
+.mobile-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: white;
+  border-top: 1px solid #ebeef5;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+  padding: 8px 0;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom));
+}
+
+.mobile-bottom-nav .nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex: 1;
+  padding: 8px 0;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: #909399;
+}
+
+.mobile-bottom-nav .nav-item.active {
+  color: #667eea;
+}
+
+.mobile-bottom-nav .nav-item .icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.mobile-bottom-nav .nav-item .label {
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* 响应式：移动端 */
+@media (max-width: 768px) {
+  .mobile-top-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .desktop-nav {
+    display: none;
+  }
+
+  .mobile-bottom-nav {
+    display: flex;
+  }
+
+  .main-content.with-mobile-nav {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* 小屏幕手机优化 */
+@media (max-width: 375px) {
+  .mobile-top-nav {
+    padding: 6px 10px;
+  }
+
+  .mobile-top-nav .brand {
+    font-size: 14px;
+  }
+
+  .mobile-bottom-nav .nav-item .icon {
+    font-size: 22px;
+  }
+
+  .mobile-bottom-nav .nav-item .label {
+    font-size: 11px;
+  }
 }
 </style>

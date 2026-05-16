@@ -676,4 +676,109 @@ onMounted(() => {
 :deep(.el-table__row:hover) {
   background-color: #f5f7fa;
 }
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+  .header-content {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .title-section h2 {
+    font-size: 18px;
+  }
+
+  .title-section p {
+    font-size: 12px;
+  }
+
+  .filters {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .filters .el-input {
+    width: 100% !important;
+  }
+
+  .filters .el-checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .filters .el-checkbox {
+    margin-right: 0;
+  }
+
+  /* 表格响应式 */
+  :deep(.el-table) {
+    font-size: 12px;
+  }
+
+  :deep(.el-table th) {
+    padding: 8px 4px;
+  }
+
+  :deep(.el-table td) {
+    padding: 8px 4px;
+  }
+
+  :deep(.el-button--small) {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  /* 分页器移动端优化 */
+  .pagination {
+    justify-content: center;
+  }
+
+  :deep(.el-pagination) {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  :deep(.el-pagination .el-pagination__sizes),
+  :deep(.el-pagination .el-pagination__jump) {
+    display: none;
+  }
+
+  /* 对话框移动端优化 */
+  :deep(.el-dialog) {
+    width: 95% !important;
+    margin: 0 auto;
+  }
+
+  :deep(.el-dialog__body) {
+    padding: 15px;
+  }
+}
+
+/* 小屏幕手机优化 */
+@media (max-width: 375px) {
+  .title-section h2 {
+    font-size: 16px;
+  }
+
+  .title-section p {
+    font-size: 11px;
+  }
+
+  :deep(.el-table) {
+    font-size: 11px;
+  }
+
+  :deep(.el-button--small) {
+    padding: 3px 6px;
+    font-size: 11px;
+  }
+
+  /* 在超小屏幕上隐藏部分列 */
+  :deep(.el-table__body-wrapper) {
+    overflow-x: auto;
+  }
+}
 </style>

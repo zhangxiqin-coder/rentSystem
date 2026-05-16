@@ -304,4 +304,72 @@ input:disabled {
   color: #764ba2;
   text-decoration: underline;
 }
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+  .login-container {
+    padding: 0.5rem;
+  }
+
+  .login-card {
+    padding: 1.5rem;
+    border-radius: 12px;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  label {
+    font-size: 0.85rem;
+  }
+
+  input {
+    padding: 0.65rem 0.85rem;
+    font-size: 0.95rem;
+  }
+
+  .submit-btn {
+    padding: 0.75rem;
+    font-size: 0.95rem;
+  }
+
+  .form-error {
+    font-size: 0.85rem;
+    padding: 0.65rem;
+  }
+
+  .register-link {
+    font-size: 0.85rem;
+    margin-top: 1.25rem;
+  }
+}
+
+/* 小屏幕手机优化 */
+@media (max-width: 375px) {
+  .login-card {
+    padding: 1.25rem;
+  }
+
+  h1 {
+    font-size: 1.35rem;
+    margin-bottom: 1.25rem;
+  }
+
+  label {
+    font-size: 0.8rem;
+    margin-bottom: 0.4rem;
+  }
+
+  input {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.9rem;
+  }
+
+  .submit-btn {
+    padding: 0.7rem;
+    font-size: 0.9rem;
+  }
+}
 </style>
