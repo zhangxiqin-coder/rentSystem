@@ -605,7 +605,7 @@ onMounted(() => {
         />
         <span class="collection-toolbar-label">个月</span>
       </div>
-      <div v-if="rentCollectionByMonth.length > 0" class="rent-collection">
+      <div v-if="!loading && rentCollectionByMonth.length > 0" class="rent-collection">
         <div v-for="monthGroup in rentCollectionByMonth" :key="monthGroup.key" class="collection-month">
           <div class="collection-summary">
             <span class="collection-month-label">{{ monthGroup.label }}</span>
