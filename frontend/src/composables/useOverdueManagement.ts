@@ -11,6 +11,7 @@ export function useOverdueManagement(deps: {
   allReadings: Ref<UtilityReading[]>
   roomOptions: Ref<Room[]>
   formatAmount: (value: number, currency?: string) => string
+  formatAmountForNotification: (value: number, currency?: string) => string
   mergedReadings: Ref<MergedReading[]>
   showPaymentDialog: (row: MergedReading) => void
 }) {
@@ -20,6 +21,7 @@ export function useOverdueManagement(deps: {
     allReadings,
     roomOptions,
     formatAmount,
+    formatAmountForNotification,
     mergedReadings,
     showPaymentDialog,
   } = deps
@@ -182,7 +184,7 @@ export function useOverdueManagement(deps: {
       const cycle = Math.max(1, Number(room.payment_cycle || 1))
       const rentDue = Number(room.monthly_rent || 0) * cycle
       const rentLabel = cycle > 1 ? `房租（${cycle}个月）` : '房租'
-      if (!latest) return `【${room.room_number} 收租明细】\n抄表日期：-\n\n💰 合计：${formatAmount(rentDue)}\n🏠 ${rentLabel}：${formatAmount(rentDue)}\n💧 水费：暂无抄表记录\n⚡ 电费：暂无抄表记录`
+      if (!latest) return `【${room.room_number} 收租明细】\\n抄表日期：-\\n\\n💰 合计：${formatAmountForNotification(rentDue)}\\n🏠 ${rentLabel}：${formatAmountForNotification(rentDue)}\\n💧 水费：暂无抄表记录\\n⚡ 电费：暂无抄表记录`
 
       const date = new Date(latest.reading_date).toLocaleDateString('zh-CN')
       const rent = rentDue
@@ -204,18 +206,18 @@ export function useOverdueManagement(deps: {
       const total = rent + waterAmount + elecAmount
 
       const waterLine = water
-        ? `💧 水费：${waterPrev}→${waterCurr}（用量${waterUsage}吨 × ¥${waterRate}/吨 = ${formatAmount(waterAmount)}）`
+        ? `💧 水费：${waterPrev}→${waterCurr}（用量${waterUsage}吨 × ¥${waterRate}/吨 = ${formatAmountForNotification(waterAmount)}）`
         : '💧 水费：暂无抄表记录'
       const electricLine = electric
-        ? `⚡ 电费：${elecPrev}→${elecCurr}（用量${elecUsage}度 × ¥${elecRate}/度 = ${formatAmount(elecAmount)}）`
+        ? `⚡ 电费：${elecPrev}→${elecCurr}（用量${elecUsage}度 × ¥${elecRate}/度 = ${formatAmountForNotification(elecAmount)}）`
         : '⚡ 电费：暂无抄表记录'
 
-      return `【${room.room_number} 收租明细】\n抄表日期：${date}\n\n💰 合计：${formatAmount(total)}\n🏠 ${rentLabel}：${formatAmount(rent)}\n${waterLine}\n${electricLine}`
+      return `【${room.room_number} 收租明细】\\n抄表日期：${date}\\n\\n💰 合计：${formatAmountForNotification(total)}\\n🏠 ${rentLabel}：${formatAmountForNotification(rent)}\\n${waterLine}\\n${electricLine}`
     } catch {
       const cycle = Math.max(1, Number(room.payment_cycle || 1))
       const rentDue = Number(room.monthly_rent || 0) * cycle
       const rentLabel = cycle > 1 ? `房租（${cycle}个月）` : '房租'
-      return `【${room.room_number} 收租明细】\n抄表日期：-\n\n💰 合计：${formatAmount(rentDue)}\n🏠 ${rentLabel}：${formatAmount(rentDue)}\n💧 水费：获取失败\n⚡ 电费：获取失败`
+      return `【${room.room_number} 收租明细】\\n抄表日期：-\\n\\n💰 合计：${formatAmountForNotification(rentDue)}\\n🏠 ${rentLabel}：${formatAmountForNotification(rentDue)}\\n💧 水费：获取失败\\n⚡ 电费：获取失败`
     }
   }
 

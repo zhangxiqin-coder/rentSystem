@@ -42,7 +42,7 @@ const activeCollapse = ref(['1', '2', '3', '4'])  // 默认全部展开
 const initialized = ref(false)
 
 // 1. Amount formatting
-const { hideAmounts, formatAmount, maskedAmount, maskedRate } = useAmountFormatting()
+const { hideAmounts, formatAmount, maskedAmount, maskedRate, formatAmountForNotification } = useAmountFormatting()
 
 // 2. Room data
 const {
@@ -94,13 +94,13 @@ const {
   showPaymentDialog, submitPayment,
 } = usePaymentData({ formatAmount, loadReadings, loadRooms })
 
-// 6. Overdue management (needs allRooms, payments, allReadings, roomOptions, formatAmount, mergedReadings, showPaymentDialog)
+// 6. Overdue management (needs allRooms, payments, allReadings, roomOptions, formatAmount, formatAmountForNotification, mergedReadings, showPaymentDialog)
 const {
   overdueRooms, expiringRooms,
   canMarkExpiringRoomPaid, markExpiringRoomPaid,
   sendReminder, getNextPaymentDays,
 } = useOverdueManagement({
-  allRooms, payments, allReadings, roomOptions, formatAmount,
+  allRooms, payments, allReadings, roomOptions, formatAmount, formatAmountForNotification,
   mergedReadings, showPaymentDialog,
 })
 

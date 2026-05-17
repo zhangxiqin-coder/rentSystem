@@ -29,9 +29,9 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
   const rentReminderVisible = ref(false)
 
   // 生成收租提醒消息
-  const generateRentReminder = async (roomId: number, readings: UtilityReading[]): Promise<string> => {
+  const generateRentReminder = async (roomId: number, readings: UtilityReading[], forceShowAmount = false): Promise<string> => {
     let room = getRoomInfo(roomId)
-    
+
     // 如果缓存中没有找到房间，尝试从API重新获取
     if (!room) {
       try {
@@ -45,9 +45,9 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
     }
 
     const roomNumber = getRoomNumber(roomId)
-    
+
     // 获取抄表日期（使用第一条读数的日期）
-    const readingDate = readings.length > 0 
+    const readingDate = readings.length > 0
       ? new Date(readings[0].reading_date).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/')
       : new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/')
 
@@ -60,16 +60,18 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
         const usage = reading.reading - (reading.previous_reading || 0)
         const cost = Number(reading.amount || 0)
         const rate = Number(room.water_rate || 5)
-        const costText = hideAmounts.value ? '****' : formatAmount(cost)
-        const rateText = hideAmounts.value ? '**' : rate.toFixed(2)
+        // forceShowAmount=true 时忽略 hideAmounts，始终显示真实金额
+        const costText = (forceShowAmount || !hideAmounts.value) ? formatAmount(cost) : '****'
+        const rateText = (forceShowAmount || !hideAmounts.value) ? rate.toFixed(2) : '**'
         waterText = `💧 水费：${reading.previous_reading || 0}→${reading.reading}（用量${usage}吨 × ¥${rateText}/吨 = ${costText}）`
         totalAmount += cost
       } else if (reading.utility_type === 'electricity') {
         const usage = reading.reading - (reading.previous_reading || 0)
         const cost = Number(reading.amount || 0)
         const rate = Number(room.electricity_rate || 1)
-        const costText = hideAmounts.value ? '****' : formatAmount(cost)
-        const rateText = hideAmounts.value ? '**' : rate.toFixed(2)
+        // forceShowAmount=true 时忽略 hideAmounts，始终显示真实金额
+        const costText = (forceShowAmount || !hideAmounts.value) ? formatAmount(cost) : '****'
+        const rateText = (forceShowAmount || !hideAmounts.value) ? rate.toFixed(2) : '**'
         electricityText = `⚡ 电费：${reading.previous_reading || 0}→${reading.reading}（用量${usage}度 × ¥${rateText}/度 = ${costText}）`
         totalAmount += cost
       }
@@ -79,15 +81,15 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
     const cycle = Math.max(1, Number(room.payment_cycle || 1))
     const rentAmount = Number(room.monthly_rent || 0) * cycle
     totalAmount += rentAmount
-    
+
     // 构建消息
     let message = `【${roomNumber} 收租明细】\n`
     message += `抄表日期：${readingDate}\n`
-    message += `💰 合计：${hideAmounts.value ? '****' : formatAmount(totalAmount)}\n`
-    message += `🏠 房租：${hideAmounts.value ? '****' : formatAmount(rentAmount)}\n`
+    message += `💰 合计：${(forceShowAmount || !hideAmounts.value) ? formatAmount(totalAmount) : '****'}\n`
+    message += `🏠 房租：${(forceShowAmount || !hideAmounts.value) ? formatAmount(rentAmount) : '****'}\n`
     if (waterText) message += `${waterText}\n`
     if (electricityText) message += `${electricityText}\n`
-    
+
     // 移除最后一个换行符
     message = message.trim()
 
@@ -119,7 +121,8 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
   const autoGenerateAndSendWechat = async (roomId: number, readings: UtilityReading[]) => {
     sendingWechat.value = true
     try {
-      const message = await generateRentReminder(roomId, readings)
+      // 发送微信通知时，强制显示真实金额，不受隐藏金额开关影响
+      const message = await generateRentReminder(roomId, readings, true)
 
       // 调用后端API发送微信通知
       await utilityApi.sendWechatNotification({
@@ -136,9 +139,10 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
     }
   }
 
-  // 生成消息文本（通用）
+  // 生成消息文本（通用，用于复制发送）
   const generateMessageText = async (roomId: number, readings: UtilityReading[]): Promise<string> => {
-    return await generateRentReminder(roomId, readings)
+    // 生成消息文本时，强制显示真实金额，不受隐藏金额开关影响
+    return await generateRentReminder(roomId, readings, true)
   }
 
   // 复制消息（带降级方案）

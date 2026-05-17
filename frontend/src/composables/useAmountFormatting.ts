@@ -37,6 +37,11 @@ const maskedRate = (value: number) => {
   return Number(value || 0).toFixed(2)
 }
 
+// Format amount for notification messages (always shows real amount, ignores hideAmounts setting)
+const formatAmountForNotification = (value: number, currency = '¥') => {
+  return `${currency}${Number(value || 0).toFixed(2)}`
+}
+
 export function useAmountFormatting() {
   return {
     hideAmounts,
@@ -45,5 +50,6 @@ export function useAmountFormatting() {
     formatAmount,
     maskedAmount,
     maskedRate,
+    formatAmountForNotification,
   }
 }
