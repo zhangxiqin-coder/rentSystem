@@ -1,6 +1,7 @@
 import { ref, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { utilityApi } from '@/api/utility'
+import { roomApi } from '@/api/room'
 import type { Room, UtilityReading } from '@/types'
 
 interface UseMessageGenerationDeps {
@@ -29,10 +30,18 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
 
   // 生成收租提醒消息
   const generateRentReminder = async (roomId: number, readings: UtilityReading[]): Promise<string> => {
-    const room = getRoomInfo(roomId)
+    let room = getRoomInfo(roomId)
+    
+    // 如果缓存中没有找到房间，尝试从API重新获取
     if (!room) {
-      ElMessage.error('房间信息不存在')
-      return ''
+      try {
+        const response = await roomApi.getRoom(roomId)
+        room = response.data
+      } catch (error) {
+        console.error('Failed to fetch room info:', error)
+        ElMessage.error('房间信息不存在')
+        return ''
+      }
     }
 
     const roomNumber = getRoomNumber(roomId)
