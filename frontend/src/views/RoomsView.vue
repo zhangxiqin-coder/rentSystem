@@ -925,8 +925,9 @@ onMounted(() => {
   }
 
   .action-btn {
-    flex: 1;
-    min-width: 80px;
+    flex: 0 0 auto;
+    min-width: auto;
+    padding: 5px 12px;
   }
 
   /* 移动端隐藏完整文字，显示简短文字 */
