@@ -100,7 +100,8 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
 
   // 显示收租提醒对话框
   const showRentReminder = async (roomId: number, readings: UtilityReading[]) => {
-    await generateRentReminder(roomId, readings)
+    // 显示收租提醒对话框时，强制显示真实金额，不受隐藏金额开关影响
+    await generateRentReminder(roomId, readings, true)
     rentReminderVisible.value = true
   }
 
