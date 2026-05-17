@@ -46,8 +46,8 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     strictPort: true,
-    // 禁用 HMR（如果不需要热更新）
-    hmr: true,
+    // 禁用 HMR，避免自动刷新导致编辑丢失
+    hmr: false,
     // 关闭 WebSocket，使用普通 HTTP 轮询
     watch: {
       usePolling: false,
