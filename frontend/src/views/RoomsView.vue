@@ -911,10 +911,10 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
-/* 电脑端：操作按钮右对齐 */
+/* 电脑端：操作按钮左对齐 */
 @media (min-width: 769px) {
   .action-buttons {
-    justify-content: flex-end;
+    justify-content: flex-start;
   }
 }
 
