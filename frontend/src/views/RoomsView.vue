@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, ArrowDown, Edit, Delete, CircleCheck, CircleClose, UploadFilled } from '@element-plus/icons-vue'
@@ -50,6 +50,29 @@ const filteredRooms = computed(() => {
   }
 
   return result
+})
+
+// 展开的行，默认展开所有行
+const expandedRows = ref<string[]>([])
+
+// 监听数据变化，默认展开所有行
+watch(() => filteredRooms.value, (newData) => {
+  // 使用房间ID作为唯一标识，展开所有行
+  expandedRows.value = newData.map(item => String(item.id))
+}, { immediate: true })
+
+// 超级管理员权限控制
+const showDeleteButton = ref(false)
+
+// 检查超级管理员权限
+const checkSuperAdminPermission = () => {
+  const superAdminEnabled = localStorage.getItem('superAdminEnabled')
+  showDeleteButton.value = superAdminEnabled === 'true'
+}
+
+// 监听权限变化
+watch(() => localStorage.getItem('superAdminEnabled'), () => {
+  checkSuperAdminPermission()
 })
 
 const totalMonthlyRent = computed(() => {
@@ -374,6 +397,8 @@ const getPaymentCycleLabel = (cycle: number | null | undefined) => {
 }
 
 onMounted(() => {
+  checkSuperAdminPermission()
+
   const init = async () => {
     await loadRooms()
 
@@ -453,6 +478,8 @@ onMounted(() => {
         :data="paginatedRooms"
         stripe
         style="width: 100%"
+        :expand-row-keys="expandedRows"
+        :row-key="(row: any) => String(row.id)"
         @row-click="(row: Room) => viewRoomDetail(row.id)"
       >
         <el-table-column prop="room_number" label="房间号" width="120" />
@@ -499,43 +526,59 @@ onMounted(() => {
             {{ getPaymentCycleLabel(row.payment_cycle) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right">
+        <el-table-column type="expand" width="1">
           <template #default="{ row }">
-            <el-dropdown trigger="click">
-              <el-button size="small" type="primary">
-                操作<el-icon class="el-icon--right"><ArrowDown /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <!-- 已租房间：显示退租 -->
-                  <el-dropdown-item
-                    v-if="row.status === 'occupied'"
-                    @click.native="handle退租(row)"
-                  >
-                    <el-icon><CircleClose /></el-icon>
-                    退租
-                  </el-dropdown-item>
-                  <!-- 空房：显示入住 -->
-                  <el-dropdown-item
-                    v-if="row.status === 'available'"
-                    @click.native="handle入住(row)"
-                  >
-                    <el-icon><CircleCheck /></el-icon>
-                    入住
-                  </el-dropdown-item>
-                  <!-- 编辑 -->
-                  <el-dropdown-item @click.native="handle编辑(row)">
-                    <el-icon><Edit /></el-icon>
-                    编辑
-                  </el-dropdown-item>
-                  <!-- 删除 -->
-                  <el-dropdown-item @click.native="handle删除(row)">
-                    <el-icon><Delete /></el-icon>
-                    删除
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+            <div class="action-row">
+              <div class="action-buttons">
+                <!-- 已租房间：显示退租 -->
+                <el-button
+                  v-if="row.status === 'occupied'"
+                  type="danger"
+                  size="small"
+                  :icon="CircleClose"
+                  class="action-btn"
+                  @click="handle退租(row)"
+                >
+                  <span class="btn-text-full">退租</span>
+                  <span class="btn-text-short">退租</span>
+                </el-button>
+                <!-- 空房：显示入住 -->
+                <el-button
+                  v-if="row.status === 'available'"
+                  type="success"
+                  size="small"
+                  :icon="CircleCheck"
+                  class="action-btn"
+                  @click="handle入住(row)"
+                >
+                  <span class="btn-text-full">入住</span>
+                  <span class="btn-text-short">入住</span>
+                </el-button>
+                <!-- 编辑 -->
+                <el-button
+                  type="primary"
+                  size="small"
+                  :icon="Edit"
+                  class="action-btn"
+                  @click="handle编辑(row)"
+                >
+                  <span class="btn-text-full">编辑</span>
+                  <span class="btn-text-short">编辑</span>
+                </el-button>
+                <!-- 删除 -->
+                <el-button
+                  v-if="showDeleteButton"
+                  type="danger"
+                  size="small"
+                  :icon="Delete"
+                  class="action-btn"
+                  @click="handle删除(row)"
+                >
+                  <span class="btn-text-full">删除</span>
+                  <span class="btn-text-short">删除</span>
+                </el-button>
+              </div>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -854,6 +897,57 @@ onMounted(() => {
 
 :deep(.el-table__row:hover) {
   background-color: #f5f7fa;
+}
+
+/* 操作行样式 */
+.action-row {
+  padding: 12px 16px;
+  background-color: #f8f9fa;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 电脑端：操作按钮右对齐 */
+@media (min-width: 769px) {
+  .action-buttons {
+    justify-content: flex-end;
+  }
+}
+
+/* 手机端：操作按钮左对齐 */
+@media (max-width: 768px) {
+  .action-buttons {
+    justify-content: flex-start;
+  }
+
+  .action-btn {
+    flex: 1;
+    min-width: 80px;
+  }
+
+  /* 移动端隐藏完整文字，显示简短文字 */
+  .btn-text-full {
+    display: none;
+  }
+
+  .btn-text-short {
+    display: inline;
+  }
+}
+
+/* 桌面端显示完整文字 */
+@media (min-width: 769px) {
+  .btn-text-full {
+    display: inline;
+  }
+
+  .btn-text-short {
+    display: none;
+  }
 }
 
 /* 移动端优化 */
