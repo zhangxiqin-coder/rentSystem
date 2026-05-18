@@ -9,6 +9,7 @@ interface UseMessageGenerationDeps {
   getRoomInfo: (roomId: number) => Room | undefined
   hideAmounts: Ref<boolean>
   formatAmount: (value: number, currency?: string) => string
+  formatAmountForNotification: (value: number, currency?: string) => string
 }
 
 export function useMessageGeneration(deps: UseMessageGenerationDeps) {
@@ -17,6 +18,7 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
     getRoomInfo,
     hideAmounts,
     formatAmount,
+    formatAmountForNotification,
   } = deps
 
   // 消息对话框状态
@@ -51,6 +53,9 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
       ? new Date(readings[0].reading_date).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/')
       : new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/')
 
+    // 根据forceShowAmount参数选择合适的格式化函数
+    const formatter = forceShowAmount ? formatAmountForNotification : formatAmount
+
     let totalAmount = 0
     let waterText = ''
     let electricityText = ''
@@ -61,7 +66,7 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
         const cost = Number(reading.amount || 0)
         const rate = Number(room.water_rate || 5)
         // forceShowAmount=true 时忽略 hideAmounts，始终显示真实金额
-        const costText = (forceShowAmount || !hideAmounts.value) ? formatAmount(cost) : '****'
+        const costText = (forceShowAmount || !hideAmounts.value) ? formatter(cost) : '****'
         const rateText = (forceShowAmount || !hideAmounts.value) ? rate.toFixed(2) : '**'
         waterText = `💧 水费：${reading.previous_reading || 0}→${reading.reading}（用量${usage}吨 × ¥${rateText}/吨 = ${costText}）`
         totalAmount += cost
@@ -70,7 +75,7 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
         const cost = Number(reading.amount || 0)
         const rate = Number(room.electricity_rate || 1)
         // forceShowAmount=true 时忽略 hideAmounts，始终显示真实金额
-        const costText = (forceShowAmount || !hideAmounts.value) ? formatAmount(cost) : '****'
+        const costText = (forceShowAmount || !hideAmounts.value) ? formatter(cost) : '****'
         const rateText = (forceShowAmount || !hideAmounts.value) ? rate.toFixed(2) : '**'
         electricityText = `⚡ 电费：${reading.previous_reading || 0}→${reading.reading}（用量${usage}度 × ¥${rateText}/度 = ${costText}）`
         totalAmount += cost
@@ -85,8 +90,8 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
     // 构建消息
     let message = `【${roomNumber} 收租明细】\n`
     message += `抄表日期：${readingDate}\n`
-    message += `💰 合计：${(forceShowAmount || !hideAmounts.value) ? formatAmount(totalAmount) : '****'}\n`
-    message += `🏠 房租：${(forceShowAmount || !hideAmounts.value) ? formatAmount(rentAmount) : '****'}\n`
+    message += `💰 合计：${(forceShowAmount || !hideAmounts.value) ? formatter(totalAmount) : '****'}\n`
+    message += `🏠 房租：${(forceShowAmount || !hideAmounts.value) ? formatter(rentAmount) : '****'}\n`
     if (waterText) message += `${waterText}\n`
     if (electricityText) message += `${electricityText}\n`
 

@@ -50,7 +50,7 @@ const {
   loadRooms, getRoomNumber, getRoomInfo, getRoom,
 } = useRoomData()
 
-// 3. Message generation (needs getRoomNumber, getRoomInfo, hideAmounts, formatAmount)
+// 3. Message generation (needs getRoomNumber, getRoomInfo, hideAmounts, formatAmount, formatAmountForNotification)
 const {
   messageDialogVisible, currentMessage, sendingWechat,
   rentReminderPreview, rentReminderVisible,
@@ -62,6 +62,7 @@ const {
   getRoomInfo,
   hideAmounts,
   formatAmount,
+  formatAmountForNotification,
 })
 
 // 4. Utility readings (needs roomOptions)

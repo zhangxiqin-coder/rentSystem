@@ -51,9 +51,9 @@ export function useReadingForm(deps: UseReadingFormDeps) {
     // 刷新列表
     await loadReadings()
 
-    // 生成并显示收租提醒
+    // 生成并显示收租提醒（强制显示真实金额）
     try {
-      await generateRentReminder(roomId, readings)
+      await generateRentReminder(roomId, readings, true)
     } catch (error) {
       console.error('Failed to generate rent reminder:', error)
     }
