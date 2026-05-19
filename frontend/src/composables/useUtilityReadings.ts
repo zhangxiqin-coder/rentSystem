@@ -204,10 +204,15 @@ export function useUtilityReadings(deps: {
       }
     })
 
-    // 返回所有记录（包括已支付的），按日期倒序排列
-    return result.sort((a, b) =>
-      new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime()
-    )
+    // 排序：第一优先级未支付排前面，第二优先级按时间倒序
+    return result.sort((a, b) => {
+      // 第一优先级：未支付的排前面
+      if (a.is_paid !== b.is_paid) {
+        return a.is_paid ? 1 : -1  // 未支付(-1)排在已支付(1)前面
+      }
+      // 第二优先级：时间倒序（最新的在前）
+      return new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime()
+    })
   })
 
   return {

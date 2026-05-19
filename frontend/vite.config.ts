@@ -46,6 +46,8 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     strictPort: true,
+    // 允许所有域名访问（用于反向代理）
+    allowedHosts: ['all'],
     // 禁用 HMR，避免自动刷新导致编辑丢失
     hmr: false,
     // 关闭 WebSocket，使用普通 HTTP 轮询

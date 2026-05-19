@@ -39,7 +39,6 @@ dist-ssr/
 *.db
 *.sqlite
 *.sqlite3
-!backend/rent_management.db
 
 # Logs
 *.log
