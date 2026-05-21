@@ -45,7 +45,10 @@ export function useReadingForm(deps: UseReadingFormDeps) {
   }
 
   // 表单成功后的处理（带收租提醒）
-  const handleFormSuccessWithReminder = async (result: any) => {
+  const handleFormSuccessWithReminder = async (result: any, callbacks?: {
+    setRentReminderPreview?: (value: string) => void
+    setRentReminderVisible?: (value: boolean) => void
+  }) => {
     formSuccess.value = true
 
     // 刷新列表
@@ -70,10 +73,18 @@ export function useReadingForm(deps: UseReadingFormDeps) {
 
     // 生成并显示收租提醒（强制显示真实金额）
     try {
-      await generateRentReminder(roomId, readings, true)
+      const message = await generateRentReminder(roomId, readings, true)
+      // 如果传入了回调，设置提醒预览和可见性
+      if (callbacks?.setRentReminderPreview && callbacks?.setRentReminderVisible) {
+        callbacks.setRentReminderPreview(message)
+        callbacks.setRentReminderVisible(true)
+      }
     } catch (error) {
       console.error('Failed to generate rent reminder:', error)
     }
+
+    // 关闭弹窗，返回列表页
+    showFormDialog.value = false
 
     // 可选：自动发送微信通知
     // await autoGenerateAndSendWechat(roomId, readings)

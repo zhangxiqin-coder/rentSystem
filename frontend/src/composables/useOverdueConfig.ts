@@ -5,7 +5,7 @@ const config = {
   advanceRentDays: { key: 'advance_rent_days', default: 0 },
   expiringDays: { key: 'expiring_days', default: 7 },
   recentPaymentDays: { key: 'recent_payment_days', default: 7 },
-  recentReadingDays: { key: 'recent_reading_days', default: 2 },
+  recentReadingDays: { key: 'recent_reading_days', default: 45 },
   lookbackMonths: { key: 'lookback_months', default: 1 },
 } as const
 

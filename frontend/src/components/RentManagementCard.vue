@@ -251,4 +251,61 @@ const emit = defineEmits<{
   align-items: flex-end;
   gap: 4px;
 }
+
+/* 移动端响应式布局 */
+@media (max-width: 768px) {
+  .expiring-list {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .expiring-item {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px 10px;
+  }
+
+  .expiring-item .room-info {
+    align-items: flex-start;
+  }
+
+  .expiring-item .lease-info {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .expiring-item .lease-info .el-tag {
+    align-self: flex-start;
+  }
+
+  .expiring-item .lease-info .el-button {
+    width: 100%;
+    margin-top: 8px;
+  }
+
+  .overdue-actions {
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .overdue-actions .el-button {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 375px) {
+  .expiring-item {
+    padding: 10px 8px;
+  }
+
+  .expiring-item .room-number {
+    font-size: 15px;
+  }
+
+  .expiring-item .lease-info .el-button {
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+}
 </style>

@@ -57,8 +57,9 @@ export function mergeReadings(readings: UtilityReading[], roomOptions: Room[]): 
 
     merged.total_amount = total
     merged.notes = merged.water_reading?.notes || merged.electricity_reading?.notes || ''
+    // 修复：水费和电费都已支付才算已支付（使用&&）
     merged.is_paid = !!(
-      (merged.water_reading && merged.water_reading.payment_id) ||
+      (merged.water_reading && merged.water_reading.payment_id) &&
       (merged.electricity_reading && merged.electricity_reading.payment_id)
     )
   })
