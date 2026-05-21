@@ -45,11 +45,28 @@ export function useReadingForm(deps: UseReadingFormDeps) {
   }
 
   // 表单成功后的处理（带收租提醒）
-  const handleFormSuccessWithReminder = async (roomId: number, readings: any[]) => {
+  const handleFormSuccessWithReminder = async (result: any) => {
     formSuccess.value = true
 
     // 刷新列表
     await loadReadings()
+
+    // 从 result 中提取 roomId 和构建 readings 数组
+    const roomId = result.room_id
+    const readings = [
+      {
+        utility_type: 'water',
+        reading: result.water_reading,
+        reading_date: result.reading_date,
+        notes: result.notes
+      },
+      {
+        utility_type: 'electricity',
+        reading: result.electric_reading,
+        reading_date: result.reading_date,
+        notes: result.notes
+      }
+    ]
 
     // 生成并显示收租提醒（强制显示真实金额）
     try {
