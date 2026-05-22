@@ -135,6 +135,8 @@ export interface UtilityReading {
   rate_used?: number
   recorded_by?: number
   notes?: string
+  payment_id?: number
+  owner_id?: number
   created_at: string
   updated_at: string
 }

@@ -19,8 +19,11 @@ export const utilityApi = {
     request.get<ApiResponse<UtilityReading>>(`/api/v1/utility/readings/${id}`),
 
   // Create reading
-  createReading: (data: CreateUtilityReadingRequest) =>
-    request.post<ApiResponse<UtilityReading>>('/api/v1/utility/readings', data),
+  createReading: (data: CreateUtilityReadingRequest) => {
+    console.log('API调用: createReading')
+    console.log('请求数据:', JSON.stringify(data, null, 2))
+    return request.post<ApiResponse<UtilityReading>>('/api/v1/utility/readings', data)
+  },
 
   // Update reading
   updateReading: (id: number, data: Partial<CreateUtilityReadingRequest>) =>

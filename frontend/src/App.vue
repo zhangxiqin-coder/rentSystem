@@ -39,6 +39,10 @@ onMounted(() => {
 
 <template>
   <div id="app">
+    <!-- 调试标记：看到红色"V2.0"表示新代码已加载 -->
+    <div style="position:fixed;top:0;left:0;background:red;color:white;font-size:12px;z-index:9999;padding:2px 5px;">
+      🎉 V2.0
+    </div>
     <!-- 移动端顶部栏 -->
     <header v-if="showTopTabs" class="mobile-top-nav">
       <div class="brand">{{ authStore.displayName }}</div>

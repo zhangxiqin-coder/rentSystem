@@ -348,28 +348,39 @@ const submitForm = async () => {
   }
 
   loading.value = true
+  console.log('=== 开始保存水电数据 ===')
+  console.log('表单数据:', JSON.stringify(formData.value, null, 2))
+
   try {
     // 顺序创建水和电的记录，确保第二次录入时能触发催收消息
     const results: any[] = []
 
     // 始终创建水和电两条记录（平摊房间水电为0也记录，用于追踪催租）
-    results.push(await utilityApi.createReading({
+    console.log('准备创建水表记录...')
+    const waterData = {
       room_id: formData.value.room_id,
       utility_type: 'water',
       reading: formData.value.water_reading || 0,
       reading_date: formData.value.reading_date,
       previous_reading: (formData.value.water_reading > 0 ? displayedPreviousWater.value : 0) ?? 0,
       notes: formData.value.notes,
-    }))
+    }
+    console.log('水表请求数据:', JSON.stringify(waterData, null, 2))
+    results.push(await utilityApi.createReading(waterData))
+    console.log('水表记录创建成功')
 
-    results.push(await utilityApi.createReading({
+    console.log('准备创建电表记录...')
+    const electricData = {
       room_id: formData.value.room_id,
       utility_type: 'electricity',
       reading: formData.value.electric_reading || 0,
       reading_date: formData.value.reading_date,
       previous_reading: (formData.value.electric_reading > 0 ? displayedPreviousElectric.value : 0) ?? 0,
       notes: formData.value.notes,
-    }))
+    }
+    console.log('电表请求数据:', JSON.stringify(electricData, null, 2))
+    results.push(await utilityApi.createReading(electricData))
+    console.log('电表记录创建成功')
 
     ElMessage.success('水电录入成功')
 
@@ -386,7 +397,13 @@ const submitForm = async () => {
     }
     emit('success', result)
   } catch (error: any) {
-    console.error('Failed to create utility readings:', error)
+    console.error('=== 水电录入失败 ===')
+    console.error('错误对象:', error)
+    console.error('错误消息:', error.message)
+    console.error('错误响应:', error.response)
+    console.error('响应数据:', error.response?.data)
+    console.error('请求配置:', error.config)
+
     const errorMsg = error.response?.data?.detail || '录入失败，请重试'
     ElMessage.error(errorMsg)
   } finally {
