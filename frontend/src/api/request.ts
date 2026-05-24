@@ -65,20 +65,21 @@ request.interceptors.request.use(
 
     // Add CSRF token for state-changing requests (except login/register)
     const isAuthEndpoint = config.url?.includes('/login') || config.url?.includes('/register') || config.url?.includes('/csrf-token')
-    
+
     if (config.method !== 'get' && config.method !== 'head' && !isAuthEndpoint) {
       let csrfToken = getCsrfToken()
-      
-      // If no CSRF token, fetch it first
+
+      // If no CSRF token, fetch it first using the request instance
       if (!csrfToken && encryptedToken) {
         try {
           console.log('🔒 [Request] No CSRF token, fetching...')
-          const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/v1/auth/csrf-token`, {
+          // Use request instance to ensure correct baseURL
+          const response = await request.get('/api/v1/auth/csrf-token', {
             headers: {
               Authorization: config.headers.Authorization
             }
           })
-          csrfToken = response.headers['x-csrf-token']
+          csrfToken = response.headers['x-csrf-token'] as string
           if (csrfToken) {
             sessionStorage.setItem('csrf_token', csrfToken)
             console.log('🔒 [Request] CSRF token fetched and saved')
