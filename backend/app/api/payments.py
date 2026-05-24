@@ -262,12 +262,26 @@ def create_bulk_payment(
     # 优先使用reading_date作为检查日期，否则使用payment_date
     check_date = data.reading_date or data.payment_date
     
-    existing_payments = db.query(Payment).filter(
+    # 检查该房间是否有退租记录（payment_type='refund'）
+    last_refund_payment = db.query(Payment).filter(
+        Payment.room_id == data.room_id,
+        Payment.payment_type == "refund"
+    ).order_by(Payment.payment_date.desc()).first()
+    
+    # 构建查询：检查当天的支付记录
+    query = db.query(Payment).filter(
         Payment.room_id == data.room_id,
         Payment.payment_date == check_date
-    ).all()
+    )
     
-    # 如果当天已经有支付记录，拒绝重复支付
+    # 如果有退租记录，只检查退租日期之后的记录
+    # （前一个租客的记录不应该阻止新租客收租）
+    if last_refund_payment:
+        query = query.filter(Payment.payment_date > last_refund_payment.payment_date)
+    
+    existing_payments = query.all()
+    
+    # 如果当天已经有支付记录（在退租之后），拒绝重复支付
     if existing_payments:
         raise HTTPException(
             status_code=400, 
