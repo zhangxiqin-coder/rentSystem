@@ -6,8 +6,12 @@ import os
 import logging
 import re
 from typing import Any, Dict
+from dotenv import load_dotenv
 
-from app.api import auth, rooms, payments, utility_readings, utility_rates, users, statistics, reminders, export
+# 加载 .env 文件
+load_dotenv()
+
+from app.api import auth, rooms, payments, utility_readings, utility_rates, users, statistics, reminders, export, ocr
 
 app = FastAPI(
     title="Rent Management System API",
@@ -58,6 +62,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             if hasattr(request.state, 'user') and request.state.user:
                 new_csrf_token = secrets.token_urlsafe(32)
                 response.headers['X-CSRF-Token'] = new_csrf_token
+            return response
+
+        # Skip CSRF for file upload endpoints (multipart/form-data)
+        if request.url.path in ['/api/v1/ocr/reading']:
+            response = await call_next(request)
             return response
         
         # For CSRF token endpoint, generate and return token
@@ -150,6 +159,7 @@ app.include_router(users.router, prefix=api_v1_prefix)
 app.include_router(statistics.router, prefix=api_v1_prefix)
 app.include_router(reminders.router, prefix=api_v1_prefix)
 app.include_router(export.router, prefix=api_v1_prefix)
+app.include_router(ocr.router, prefix=api_v1_prefix)
 
 # 健康检查端点
 @app.get("/")

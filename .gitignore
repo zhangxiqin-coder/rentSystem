@@ -62,6 +62,7 @@ htmlcov/
 # Backend specific
 backend/venv/
 backend/.env
+backend/.env.*
 backend/__pycache__/
 
 # Frontend specific

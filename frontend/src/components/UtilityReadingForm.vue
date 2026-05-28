@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Camera } from '@element-plus/icons-vue'
 import { roomApi } from '@/api/room'
 import { utilityApi } from '@/api/utility'
 import type { Room } from '@/types'
@@ -31,6 +32,20 @@ const formData = ref({
 const loading = ref(false)
 const roomsLoading = ref(false)
 const loadingHistory = ref(false)
+const uploadingWater = ref(false)
+const uploadingElectric = ref(false)
+
+// OCR引擎选择
+const ocrEngine = ref<'tesseract' | 'zhipu' | 'tencent'>('zhipu')
+const ocrEngineOptions = [
+  { label: '智谱OCR（推荐）', value: 'zhipu' },
+  { label: '本地OCR（免费）', value: 'tesseract' },
+  { label: '腾讯云OCR', value: 'tencent' }
+]
+
+// 图片预览
+const waterImagePreview = ref<string | null>(null)
+const electricImagePreview = ref<string | null>(null)
 
 // 数据
 const rooms = ref<Room[]>([])
@@ -440,6 +455,132 @@ const handleCancel = () => {
   emit('cancel')
 }
 
+// 压缩图片
+const compressImage = (file: File, maxWidth = 1024, quality = 0.8): Promise<Blob> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.readAsDataURL(file)
+    reader.onload = (event) => {
+      const img = new Image()
+      img.src = event.target?.result as string
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+
+        // 按比例缩放
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width
+          width = maxWidth
+        }
+
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx?.drawImage(img, 0, 0, width, height)
+
+        canvas.toBlob(
+          (blob) => {
+            resolve(blob!)
+          },
+          'image/jpeg',
+          quality
+        )
+      }
+    }
+  })
+}
+
+// 上传并识别水表图片
+const handleWaterImageUpload = async (file: any) => {
+  if (!file) return
+
+  uploadingWater.value = true
+  try {
+    // 创建预览
+    waterImagePreview.value = URL.createObjectURL(file.raw)
+
+    // 压缩图片
+    const compressedImage = await compressImage(file.raw)
+
+    // 上传并识别
+    const uploadFormData = new FormData()
+    uploadFormData.append('image', compressedImage)
+    uploadFormData.append('engine', ocrEngine.value)
+    uploadFormData.append('meter_type', '水表')
+
+    const response = await fetch('/api/v1/ocr/reading', {
+      method: 'POST',
+      body: uploadFormData,
+    })
+
+    if (!response.ok) {
+      throw new Error('识别失败')
+    }
+
+    const result = await response.json()
+
+    // 填入识别的读数
+    if (result.reading > 0) {
+      formData.value.water_reading = result.reading
+      ElMessage.success(`识别成功：${result.reading}`)
+      calculateCosts()
+    } else {
+      ElMessage.warning('未能识别出读数，请手动输入')
+    }
+  } catch (error: any) {
+    console.error('识别失败:', error)
+    ElMessage.error('识别失败，请手动输入')
+  } finally {
+    uploadingWater.value = false
+  }
+}
+
+// 上传并识别电表图片
+const handleElectricImageUpload = async (file: any) => {
+  if (!file) return
+
+  uploadingElectric.value = true
+  try {
+    // 创建预览
+    electricImagePreview.value = URL.createObjectURL(file.raw)
+
+    // 压缩图片
+    const compressedImage = await compressImage(file.raw)
+
+    // 上传并识别
+    const uploadFormData = new FormData()
+    uploadFormData.append('image', compressedImage)
+    uploadFormData.append('engine', ocrEngine.value)
+    uploadFormData.append('meter_type', '电表')
+
+    const response = await fetch('/api/v1/ocr/reading', {
+      method: 'POST',
+      body: uploadFormData,
+    })
+
+    if (!response.ok) {
+      throw new Error('识别失败')
+    }
+
+    const result = await response.json()
+
+    // 填入识别的读数
+    if (result.reading > 0) {
+      formData.value.electric_reading = result.reading
+      ElMessage.success(`识别成功：${result.reading}`)
+      calculateCosts()
+    } else {
+      ElMessage.warning('未能识别出读数，请手动输入')
+    }
+  } catch (error: any) {
+    console.error('识别失败:', error)
+    ElMessage.error('识别失败，请手动输入')
+  } finally {
+    uploadingElectric.value = false
+  }
+}
+
 // 监听房间变化，自动加载历史记录
 watch(
   () => formData.value.room_id,
@@ -549,6 +690,27 @@ loadRooms()
         />
       </el-form-item>
 
+      <!-- OCR引擎选择 -->
+      <el-form-item label="OCR识别引擎">
+        <el-select v-model="ocrEngine" placeholder="选择OCR引擎" style="width: 100%">
+          <el-option
+            v-for="option in ocrEngineOptions"
+            :key="option.value"
+            :label="option.label"
+            :value="option.value"
+          >
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+              <span>{{ option.label }}</span>
+              <span v-if="option.value === 'zhipu'" style="color: #67c23a; font-size: 12px;">识别准确率高</span>
+              <span v-else-if="option.value === 'tesseract'" style="color: #909399; font-size: 12px;">免费</span>
+            </div>
+          </el-option>
+        </el-select>
+        <div class="ocr-hint">
+          💡 智谱OCR对模糊图片识别更准确，推荐使用
+        </div>
+      </el-form-item>
+
       <!-- 水表读数 -->
       <el-divider content-position="left">💧 水表录入</el-divider>
 
@@ -592,16 +754,33 @@ loadRooms()
       </el-form-item>
 
       <el-form-item label="本次水表读数" required>
-        <el-input-number
-          v-model="formData.water_reading"
-          :min="0"
-          :precision="2"
-          :step="0.01"
-          style="width: 100%"
-          controls-position="right"
-          placeholder="请输入本次读数"
-          @change="calculateCosts"
-        />
+        <div style="display: flex; gap: 8px; align-items: flex-start;">
+          <el-input-number
+            v-model="formData.water_reading"
+            :min="0"
+            :precision="2"
+            :step="0.01"
+            style="flex: 1"
+            controls-position="right"
+            placeholder="请输入本次读数"
+            @change="calculateCosts"
+          />
+          <el-upload
+            :show-file-list="false"
+            :auto-upload="false"
+            :on-change="handleWaterImageUpload"
+            accept="image/*"
+            :disabled="uploadingWater"
+          >
+            <el-button :loading="uploadingWater" :icon="Camera">
+              {{ uploadingWater ? '识别中...' : '拍照' }}
+            </el-button>
+          </el-upload>
+        </div>
+        <div v-if="waterImagePreview" class="image-preview">
+          <img :src="waterImagePreview" alt="水表照片" style="max-width: 200px; max-height: 150px;" />
+          <el-button size="small" @click="waterImagePreview = null" style="margin-left: 8px;">清除</el-button>
+        </div>
       </el-form-item>
 
       <el-form-item v-if="calculations.water" label="水费计算">
@@ -655,16 +834,33 @@ loadRooms()
       </el-form-item>
 
       <el-form-item label="本次电表读数" required>
-        <el-input-number
-          v-model="formData.electric_reading"
-          :min="0"
-          :precision="2"
-          :step="1"
-          style="width: 100%"
-          controls-position="right"
-          placeholder="请输入本次读数"
-          @change="calculateCosts"
-        />
+        <div style="display: flex; gap: 8px; align-items: flex-start;">
+          <el-input-number
+            v-model="formData.electric_reading"
+            :min="0"
+            :precision="2"
+            :step="1"
+            style="flex: 1"
+            controls-position="right"
+            placeholder="请输入本次读数"
+            @change="calculateCosts"
+          />
+          <el-upload
+            :show-file-list="false"
+            :auto-upload="false"
+            :on-change="handleElectricImageUpload"
+            accept="image/*"
+            :disabled="uploadingElectric"
+          >
+            <el-button :loading="uploadingElectric" :icon="Camera">
+              {{ uploadingElectric ? '识别中...' : '拍照' }}
+            </el-button>
+          </el-upload>
+        </div>
+        <div v-if="electricImagePreview" class="image-preview">
+          <img :src="electricImagePreview" alt="电表照片" style="max-width: 200px; max-height: 150px;" />
+          <el-button size="small" @click="electricImagePreview = null" style="margin-left: 8px;">清除</el-button>
+        </div>
       </el-form-item>
 
       <el-form-item v-if="calculations.electric" label="电费计算">
@@ -746,9 +942,24 @@ loadRooms()
   color: #909399;
 }
 
+.ocr-hint {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #409eff;
+}
+
 .room-hint {
   margin-top: 0.5rem;
   font-size: 0.9rem;
   font-weight: 500;
+}
+
+.image-preview {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
 }
 </style>
