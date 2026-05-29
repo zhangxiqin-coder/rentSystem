@@ -17,6 +17,12 @@ const touched = ref<Record<string, boolean>>({})
 
 const loading = ref(false)
 
+// Password visibility toggle
+const showPassword = ref(false)
+const togglePasswordVisibility = () => {
+  showPassword.value = !showPassword.value
+}
+
 // Validate individual field
 const validateField = (field: string): string | null => {
   const value = form.value[field as keyof typeof form.value]
@@ -127,15 +133,28 @@ watch(() => authStore.error, (newError) => {
 
         <div class="form-group" :class="{ 'has-error': hasError('password') }">
           <label for="password">密码</label>
-          <input
-            id="password"
-            v-model="form.password"
-            type="password"
-            placeholder="请输入密码"
-            @blur="handleBlur('password')"
-            :disabled="loading"
-            autocomplete="current-password"
-          />
+          <div class="password-input-wrapper">
+            <input
+              id="password"
+              v-model="form.password"
+              :type="showPassword ? 'text' : 'password'"
+              placeholder="请输入密码"
+              @blur="handleBlur('password')"
+              :disabled="loading"
+              autocomplete="current-password"
+              class="password-input"
+            />
+            <button
+              type="button"
+              @click="togglePasswordVisibility"
+              class="toggle-password-btn"
+              :disabled="loading"
+              aria-label="显示/隐藏密码"
+            >
+              <span v-if="showPassword" class="eye-icon">👁️</span>
+              <span v-else class="eye-icon">👁️‍🗨️</span>
+            </button>
+          </div>
           <span v-if="hasError('password')" class="error-message">
             {{ errors.password }}
           </span>
@@ -222,6 +241,47 @@ input:focus {
 input:disabled {
   background-color: #f5f5f5;
   cursor: not-allowed;
+}
+
+/* Password input wrapper */
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input {
+  flex: 1;
+  padding-right: 3rem !important;
+}
+
+.toggle-password-btn {
+  position: absolute;
+  right: 0.75rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.5;
+  transition: opacity 0.3s ease;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.toggle-password-btn:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.toggle-password-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+.eye-icon {
+  display: block;
 }
 
 .error-message {
