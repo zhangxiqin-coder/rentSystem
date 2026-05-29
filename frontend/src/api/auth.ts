@@ -24,7 +24,7 @@ export const authApi = {
 
   // Change password
   changePassword: (data: { old_password: string; new_password: string }) =>
-    request.post<ApiResponse<void>>('/api/v1/auth/change-password', data),
+    request.post<ApiResponse<{ message: string }>>('/api/v1/users/change-password', data),
 
   // Update profile (full_name)
   updateProfile: (userId: number, data: { full_name?: string }) =>

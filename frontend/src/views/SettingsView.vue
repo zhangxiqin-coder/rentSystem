@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import type { FormInstance, FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { useOverdueConfig } from '@/composables/useOverdueConfig'
 import { authApi } from '@/api/auth'
@@ -27,6 +28,39 @@ const tempSuperAdminMode = ref(authStore.superAdminMode)
 const tempDisplayName = ref(authStore.user?.full_name || '')
 const savingName = ref(false)
 
+// 修改密码相关
+const showPasswordDialog = ref(false)
+const changingPassword = ref(false)
+const passwordFormRef = ref<FormInstance>()
+const passwordForm = ref({
+  old_password: '',
+  new_password: '',
+  confirm_password: ''
+})
+
+const passwordRules: FormRules = {
+  old_password: [
+    { required: true, message: '请输入旧密码', trigger: 'blur' }
+  ],
+  new_password: [
+    { required: true, message: '请输入新密码', trigger: 'blur' },
+    { min: 8, message: '新密码至少8位', trigger: 'blur' }
+  ],
+  confirm_password: [
+    { required: true, message: '请再次输入新密码', trigger: 'blur' },
+    {
+      validator: (rule, value, callback) => {
+        if (value !== passwordForm.value.new_password) {
+          callback(new Error('两次输入的密码不一致'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur'
+    }
+  ]
+}
+
 const handleSave = async () => {
   setOverdueCutoffDate(tempCutoffDate.value)
   setAdvanceRentDays(tempAdvanceRentDays.value)
@@ -48,6 +82,44 @@ const handleSaveName = async () => {
     ElMessage.error('更新失败')
   } finally {
     savingName.value = false
+  }
+}
+
+const handleChangePassword = async () => {
+  if (!passwordFormRef.value) return
+
+  try {
+    await passwordFormRef.value.validate()
+    changingPassword.value = true
+
+    try {
+      await authApi.changePassword({
+        old_password: passwordForm.value.old_password,
+        new_password: passwordForm.value.new_password
+      })
+
+      ElMessage.success('密码修改成功，请重新登录')
+      showPasswordDialog.value = false
+
+      // 重置表单
+      passwordForm.value = {
+        old_password: '',
+        new_password: '',
+        confirm_password: ''
+      }
+
+      // 2秒后自动登出
+      setTimeout(() => {
+        authStore.logout()
+        window.location.href = '/login'
+      }, 2000)
+    } catch (error: any) {
+      ElMessage.error(error.response?.data?.detail || '密码修改失败')
+    }
+  } catch {
+    // 表单验证失败
+  } finally {
+    changingPassword.value = false
   }
 }
 
@@ -191,8 +263,54 @@ const handleToggleSuperAdmin = async () => {
             <el-button type="primary" size="small" :loading="savingName" @click="handleSaveName">保存</el-button>
           </div>
         </div>
+        <el-divider />
+        <div class="info-row">
+          <span class="info-label">密码</span>
+          <el-button type="primary" size="small" @click="showPasswordDialog = true">修改密码</el-button>
+        </div>
       </div>
     </el-card>
+
+    <!-- 修改密码对话框 -->
+    <el-dialog
+      v-model="showPasswordDialog"
+      title="修改密码"
+      width="400px"
+      :close-on-click-modal="false"
+    >
+      <el-form :model="passwordForm" :rules="passwordRules" ref="passwordFormRef" label-width="100px">
+        <el-form-item label="旧密码" prop="old_password">
+          <el-input
+            v-model="passwordForm.old_password"
+            type="password"
+            placeholder="请输入旧密码"
+            show-password
+          />
+        </el-form-item>
+        <el-form-item label="新密码" prop="new_password">
+          <el-input
+            v-model="passwordForm.new_password"
+            type="password"
+            placeholder="请输入新密码（至少8位）"
+            show-password
+          />
+        </el-form-item>
+        <el-form-item label="确认密码" prop="confirm_password">
+          <el-input
+            v-model="passwordForm.confirm_password"
+            type="password"
+            placeholder="请再次输入新密码"
+            show-password
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showPasswordDialog = false">取消</el-button>
+        <el-button type="primary" :loading="changingPassword" @click="handleChangePassword">
+          确认修改
+        </el-button>
+      </template>
+    </el-dialog>
 
     <el-card style="margin-top: 20px;">
       <template #header>

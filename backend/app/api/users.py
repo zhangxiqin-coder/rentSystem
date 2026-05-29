@@ -8,7 +8,7 @@ from sqlalchemy import and_
 
 from app.core.deps import get_db, get_current_user
 from app.models import User, pwd_context
-from app.schemas import UserCreate, UserUpdate, UserResponse, PaginatedResponse, UserRole
+from app.schemas import UserCreate, UserUpdate, UserResponse, PaginatedResponse, UserRole, ChangePasswordRequest, MessageResponse
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -182,3 +182,30 @@ def update_user_role(
     db.refresh(user)
     
     return user
+
+
+@router.post("/change-password", response_model=MessageResponse)
+def change_password(
+    password_data: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    修改当前用户密码
+    
+    所有登录用户都可以修改自己的密码
+    需要提供旧密码进行验证
+    """
+    # 验证旧密码
+    if not pwd_context.verify(password_data.old_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="旧密码不正确")
+    
+    # 检查新密码是否与旧密码相同
+    if pwd_context.verify(password_data.new_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="新密码不能与旧密码相同")
+    
+    # 更新密码
+    current_user.hashed_password = pwd_context.hash(password_data.new_password)
+    db.commit()
+    
+    return {"message": "密码修改成功"}
