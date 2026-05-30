@@ -318,13 +318,8 @@ export function useOverdueManagement(deps: {
   const hasPaidThisMonth = (room: Room) => {
     const today = toStartOfDay(new Date())
 
-    // 历史导入场景：没有 payment 记录，但 last_payment_date 已更新，视为本月已收
-    if (room.last_payment_date) {
-      const lastPaid = toStartOfDay(new Date(room.last_payment_date))
-      if (isSameMonth(lastPaid, today)) return true
-    }
-
-    return payments.value.some(payment => {
+    // 检查是否有本月收租记录（通过 payments 表）
+    const hasPaymentThisMonth = payments.value.some(payment => {
       if (payment.room_id !== room.id) return false
       if (!payment.payment_date) return false
       if (payment.status === 'cancelled') return false
@@ -332,6 +327,26 @@ export function useOverdueManagement(deps: {
       const paymentDate = toStartOfDay(new Date(payment.payment_date))
       return isSameMonth(paymentDate, today)
     })
+
+    if (hasPaymentThisMonth) return true
+
+    // 历史导入场景：没有 payment 记录，但 last_payment_date 已更新
+    // 重要：只有当 last_payment_date 在本月，且距离下次付款日还有超过 expiringDays 天数时，
+    // 才认为本月已收（避免把"本月刚收，下月即将到期"的房间排除）
+    if (room.last_payment_date) {
+      const lastPaid = toStartOfDay(new Date(room.last_payment_date))
+      if (isSameMonth(lastPaid, today)) {
+        // 检查下月是否即将到期
+        const daysToNext = getNextPaymentDays(room)
+        // 如果下月即将到期（<= expiringDays），说明本月刚收，应该显示在即将到期列表
+        if (daysToNext <= expiringDays.value) {
+          return false // 不算"本月已收"，让它出现在即将到期列表
+        }
+        return true
+      }
+    }
+
+    return false
   }
 
   const buildDueDate = (year: number, month: number, day: number) => {
