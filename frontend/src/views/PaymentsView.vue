@@ -29,6 +29,15 @@ use([
   GridComponent
 ])
 
+// 漏交警告接口
+interface MissedPaymentWarning {
+  id: string
+  roomNumber: string
+  message: string
+  startDate: string
+  endDate: string
+}
+
 const authStore = useAuthStore()
 const payments = ref<Payment[]>([])
 const rooms = ref<Room[]>([])
@@ -36,6 +45,36 @@ const loading = ref(false)
 const initialized = ref(false)  // 标记是否已初始化完成
 const selectedRoomId = ref<number | null>(null)
 const { hideAmounts, formatAmount } = useAmountVisibility()
+
+// 已忽略的漏交警告ID列表（从localStorage加载）
+const ignoredWarningIds = ref<string[]>([])
+
+// 加载已忽略的警告ID
+const loadIgnoredWarnings = () => {
+  const stored = localStorage.getItem('ignoredMissedWarnings')
+  if (stored) {
+    ignoredWarningIds.value = JSON.parse(stored)
+  }
+}
+
+// 保存已忽略的警告ID到localStorage
+const saveIgnoredWarnings = () => {
+  localStorage.setItem('ignoredMissedWarnings', JSON.stringify(ignoredWarningIds.value))
+}
+
+// 忽略警告
+const ignoreWarning = (warningId: string) => {
+  ignoredWarningIds.value.push(warningId)
+  saveIgnoredWarnings()
+  ElMessage.success('已标记为已知')
+}
+
+// 恢复所有已忽略的警告
+const restoreAllWarnings = () => {
+  ignoredWarningIds.value = []
+  saveIgnoredWarnings()
+  ElMessage.success('已恢复所有漏交提醒')
+}
 
 // 是否显示删除按钮（仅超级管理员可见）
 const showDeleteButtons = computed(() => authStore.isSuperAdmin)
@@ -273,8 +312,8 @@ const groupedPayments = computed(() => {
 })
 
 // 检测漏交月份的提醒
-const missedPaymentWarnings = computed(() => {
-  const warnings: string[] = []
+const missedPaymentWarnings = computed<MissedPaymentWarning[]>(() => {
+  const warnings: MissedPaymentWarning[] = []
   const DAY = 86400000
 
   // 按房间分组
@@ -316,25 +355,41 @@ const missedPaymentWarnings = computed(() => {
         currStart.setHours(0, 0, 0, 0)
         const gapBetweenPeriods = Math.round((currStart.getTime() - prevEnd.getTime()) / DAY)
         if (gapBetweenPeriods > 1) {
-          warnings.push(
-            `${room.room_number} 可能有 ${Math.round(gapBetweenPeriods / 30)} 个月未交租 ` +
-            `(${sorted[i - 1].period_end} → ${sorted[i].period_start})`
-          )
+          const startDate = sorted[i - 1].period_end
+          const endDate = sorted[i].period_start
+          const missedMonths = Math.round(gapBetweenPeriods / 30)
+          const id = `${room.id}-${startDate}-${endDate}`
+          
+          warnings.push({
+            id,
+            roomNumber: room.room_number,
+            message: `${room.room_number} 可能有 ${missedMonths} 个月未交租 (${startDate} → ${endDate})`,
+            startDate,
+            endDate
+          })
         }
       } else if (gapDays > expectedGapDays * 1.5) {
         // 没有 period 信息时，用天数间隔判断（允许50%的容差）
         const missedMonths = Math.round(gapDays / 30) - cycle
         if (missedMonths > 0) {
-          warnings.push(
-            `${room.room_number} 可能有 ${missedMonths} 个月未交租 ` +
-            `(${sorted[i - 1].payment_date.split('T')[0]} → ${sorted[i].payment_date.split('T')[0]})`
-          )
+          const startDate = sorted[i - 1].payment_date.split('T')[0]
+          const endDate = sorted[i].payment_date.split('T')[0]
+          const id = `${room.id}-${startDate}-${endDate}`
+          
+          warnings.push({
+            id,
+            roomNumber: room.room_number,
+            message: `${room.room_number} 可能有 ${missedMonths} 个月未交租 (${startDate} → ${endDate})`,
+            startDate,
+            endDate
+          })
         }
       }
     }
   })
   
-  return warnings
+  // 过滤掉已忽略的警告
+  return warnings.filter(w => !ignoredWarningIds.value.includes(w.id))
 })
 
 // 月度统计数据
@@ -577,6 +632,7 @@ const handleBatchDelete = async () => {
 }
 
 onMounted(() => {
+  loadIgnoredWarnings()
   loadPayments()
 })
 </script>
@@ -594,7 +650,18 @@ onMounted(() => {
         <div class="alert-content">
           <strong>漏交提醒：</strong>
           <ul>
-            <li v-for="(warning, index) in missedPaymentWarnings" :key="index">{{ warning }}</li>
+            <li v-for="warning in missedPaymentWarnings" :key="warning.id" class="warning-item">
+              <span>{{ warning.message }}</span>
+              <el-button
+                type="primary"
+                size="small"
+                link
+                @click="ignoreWarning(warning.id)"
+                class="ignore-btn"
+              >
+                忽略
+              </el-button>
+            </li>
           </ul>
         </div>
       </div>
@@ -1045,13 +1112,26 @@ td {
 
 .alert-content ul {
   margin: 0;
-  padding-left: 1.5rem;
-  list-style: disc;
+  padding-left: 0;
+  list-style: none;
 }
 
-.alert-content li {
+.warning-item {
   color: #856404;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.warning-item:last-child {
+  margin-bottom: 0;
+}
+
+.ignore-btn {
+  font-size: 0.875rem;
+  padding: 0.25rem 0.5rem;
 }
 
 /* 筛选工具栏样式 */
