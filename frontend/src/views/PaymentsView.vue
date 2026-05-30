@@ -38,6 +38,17 @@ interface MissedPaymentWarning {
   endDate: string
 }
 
+// 已忽略的警告记录接口
+interface IgnoredWarning {
+  id: string
+  roomNumber: string
+  message: string
+  startDate: string
+  endDate: string
+  reason: string
+  ignoredAt: string
+}
+
 const authStore = useAuthStore()
 const payments = ref<Payment[]>([])
 const rooms = ref<Room[]>([])
@@ -46,34 +57,95 @@ const initialized = ref(false)  // 标记是否已初始化完成
 const selectedRoomId = ref<number | null>(null)
 const { hideAmounts, formatAmount } = useAmountVisibility()
 
-// 已忽略的漏交警告ID列表（从localStorage加载）
-const ignoredWarningIds = ref<string[]>([])
+// 已忽略的警告记录列表（从localStorage加载）
+const ignoredWarnings = ref<IgnoredWarning[]>([])
 
-// 加载已忽略的警告ID
+// 查看已忽略警告对话框是否显示
+const showIgnoredWarningsDialog = ref(false)
+
+// 加载已忽略的警告记录
 const loadIgnoredWarnings = () => {
   const stored = localStorage.getItem('ignoredMissedWarnings')
   if (stored) {
-    ignoredWarningIds.value = JSON.parse(stored)
+    ignoredWarnings.value = JSON.parse(stored)
   }
 }
 
-// 保存已忽略的警告ID到localStorage
+// 保存已忽略的警告记录到localStorage
 const saveIgnoredWarnings = () => {
-  localStorage.setItem('ignoredMissedWarnings', JSON.stringify(ignoredWarningIds.value))
+  localStorage.setItem('ignoredMissedWarnings', JSON.stringify(ignoredWarnings.value))
 }
 
-// 忽略警告
-const ignoreWarning = (warningId: string) => {
-  ignoredWarningIds.value.push(warningId)
-  saveIgnoredWarnings()
-  ElMessage.success('已标记为已知')
+// 忽略警告（带备注）
+const ignoreWarning = (warning: MissedPaymentWarning) => {
+  ElMessageBox.prompt('请输入忽略此提醒的原因（方便以后查看）', '标记为已知', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    inputPlaceholder: '例如：已现金收取、租客延期等',
+    inputType: 'textarea',
+    inputValidator: (value) => {
+      if (!value || !value.trim()) {
+        return '请输入忽略原因'
+      }
+      return true
+    }
+  }).then(({ value: reason }) => {
+    const ignoredRecord: IgnoredWarning = {
+      id: warning.id,
+      roomNumber: warning.roomNumber,
+      message: warning.message,
+      startDate: warning.startDate,
+      endDate: warning.endDate,
+      reason: reason.trim(),
+      ignoredAt: new Date().toISOString()
+    }
+    ignoredWarnings.value.push(ignoredRecord)
+    saveIgnoredWarnings()
+    ElMessage.success('已标记为已知')
+  }).catch(() => {
+    // 用户取消
+  })
+}
+
+// 恢复单个已忽略的警告
+const restoreWarning = (warningId: string) => {
+  ElMessageBox.confirm('确定要恢复这个漏交提醒吗？', '恢复提醒', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(() => {
+    ignoredWarnings.value = ignoredWarnings.value.filter(w => w.id !== warningId)
+    saveIgnoredWarnings()
+    ElMessage.success('已恢复漏交提醒')
+  }).catch(() => {
+    // 用户取消
+  })
 }
 
 // 恢复所有已忽略的警告
 const restoreAllWarnings = () => {
-  ignoredWarningIds.value = []
-  saveIgnoredWarnings()
-  ElMessage.success('已恢复所有漏交提醒')
+  ElMessageBox.confirm('确定要恢复所有已忽略的漏交提醒吗？', '恢复全部', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(() => {
+    ignoredWarnings.value = []
+    saveIgnoredWarnings()
+    ElMessage.success('已恢复所有漏交提醒')
+  }).catch(() => {
+    // 用户取消
+  })
+}
+
+// 格式化忽略时间
+const formatIgnoredAt = (ignoredAt: string) => {
+  const date = new Date(ignoredAt)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${minutes}`
 }
 
 // 是否显示删除按钮（仅超级管理员可见）
@@ -389,7 +461,8 @@ const missedPaymentWarnings = computed<MissedPaymentWarning[]>(() => {
   })
   
   // 过滤掉已忽略的警告
-  return warnings.filter(w => !ignoredWarningIds.value.includes(w.id))
+  const ignoredIds = ignoredWarnings.value.map(w => w.id)
+  return warnings.filter(w => !ignoredIds.includes(w.id))
 })
 
 // 月度统计数据
@@ -656,13 +729,28 @@ onMounted(() => {
                 type="primary"
                 size="small"
                 link
-                @click="ignoreWarning(warning.id)"
+                @click="ignoreWarning(warning)"
                 class="ignore-btn"
               >
                 忽略
               </el-button>
             </li>
           </ul>
+        </div>
+      </div>
+
+      <!-- 已忽略的漏交警告 -->
+      <div v-if="ignoredWarnings.length > 0" class="warning-alert" style="background-color: #f4f4f5; border-left: 4px solid #909399;">
+        <div class="alert-content" style="width: 100%;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <strong style="color: #606266;">已忽略 {{ ignoredWarnings.length }} 条漏交提醒</strong>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <el-button size="small" @click="showIgnoredWarningsDialog = true">查看详情</el-button>
+              <el-button size="small" type="warning" @click="restoreAllWarnings">恢复全部</el-button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -825,6 +913,39 @@ onMounted(() => {
         </div>
       </div>
     </main>
+
+    <!-- 已忽略警告详情对话框 -->
+    <el-dialog
+      v-model="showIgnoredWarningsDialog"
+      title="已忽略的漏交提醒"
+      width="800px"
+    >
+      <el-table :data="ignoredWarnings" style="width: 100%">
+        <el-table-column prop="roomNumber" label="房间号" width="100" />
+        <el-table-column prop="message" label="漏交月份" width="200" />
+        <el-table-column prop="reason" label="忽略原因" min-width="180" />
+        <el-table-column label="忽略时间" width="160">
+          <template #default="scope">
+            {{ formatIgnoredAt(scope.row.ignoredAt) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="100" fixed="right">
+          <template #default="scope">
+            <el-button 
+              type="primary" 
+              size="small" 
+              link 
+              @click="restoreWarning(scope.row.id)"
+            >
+              恢复
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="showIgnoredWarningsDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
