@@ -135,8 +135,8 @@ export function useOverdueManagement(deps: {
         const readingDate = new Date(item.reading_date)
         readingDate.setHours(0, 0, 0, 0)
         const diffDays = Math.floor((today.getTime() - readingDate.getTime()) / (1000 * 60 * 60 * 24))
-        // 扩大时间范围到45天，适应实际录入时间浮动
-        return diffDays >= 0 && diffDays <= 45
+        // 限制在最近15天内，只查找本月的水电记录
+        return diffDays >= 0 && diffDays <= 15
       })
       .sort((a, b) => new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime())[0]
   }
@@ -328,19 +328,23 @@ export function useOverdueManagement(deps: {
       return isSameMonth(paymentDate, today)
     })
 
-    if (hasPaymentThisMonth) return true
+    if (hasPaymentThisMonth) {
+      // 如果有本月支付记录，检查下月是否即将到期
+      const daysToNext = getNextPaymentDays(room)
+      // 如果下月即将到期（<= expiringDays），不算"本月已收"
+      if (daysToNext <= expiringDays.value) {
+        return false // 让它出现在即将到期列表
+      }
+      return true
+    }
 
     // 历史导入场景：没有 payment 记录，但 last_payment_date 已更新
-    // 重要：只有当 last_payment_date 在本月，且距离下次付款日还有超过 expiringDays 天数时，
-    // 才认为本月已收（避免把"本月刚收，下月即将到期"的房间排除）
     if (room.last_payment_date) {
       const lastPaid = toStartOfDay(new Date(room.last_payment_date))
       if (isSameMonth(lastPaid, today)) {
-        // 检查下月是否即将到期
         const daysToNext = getNextPaymentDays(room)
-        // 如果下月即将到期（<= expiringDays），说明本月刚收，应该显示在即将到期列表
         if (daysToNext <= expiringDays.value) {
-          return false // 不算"本月已收"，让它出现在即将到期列表
+          return false
         }
         return true
       }
