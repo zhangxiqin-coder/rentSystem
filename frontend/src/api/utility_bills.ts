@@ -54,7 +54,7 @@ export interface UtilityBillProfitStats {
 /** 获取水电账单列表 */
 export const getUtilityBills = async () => {
   return request<UtilityBill[]>({
-    url: '/utility-bills/',
+    url: '/api/v1/utility-bills/',
     method: 'GET'
   })
 }
@@ -62,7 +62,7 @@ export const getUtilityBills = async () => {
 /** 获取水电收益统计 */
 export const getUtilityBillProfit = async () => {
   return request<UtilityBillProfitStats>({
-    url: '/utility-bills/profit',
+    url: '/api/v1/utility-bills/profit',
     method: 'GET'
   })
 }
@@ -70,7 +70,7 @@ export const getUtilityBillProfit = async () => {
 /** 创建水电账单 */
 export const createUtilityBill = async (data: UtilityBillCreate) => {
   return request<UtilityBill>({
-    url: '/utility-bills/',
+    url: '/api/v1/utility-bills/',
     method: 'POST',
     data
   })
@@ -79,7 +79,7 @@ export const createUtilityBill = async (data: UtilityBillCreate) => {
 /** 获取单个水电账单（含收益） */
 export const getUtilityBill = async (id: number) => {
   return request<BillWithProfit>({
-    url: `/utility-bills/${id}`,
+    url: `/api/v1/utility-bills/${id}`,
     method: 'GET'
   })
 }
@@ -87,7 +87,7 @@ export const getUtilityBill = async (id: number) => {
 /** 更新水电账单 */
 export const updateUtilityBill = async (id: number, data: UtilityBillUpdate) => {
   return request<UtilityBill>({
-    url: `/utility-bills/${id}`,
+    url: `/api/v1/utility-bills/${id}`,
     method: 'PUT',
     data
   })
@@ -96,7 +96,7 @@ export const updateUtilityBill = async (id: number, data: UtilityBillUpdate) => 
 /** 删除水电账单 */
 export const deleteUtilityBill = async (id: number) => {
   return request<{ message: string }>({
-    url: `/utility-bills/${id}`,
+    url: `/api/v1/utility-bills/${id}`,
     method: 'DELETE'
   })
 }
