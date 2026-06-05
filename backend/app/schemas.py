@@ -483,3 +483,52 @@ class ReminderResponse(BaseModel):
     reminders: list[ReminderItem]
     as_of_date: date
     pages: int
+
+
+# ==================== 水电账单相关 ====================
+
+class UtilityBillBase(BaseModel):
+    """水电账单基础schema"""
+    year: int = Field(..., ge=2020, le=2100, description="年份")
+    month: int = Field(..., ge=1, le=12, description="月份")
+    water_cost: float = Field(default=0, ge=0, description="水费支出（元）")
+    electric_cost: float = Field(default=0, ge=0, description="电费支出（元）")
+    notes: Optional[str] = Field(None, max_length=500, description="备注")
+
+
+class UtilityBillCreate(UtilityBillBase):
+    """创建水电账单"""
+    pass
+
+
+class UtilityBillUpdate(BaseModel):
+    """更新水电账单"""
+    water_cost: Optional[float] = Field(None, ge=0, description="水费支出（元）")
+    electric_cost: Optional[float] = Field(None, ge=0, description="电费支出（元）")
+    notes: Optional[str] = Field(None, max_length=500, description="备注")
+
+
+class UtilityBillResponse(UtilityBillBase):
+    """水电账单响应"""
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UtilityBillProfitStats(BaseModel):
+    """水电收益统计"""
+    total_water_profit: float = Field(description="累计水费收益")
+    total_electric_profit: float = Field(description="累计电费收益")
+    total_profit: float = Field(description="累计总收益")
+    monthly_breakdown: list = Field(description="每月明细")
+
+
+class BillWithProfit(UtilityBillResponse):
+    """带收益信息的账单"""
+    water_collected: float = Field(description="从租客收取的水费")
+    electric_collected: float = Field(description="从租客收取的电费")
+    water_profit: float = Field(description="水费收益")
+    electric_profit: float = Field(description="电费收益")
+    total_profit: float = Field(description="总收益")

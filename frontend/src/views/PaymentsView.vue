@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { paymentApi } from '@/api/payment'
 import { roomApi } from '@/api/room'
+import * as utilityBillApi from '@/api/utility_bills'
 import { useOverdueConfig } from '@/composables/useOverdueConfig'
 import { useAmountVisibility } from '@/composables/useAmountVisibility'
 import { useAuthStore } from '@/stores/auth'
@@ -62,6 +63,20 @@ const ignoredWarnings = ref<IgnoredWarning[]>([])
 
 // 查看已忽略警告对话框是否显示
 const showIgnoredWarningsDialog = ref(false)
+
+// 水电收益统计
+const utilityProfit = ref<utilityBillApi.UtilityBillProfitStats | null>(null)
+const utilityBills = ref<utilityBillApi.UtilityBill[]>([])
+const showBillDialog = ref(false)
+const billForm = ref<utilityBillApi.UtilityBillCreate>({
+  year: new Date().getFullYear(),
+  month: new Date().getMonth() + 1,
+  water_cost: 0,
+  electric_cost: 0,
+  notes: ''
+})
+const editingBillId = ref<number | null>(null)
+const loadingUtilityData = ref(false)
 
 // 加载已忽略的警告记录
 const loadIgnoredWarnings = () => {
@@ -613,6 +628,94 @@ const loadPayments = async () => {
   }
 }
 
+// 加载水电收益数据
+const loadUtilityProfit = async () => {
+  loadingUtilityData.value = true
+  try {
+    const profitRes = await utilityBillApi.getUtilityBillProfit()
+    utilityProfit.value = profitRes.data
+  } catch (error) {
+    console.error('加载水电收益失败:', error)
+  } finally {
+    loadingUtilityData.value = false
+  }
+}
+
+// 加载水电账单列表
+const loadUtilityBills = async () => {
+  try {
+    const billsRes = await utilityBillApi.getUtilityBills()
+    utilityBills.value = billsRes.data
+  } catch (error) {
+    console.error('加载水电账单失败:', error)
+  }
+}
+
+// 打开录入对话框
+const openBillDialog = (bill?: utilityBillApi.UtilityBill) => {
+  if (bill) {
+    // 编辑模式
+    editingBillId.value = bill.id
+    billForm.value = {
+      year: bill.year,
+      month: bill.month,
+      water_cost: bill.water_cost,
+      electric_cost: bill.electric_cost,
+      notes: bill.notes || ''
+    }
+  } else {
+    // 新增模式
+    editingBillId.value = null
+    billForm.value = {
+      year: new Date().getFullYear(),
+      month: new Date().getMonth() + 1,
+      water_cost: 0,
+      electric_cost: 0,
+      notes: ''
+    }
+  }
+  showBillDialog.value = true
+}
+
+// 保存水电账单
+const saveUtilityBill = async () => {
+  try {
+    if (editingBillId.value) {
+      // 更新
+      await utilityBillApi.updateUtilityBill(editingBillId.value, billForm.value)
+      ElMessage.success('更新成功')
+    } else {
+      // 创建
+      await utilityBillApi.createUtilityBill(billForm.value)
+      ElMessage.success('创建成功')
+    }
+    showBillDialog.value = false
+    await loadUtilityBills()
+    await loadUtilityProfit()
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '操作失败')
+  }
+}
+
+// 删除水电账单
+const deleteUtilityBill = async (bill: utilityBillApi.UtilityBill) => {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除 ${bill.year}年${bill.month}月 的账单吗？`,
+      '删除确认',
+      { type: 'warning' }
+    )
+    await utilityBillApi.deleteUtilityBill(bill.id)
+    ElMessage.success('删除成功')
+    await loadUtilityBills()
+    await loadUtilityProfit()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.response?.data?.detail || '删除失败')
+    }
+  }
+}
+
 // 全选/取消全选
 const toggleSelectAll = () => {
   if (selectAll.value) {
@@ -707,6 +810,8 @@ const handleBatchDelete = async () => {
 onMounted(() => {
   loadIgnoredWarnings()
   loadPayments()
+  loadUtilityProfit()
+  loadUtilityBills()
 })
 </script>
 
@@ -717,6 +822,89 @@ onMounted(() => {
     </header>
 
     <main class="view-content">
+      <!-- 水电收益统计 -->
+      <div v-if="!hideAmounts && utilityProfit" class="utility-profit-card">
+        <div class="profit-header">
+          <h2>💧⚡ 水电收益统计</h2>
+          <el-button type="primary" size="small" @click="openBillDialog()">
+            + 录入支出
+          </el-button>
+        </div>
+        <div class="profit-stats">
+          <div class="stat-item">
+            <span class="stat-label">累计水费收益</span>
+            <span class="stat-value water-profit">¥{{ utilityProfit.total_water_profit.toFixed(2) }}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">累计电费收益</span>
+            <span class="stat-value electric-profit">¥{{ utilityProfit.total_electric_profit.toFixed(2) }}</span>
+          </div>
+          <div class="stat-item total">
+            <span class="stat-label">累计总收益</span>
+            <span class="stat-value">¥{{ utilityProfit.total_profit.toFixed(2) }}</span>
+          </div>
+        </div>
+        
+        <!-- 月度明细 -->
+        <div v-if="utilityProfit.monthly_breakdown.length > 0" class="monthly-breakdown">
+          <h3>月度明细</h3>
+          <el-table :data="utilityProfit.monthly_breakdown" size="small">
+            <el-table-column prop="year" label="年份" width="80" />
+            <el-table-column prop="month" label="月份" width="80" />
+            <el-table-column label="水费">
+              <template #default="{ row }">
+                <div>收: ¥{{ row.water_collected.toFixed(2) }}</div>
+                <div>支: ¥{{ row.water_cost.toFixed(2) }}</div>
+                <div class="profit-value">益: ¥{{ row.water_profit.toFixed(2) }}</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="电费">
+              <template #default="{ row }">
+                <div>收: ¥{{ row.electric_collected.toFixed(2) }}</div>
+                <div>支: ¥{{ row.electric_cost.toFixed(2) }}</div>
+                <div class="profit-value">益: ¥{{ row.electric_profit.toFixed(2) }}</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="总收益">
+              <template #default="{ row }">
+                <span class="total-profit">¥{{ row.total_profit.toFixed(2) }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+
+      <!-- 录入/编辑对话框 -->
+      <el-dialog
+        v-model="showBillDialog"
+        :title="editingBillId ? '编辑水电账单' : '录入水电账单'"
+        width="500px"
+      >
+        <el-form :model="billForm" label-width="100px">
+          <el-form-item label="年份">
+            <el-input-number v-model="billForm.year" :min="2020" :max="2100" />
+          </el-form-item>
+          <el-form-item label="月份">
+            <el-input-number v-model="billForm.month" :min="1" :max="12" />
+          </el-form-item>
+          <el-form-item label="水费支出">
+            <el-input-number v-model="billForm.water_cost" :min="0" :precision="2" />
+            <span style="margin-left: 8px; color: #909399;">元</span>
+          </el-form-item>
+          <el-form-item label="电费支出">
+            <el-input-number v-model="billForm.electric_cost" :min="0" :precision="2" />
+            <span style="margin-left: 8px; color: #909399;">元</span>
+          </el-form-item>
+          <el-form-item label="备注">
+            <el-input v-model="billForm.notes" type="textarea" :rows="3" />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="showBillDialog = false">取消</el-button>
+          <el-button type="primary" @click="saveUtilityBill">保存</el-button>
+        </template>
+      </el-dialog>
+
       <!-- 漏交提醒 -->
       <div v-if="missedPaymentWarnings.length > 0" class="warning-alert">
         <div class="alert-icon">⚠️</div>
@@ -970,6 +1158,99 @@ onMounted(() => {
   padding: 2rem;
   max-width: 1200px;
   margin: 0 auto;
+}
+
+/* 水电收益统计样式 */
+.utility-profit-card {
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.profit-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.profit-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #333;
+}
+
+.profit-stats {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.stat-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
+}
+
+.stat-item.total {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.stat-label {
+  font-size: 0.875rem;
+  color: #666;
+}
+
+.stat-item.total .stat-label {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #333;
+}
+
+.stat-item.total .stat-value {
+  color: white;
+  font-size: 2rem;
+}
+
+.water-profit {
+  color: #409eff;
+}
+
+.electric-profit {
+  color: #f59e0b;
+}
+
+.monthly-breakdown {
+  margin-top: 1.5rem;
+}
+
+.monthly-breakdown h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1rem;
+  color: #333;
+}
+
+.profit-value {
+  font-weight: 700;
+  color: #67c23a;
+  font-size: 0.875rem;
+}
+
+.total-profit {
+  font-weight: 700;
+  color: #667eea;
+  font-size: 1rem;
 }
 
 .loading {

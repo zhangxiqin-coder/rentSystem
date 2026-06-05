@@ -212,3 +212,23 @@ class UtilityRate(Base):
 
     def __repr__(self):
         return f"<UtilityRate(id={self.id}, type='{self.utility_type}', rate={self.rate_per_unit}, active={self.is_active})>"
+
+
+class UtilityBill(Base):
+    """水电账单模型 - 记录每月交给国网和电网的费用"""
+    __tablename__ = "utility_bills"
+    __table_args__ = (
+        Index('idx_bill_year_month', 'year', 'month', unique=True),
+    )
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    year = Column(Integer, nullable=False, comment="年份")
+    month = Column(Integer, nullable=False, comment="月份 (1-12)")
+    water_cost = Column(DECIMAL(10, 2), default=0, comment="水费支出（元）")
+    electric_cost = Column(DECIMAL(10, 2), default=0, comment="电费支出（元）")
+    notes = Column(Text, nullable=True, comment="备注")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    def __repr__(self):
+        return f"<UtilityBill(id={self.id}, {self.year}-{self.month:02d}, 水费={self.water_cost}, 电费={self.electric_cost})>"

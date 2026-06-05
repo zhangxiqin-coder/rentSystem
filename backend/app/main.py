@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 # 加载 .env 文件
 load_dotenv()
 
-from app.api import auth, rooms, payments, utility_readings, utility_rates, users, statistics, reminders, export, ocr
+from app.api import auth, rooms, payments, utility_readings, utility_rates, users, statistics, reminders, export, ocr, utility_bills
 
 app = FastAPI(
     title="Rent Management System API",
@@ -160,6 +160,7 @@ app.include_router(statistics.router, prefix=api_v1_prefix)
 app.include_router(reminders.router, prefix=api_v1_prefix)
 app.include_router(export.router, prefix=api_v1_prefix)
 app.include_router(ocr.router, prefix=api_v1_prefix)
+app.include_router(utility_bills.router, prefix=api_v1_prefix)
 
 # 健康检查端点
 @app.get("/")
