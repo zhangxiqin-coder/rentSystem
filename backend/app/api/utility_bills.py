@@ -1,6 +1,7 @@
 """水电账单API路由"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import extract
 from typing import List
 from datetime import datetime
 
@@ -73,14 +74,14 @@ def get_profit_stats(
     monthly_breakdown = []
     
     for bill in bills:
-        # 获取该月从租客收取的水电费
+        # 获取该月从租客收取的水电费 - 从reading_date中提取年月
         readings = db.query(UtilityReading).filter(
-            UtilityReading.year == bill.year,
-            UtilityReading.month == bill.month
+            extract('year', UtilityReading.reading_date) == bill.year,
+            extract('month', UtilityReading.reading_date) == bill.month
         ).all()
         
-        water_collected = sum(r.cost for r in readings if r.utility_type == "water")
-        electric_collected = sum(r.cost for r in readings if r.utility_type == "electricity")
+        water_collected = sum(r.amount for r in readings if r.utility_type == "water") if readings else 0
+        electric_collected = sum(r.amount for r in readings if r.utility_type == "electricity") if readings else 0
         
         water_profit = water_collected - bill.water_cost
         electric_profit = electric_collected - bill.electric_cost
@@ -119,14 +120,14 @@ def get_utility_bill(
     if not bill:
         raise HTTPException(status_code=404, detail="账单不存在")
     
-    # 获取该月从租客收取的水电费
+    # 获取该月从租客收取的水电费 - 从reading_date中提取年月
     readings = db.query(UtilityReading).filter(
-        UtilityReading.year == bill.year,
-        UtilityReading.month == bill.month
+        extract('year', UtilityReading.reading_date) == bill.year,
+        extract('month', UtilityReading.reading_date) == bill.month
     ).all()
     
-    water_collected = sum(r.cost for r in readings if r.utility_type == "water")
-    electric_collected = sum(r.cost for r in readings if r.utility_type == "electricity")
+    water_collected = sum(r.amount for r in readings if r.utility_type == "water") if readings else 0
+    electric_collected = sum(r.amount for r in readings if r.utility_type == "electricity") if readings else 0
     
     water_profit = water_collected - bill.water_cost
     electric_profit = electric_collected - bill.electric_cost
