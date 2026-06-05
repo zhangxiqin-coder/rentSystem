@@ -1,5 +1,5 @@
 /** 水电账单API */
-import { request } from './request'
+import request from './request'
 
 export interface UtilityBill {
   id: number
