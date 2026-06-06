@@ -489,10 +489,11 @@ class ReminderResponse(BaseModel):
 
 class UtilityBillBase(BaseModel):
     """水电账单基础schema"""
+    series: str = Field(..., min_length=1, max_length=50, description="房子系列（如102、102A、2-2501等）")
     year: int = Field(..., ge=2020, le=2100, description="年份")
     month: int = Field(..., ge=1, le=12, description="月份")
-    water_cost: float = Field(default=0, ge=0, description="水费支出（元）")
-    electric_cost: float = Field(default=0, ge=0, description="电费支出（元）")
+    utility_type: str = Field(..., pattern="^(water|electric)$", description="类型：water(水费)或electric(电费)")
+    cost: float = Field(default=0, ge=0, description="费用支出（元）")
     notes: Optional[str] = Field(None, max_length=500, description="备注")
 
 
@@ -503,8 +504,7 @@ class UtilityBillCreate(UtilityBillBase):
 
 class UtilityBillUpdate(BaseModel):
     """更新水电账单"""
-    water_cost: Optional[float] = Field(None, ge=0, description="水费支出（元）")
-    electric_cost: Optional[float] = Field(None, ge=0, description="电费支出（元）")
+    cost: Optional[float] = Field(None, ge=0, description="费用支出（元）")
     notes: Optional[str] = Field(None, max_length=500, description="备注")
 
 

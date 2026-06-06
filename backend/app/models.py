@@ -215,20 +215,22 @@ class UtilityRate(Base):
 
 
 class UtilityBill(Base):
-    """水电账单模型 - 记录每月交给国网和电网的费用"""
+    """水电账单模型 - 记录每个房子系列每月交给国网和电网的费用"""
     __tablename__ = "utility_bills"
     __table_args__ = (
-        Index('idx_bill_year_month', 'year', 'month', unique=True),
+        Index('idx_bill_series_year_month_type', 'series', 'year', 'month', 'utility_type', unique=True),
     )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    series = Column(String(50), nullable=False, comment="房子系列（如102、102A、2-2501等）")
     year = Column(Integer, nullable=False, comment="年份")
     month = Column(Integer, nullable=False, comment="月份 (1-12)")
-    water_cost = Column(DECIMAL(10, 2), default=0, comment="水费支出（元）")
-    electric_cost = Column(DECIMAL(10, 2), default=0, comment="电费支出（元）")
+    utility_type = Column(String(20), nullable=False, comment="类型：water(水费)或electric(电费)")
+    cost = Column(DECIMAL(10, 2), default=0, comment="费用支出（元）")
     notes = Column(Text, nullable=True, comment="备注")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     def __repr__(self):
-        return f"<UtilityBill(id={self.id}, {self.year}-{self.month:02d}, 水费={self.water_cost}, 电费={self.electric_cost})>"
+        type_name = "水费" if self.utility_type == "water" else "电费"
+        return f"<UtilityBill(id={self.id}, series={self.series}, {self.year}-{self.month:02d}, {type_name}={self.cost})>"

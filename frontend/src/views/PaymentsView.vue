@@ -67,14 +67,22 @@ const showIgnoredWarningsDialog = ref(false)
 // 水电收益统计
 const utilityProfit = ref<utilityBillApi.UtilityBillProfitStats | null>(null)
 const utilityBills = ref<utilityBillApi.UtilityBill[]>([])
+const seriesList = ref<utilityBillApi.SeriesInfo[]>([])
 const showBillDialog = ref(false)
 const billForm = ref<utilityBillApi.UtilityBillCreate>({
+  series: '',
   year: new Date().getFullYear(),
   month: new Date().getMonth() + 1,
-  water_cost: 0,
-  electric_cost: 0,
+  utility_type: 'water',
+  cost: 0,
   notes: ''
 })
+
+// 计算上个月作为默认值
+const today = new Date()
+const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+billForm.value.year = lastMonth.getFullYear()
+billForm.value.month = lastMonth.getMonth() + 1
 const editingBillId = ref<number | null>(null)
 const loadingUtilityData = ref(false)
 
@@ -632,8 +640,7 @@ const loadPayments = async () => {
 const loadUtilityProfit = async () => {
   loadingUtilityData.value = true
   try {
-    const profitRes = await utilityBillApi.getUtilityBillProfit()
-    utilityProfit.value = profitRes.data
+    utilityProfit.value = await utilityBillApi.getUtilityBillProfit()
   } catch (error) {
     console.error('加载水电收益失败:', error)
   } finally {
@@ -644,10 +651,19 @@ const loadUtilityProfit = async () => {
 // 加载水电账单列表
 const loadUtilityBills = async () => {
   try {
-    const billsRes = await utilityBillApi.getUtilityBills()
-    utilityBills.value = billsRes.data
+    utilityBills.value = await utilityBillApi.getUtilityBills()
   } catch (error) {
-    console.error('加载水电账单失败:', error)
+    console.error('加载水电账单列表失败:', error)
+  }
+}
+
+// 加载房子系列列表
+const loadSeriesList = async () => {
+  try {
+    const data = await utilityBillApi.getSeriesList()
+    seriesList.value = data
+  } catch (error) {
+    console.error('加载系列列表失败:', error)
   }
 }
 
@@ -657,23 +673,28 @@ const openBillDialog = (bill?: utilityBillApi.UtilityBill) => {
     // 编辑模式
     editingBillId.value = bill.id
     billForm.value = {
+      series: bill.series,
       year: bill.year,
       month: bill.month,
-      water_cost: bill.water_cost,
-      electric_cost: bill.electric_cost,
+      utility_type: bill.utility_type,
+      cost: bill.cost,
       notes: bill.notes || ''
     }
   } else {
-    // 新增模式
+    // 新增模式 - 默认为上个月（因为水电费是月初收上个月的）
     editingBillId.value = null
+    const today = new Date()
+    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
     billForm.value = {
-      year: new Date().getFullYear(),
-      month: new Date().getMonth() + 1,
-      water_cost: 0,
-      electric_cost: 0,
+      series: '',
+      year: lastMonth.getFullYear(),
+      month: lastMonth.getMonth() + 1,
+      utility_type: 'water',
+      cost: 0,
       notes: ''
     }
   }
+  loadSeriesList()
   showBillDialog.value = true
 }
 
@@ -810,6 +831,7 @@ const handleBatchDelete = async () => {
 onMounted(() => {
   loadIgnoredWarnings()
   loadPayments()
+  loadSeriesList()
   loadUtilityProfit()
   loadUtilityBills()
 })
@@ -849,6 +871,7 @@ onMounted(() => {
         <div v-if="utilityProfit.monthly_breakdown.length > 0" class="monthly-breakdown">
           <h3>月度明细</h3>
           <el-table :data="utilityProfit.monthly_breakdown" size="small">
+            <el-table-column prop="series" label="系列" width="100" />
             <el-table-column prop="year" label="年份" width="80" />
             <el-table-column prop="month" label="月份" width="80" />
             <el-table-column label="水费">
@@ -881,18 +904,34 @@ onMounted(() => {
         width="500px"
       >
         <el-form :model="billForm" label-width="100px">
+          <el-form-item label="房子系列">
+            <el-select 
+              v-model="billForm.series" 
+              placeholder="请选择房子系列"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="item in seriesList"
+                :key="item.series"
+                :label="`${item.series} 系列 (${item.room_count}个房间)`"
+                :value="item.series"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="费用类型">
+            <el-radio-group v-model="billForm.utility_type">
+              <el-radio value="water">💧 水费</el-radio>
+              <el-radio value="electric">⚡ 电费</el-radio>
+            </el-radio-group>
+          </el-form-item>
           <el-form-item label="年份">
             <el-input-number v-model="billForm.year" :min="2020" :max="2100" />
           </el-form-item>
           <el-form-item label="月份">
             <el-input-number v-model="billForm.month" :min="1" :max="12" />
           </el-form-item>
-          <el-form-item label="水费支出">
-            <el-input-number v-model="billForm.water_cost" :min="0" :precision="2" />
-            <span style="margin-left: 8px; color: #909399;">元</span>
-          </el-form-item>
-          <el-form-item label="电费支出">
-            <el-input-number v-model="billForm.electric_cost" :min="0" :precision="2" />
+          <el-form-item :label="billForm.utility_type === 'water' ? '水费支出' : '电费支出'">
+            <el-input-number v-model="billForm.cost" :min="0" :precision="2" />
             <span style="margin-left: 8px; color: #909399;">元</span>
           </el-form-item>
           <el-form-item label="备注">
