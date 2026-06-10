@@ -49,6 +49,21 @@ export const roomApi = {
     payment_cycle?: number
   }) => request.post<ApiResponse<Room>>(`/api/v1/rooms/${id}/checkin`, data),
 
+  // 续租房间
+  renewLease: (id: number, data: {
+    months: number
+    monthly_rent?: number
+    notes?: string
+  }) => request.post<ApiResponse<{
+    message: string
+    room_id: number
+    room_number: string
+    old_lease_end: string
+    new_lease_end: string
+    months_added: number
+    monthly_rent: number
+  }>>(`/api/v1/rooms/${id}/renew`, data),
+
   // 批量导入房间
   batchImport: (formData: FormData) => {
     return request.post<ApiResponse<{

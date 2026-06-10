@@ -15,7 +15,8 @@ from app.models import User, Room, Payment, UtilityReading
 from app.schemas import (
     RoomCreate, RoomUpdate, RoomResponse, PaginatedResponse,
     PaymentResponse, UtilityReadingResponse,
-    CheckoutRequest, CheckinRequest, CheckoutResponse, CheckinResponse
+    CheckoutRequest, CheckinRequest, CheckoutResponse, CheckinResponse,
+    RenewLeaseRequest, RenewLeaseResponse
 )
 from app.service.business import update_room_status
 
@@ -485,6 +486,68 @@ def checkin_room(
         "tenant_name": room.tenant_name,
         "lease_start": room.lease_start,
         "lease_end": room.lease_end
+    }
+
+
+@router.post("/{room_id}/renew", response_model=RenewLeaseResponse)
+def renew_lease(
+    room_id: int,
+    renew_data: RenewLeaseRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    续租房间
+    
+    操作：
+    1. 在当前租期结束日期基础上增加指定月数
+    2. 可选择更新月租金
+    3. 保存续租备注
+    """
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="房间不存在")
+    
+    check_room_permission(current_user, room)
+    
+    # 检查房间是否有租客
+    if not room.lease_end or room.status != "occupied":
+        raise HTTPException(status_code=400, detail="只有已租出的房间才能续租")
+    
+    # 保存原租期结束日期
+    old_lease_end = room.lease_end
+    
+    # 计算新的租期结束日期（在原结束日期基础上增加月数）
+    new_lease_end = old_lease_end + relativedelta(months=renew_data.months)
+    
+    # 更新房间信息
+    room.lease_end = new_lease_end
+    
+    # 更新月租金（如果提供）
+    if renew_data.monthly_rent is not None:
+        room.monthly_rent = renew_data.monthly_rent
+    
+    # 如果有备注，添加到描述中
+    if renew_data.notes:
+        current_description = room.description or ""
+        renew_note = f"\n\n续租记录（{date.today()}）：续租{renew_data.months}个月"
+        if renew_data.monthly_rent:
+            renew_note += f"，新月租金：{renew_data.monthly_rent}元"
+        if renew_data.notes:
+            renew_note += f"。备注：{renew_data.notes}"
+        room.description = current_description + renew_note
+    
+    db.commit()
+    db.refresh(room)
+    
+    return {
+        "message": f"房间 {room.room_number} 续租成功",
+        "room_id": room.id,
+        "room_number": room.room_number,
+        "old_lease_end": old_lease_end,
+        "new_lease_end": new_lease_end,
+        "months_added": renew_data.months,
+        "monthly_rent": room.monthly_rent
     }
 
 

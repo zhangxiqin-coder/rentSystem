@@ -221,6 +221,24 @@ class CheckinRequest(BaseModel):
         return self
 
 
+class RenewLeaseRequest(BaseModel):
+    """续租请求 schema"""
+    months: int = Field(..., gt=0, le=120, description="续租月数（1-120个月，即1-10年）")
+    monthly_rent: Optional[Decimal] = Field(None, gt=0, description="新月租金（如不修改则保持原租金）")
+    notes: Optional[str] = Field(None, max_length=500, description="续租备注")
+
+
+class RenewLeaseResponse(BaseModel):
+    """续租响应 schema"""
+    message: str
+    room_id: int
+    room_number: str
+    old_lease_end: date
+    new_lease_end: date
+    months_added: int
+    monthly_rent: Decimal
+
+
 class CheckoutResponse(BaseModel):
     """退租响应 schema"""
     message: str

@@ -59,9 +59,33 @@ export interface SeriesInfo {
   room_count: number
 }
 
+export interface SeriesUtilityDetail {
+  room_id: number
+  room_number: string
+  water_previous: number | null
+  water_current: number | null
+  water_usage: number | null
+  water_amount: number | null
+  water_date: string | null
+  electric_previous: number | null
+  electric_current: number | null
+  electric_usage: number | null
+  electric_amount: number | null
+  electric_date: string | null
+  total_amount: number
+}
+
 /** 获取系列列表 */
 export const getSeriesList = async () => {
   const response = await request.get<SeriesInfo[]>('/api/v1/utility-bills/series')
+  return response.data
+}
+
+/** 获取指定系列、指定年月的水电收租明细 */
+export const getSeriesUtilityDetail = async (series: string, year: number, month: number) => {
+  const response = await request.get<SeriesUtilityDetail[]>(`/api/v1/utility-bills/series/${series}/detail`, {
+    params: { year, month }
+  })
   return response.data
 }
 

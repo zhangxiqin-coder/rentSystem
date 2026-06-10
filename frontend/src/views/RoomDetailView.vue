@@ -39,6 +39,15 @@ const dateRange = ref<[Date, Date]>([
   new Date()
 ])
 
+// 续租相关
+const renewDialogVisible = ref(false)
+const renewSubmitting = ref(false)
+const renewForm = ref({
+  months: 12,
+  monthly_rent: null as number | null,
+  notes: ''
+})
+
 const loadRoom = async () => {
   if (!Number.isFinite(roomId.value) || roomId.value <= 0) {
     ElMessage.error('房间ID无效')
@@ -137,6 +146,38 @@ const handleDeletePayment = async (payment: Payment) => {
     if (error !== 'cancel') {
       ElMessage.error(error.response?.data?.message || '删除缴费记录失败')
     }
+  }
+}
+
+// 续租相关函数
+const handleRenewLease = () => {
+  // 重置表单，默认续租12个月
+  renewForm.value = {
+    months: 12,
+    monthly_rent: null,
+    notes: ''
+  }
+  renewDialogVisible.value = true
+}
+
+const handleSubmitRenewLease = async () => {
+  if (!room.value) return
+  
+  renewSubmitting.value = true
+  try {
+    const response = await roomApi.renewLease(roomId.value, {
+      months: renewForm.value.months,
+      monthly_rent: renewForm.value.monthly_rent || undefined,
+      notes: renewForm.value.notes || undefined
+    })
+    
+    ElMessage.success(response.data.message || '续租成功')
+    renewDialogVisible.value = false
+    await loadRoom() // 重新加载房间信息
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '续租失败')
+  } finally {
+    renewSubmitting.value = false
   }
 }
 
@@ -343,7 +384,17 @@ onMounted(async () => {
               {{ room?.lease_start ? room.lease_start.split('T')[0] : '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="租期结束">
-              {{ room?.lease_end ? room.lease_end.split('T')[0] : '-' }}
+              <div style="display: flex; align-items: center; gap: 8px;">
+                {{ room?.lease_end ? room.lease_end.split('T')[0] : '-' }}
+                <el-button
+                  v-if="room?.status === 'occupied' && room?.lease_end"
+                  type="primary"
+                  size="small"
+                  @click="handleRenewLease"
+                >
+                  续租
+                </el-button>
+              </div>
             </el-descriptions-item>
             <el-descriptions-item label="描述" :span="2">
               {{ room?.description || '-' }}
@@ -519,6 +570,65 @@ onMounted(async () => {
         @submit="handleSubmitUtilityReading"
         @cancel="utilityDialogVisible = false"
       />
+    </el-dialog>
+
+    <!-- 续租对话框 -->
+    <el-dialog
+      v-model="renewDialogVisible"
+      title="续租房间"
+      width="500px"
+    >
+      <el-form :model="renewForm" label-width="100px">
+        <el-form-item label="当前租期结束">
+          <span>{{ room?.lease_end ? room.lease_end.split('T')[0] : '-' }}</span>
+        </el-form-item>
+        <el-form-item label="续租月数" required>
+          <el-input-number
+            v-model="renewForm.months"
+            :min="1"
+            :max="120"
+            :step="1"
+            controls-position="right"
+          />
+          <span style="margin-left: 8px; color: #909399;">
+            （{{ renewForm.months >= 12 ? (renewForm.months / 12).toFixed(1) + '年' : renewForm.months + '个月' }}）
+          </span>
+        </el-form-item>
+        <el-form-item label="新月租金">
+          <el-input-number
+            v-model="renewForm.monthly_rent"
+            :min="0"
+            :step="50"
+            controls-position="right"
+            placeholder="不修改则保持原租金"
+          />
+          <span style="margin-left: 8px; color: #909399;">
+            原租金：{{ room?.monthly_rent || '-' }}元
+          </span>
+        </el-form-item>
+        <el-form-item label="续租备注">
+          <el-input
+            v-model="renewForm.notes"
+            type="textarea"
+            :rows="3"
+            placeholder="选填"
+          />
+        </el-form-item>
+        <el-form-item>
+          <div style="color: #409EFF; font-size: 13px;">
+            <span v-if="room?.lease_end">
+              续租后租期将至：
+              {{ new Date(new Date(room.lease_end).setMonth(new Date(room.lease_end).getMonth() + renewForm.months)).toISOString().split('T')[0] }}
+            </span>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="renewDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="renewSubmitting" @click="handleSubmitRenewLease">
+          确认续租
+        </el-button>
+      </template>
     </el-dialog>
   </div>
 </template>

@@ -78,6 +78,12 @@ const billForm = ref<utilityBillApi.UtilityBillCreate>({
   notes: ''
 })
 
+// 系列水电明细对话框
+const showSeriesDetailDialog = ref(false)
+const seriesDetailLoading = ref(false)
+const seriesDetailData = ref<utilityBillApi.SeriesUtilityDetail[]>([])
+const seriesDetailTitle = ref('')
+
 // 计算上个月作为默认值
 const today = new Date()
 const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
@@ -667,6 +673,23 @@ const loadSeriesList = async () => {
   }
 }
 
+// 打开系列水电明细对话框
+const openSeriesDetail = async (series: string, year: number, month: number) => {
+  seriesDetailLoading.value = true
+  seriesDetailTitle.value = `${series}系列 ${year}年${month}月 水电收租明细`
+  showSeriesDetailDialog.value = true
+  
+  try {
+    seriesDetailData.value = await utilityBillApi.getSeriesUtilityDetail(series, year, month)
+  } catch (error: any) {
+    console.error('加载系列明细失败:', error)
+    ElMessage.error(error.response?.data?.detail || '加载明细失败')
+    showSeriesDetailDialog.value = false
+  } finally {
+    seriesDetailLoading.value = false
+  }
+}
+
 // 打开录入对话框
 const openBillDialog = (bill?: utilityBillApi.UtilityBill) => {
   if (bill) {
@@ -871,7 +894,20 @@ onMounted(() => {
         <div v-if="utilityProfit.monthly_breakdown.length > 0" class="monthly-breakdown">
           <h3>月度明细</h3>
           <el-table :data="utilityProfit.monthly_breakdown" size="small">
-            <el-table-column prop="series" label="系列" width="100" />
+            <el-table-column label="系列" width="100">
+              <template #default="{ row }">
+                <div>{{ row.series }}</div>
+                <el-button 
+                  type="primary" 
+                  link 
+                  size="small" 
+                  @click="openSeriesDetail(row.series, row.year, row.month)"
+                  style="margin-top: 4px;"
+                >
+                  查看明细
+                </el-button>
+              </template>
+            </el-table-column>
             <el-table-column prop="year" label="年份" width="80" />
             <el-table-column prop="month" label="月份" width="80" />
             <el-table-column label="水费">
@@ -941,6 +977,55 @@ onMounted(() => {
         <template #footer>
           <el-button @click="showBillDialog = false">取消</el-button>
           <el-button type="primary" @click="saveUtilityBill">保存</el-button>
+        </template>
+      </el-dialog>
+
+      <!-- 系列水电明细对话框 -->
+      <el-dialog
+        v-model="showSeriesDetailDialog"
+        :title="seriesDetailTitle"
+        width="900px"
+      >
+        <el-table
+          :data="seriesDetailData"
+          v-loading="seriesDetailLoading"
+          size="small"
+          :default-sort="{ prop: 'room_number', order: 'ascending' }"
+        >
+          <el-table-column prop="room_number" label="房间号" width="100" sortable />
+          <el-table-column label="水费" width="180">
+            <template #default="{ row }">
+              <div v-if="row.water_amount !== null">
+                <div>{{ row.water_previous }}→{{ row.water_current }}</div>
+                <div style="font-size: 12px; color: #909399;">用量: {{ row.water_usage }}吨</div>
+                <div style="font-weight: 500;">¥{{ row.water_amount.toFixed(2) }}</div>
+              </div>
+              <span v-else style="color: #909399;">未录入</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="电费" width="180">
+            <template #default="{ row }">
+              <div v-if="row.electric_amount !== null">
+                <div>{{ row.electric_previous }}→{{ row.electric_current }}</div>
+                <div style="font-size: 12px; color: #909399;">用量: {{ row.electric_usage }}度</div>
+                <div style="font-weight: 500;">¥{{ row.electric_amount.toFixed(2) }}</div>
+              </div>
+              <span v-else style="color: #909399;">未录入</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="合计" width="100">
+            <template #default="{ row }">
+              <span style="font-weight: 600; color: #409eff;">¥{{ row.total_amount.toFixed(2) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="录入日期" width="110">
+            <template #default="{ row }">
+              {{ row.water_date ? row.water_date.split('T')[0] : '' }}
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #footer>
+          <el-button @click="showSeriesDetailDialog = false">关闭</el-button>
         </template>
       </el-dialog>
 
