@@ -2,7 +2,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, ArrowDown, Edit, Delete, CircleCheck, CircleClose, UploadFilled } from '@element-plus/icons-vue'
+import { Plus, Search, ArrowDown, Edit, Delete, CircleCheck, CircleClose, UploadFilled, Refresh } from '@element-plus/icons-vue'
 import type { Room } from '@/types'
 import { roomApi } from '@/api/room'
 import RoomForm from '@/components/RoomForm.vue'
@@ -200,6 +200,7 @@ const handle删除 = async (room: Room) => {
 // 退租和入住功能
 const checkoutDialogVisible = ref(false)
 const checkinDialogVisible = ref(false)
+const renewDialogVisible = ref(false)
 const currentRoom = ref<Room>()
 
 // 退租表单
@@ -208,6 +209,13 @@ const checkoutForm = ref({
   refund_date: new Date().toISOString().split('T')[0],
   refund_reason: '',
   payment_method: '微信支付'
+})
+
+// 续租表单
+const renewForm = ref({
+  months: 12,
+  monthly_rent: null as number | null,
+  notes: ''
 })
 
 // 入住表单
@@ -239,6 +247,38 @@ const handle入住 = (room: Room) => {
   checkinForm.value.monthly_rent = Number(room.monthly_rent) || 0
   checkinForm.value.deposit_amount = Number(room.deposit_amount) || 0
   checkinDialogVisible.value = true
+}
+
+const handle续租 = (room: Room) => {
+  currentRoom.value = room
+  // 重置表单，默认续租12个月
+  renewForm.value = {
+    months: 12,
+    monthly_rent: null,
+    notes: ''
+  }
+  renewDialogVisible.value = true
+}
+
+const confirm续租 = async () => {
+  if (!currentRoom.value) return
+
+  try {
+    submitting.value = true
+    const response = await roomApi.renewLease(currentRoom.value.id, {
+      months: renewForm.value.months,
+      monthly_rent: renewForm.value.monthly_rent || undefined,
+      notes: renewForm.value.notes || undefined
+    })
+
+    ElMessage.success(response.data.message || '续租成功')
+    renewDialogVisible.value = false
+    await loadRooms()
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '续租失败')
+  } finally {
+    submitting.value = false
+  }
 }
 
 const confirm退租 = async () => {
@@ -530,7 +570,18 @@ onMounted(() => {
           <template #default="{ row }">
             <div class="action-row">
               <div class="action-buttons">
-                <!-- 已租房间：显示退租 -->
+                <!-- 已租房间：显示续租和退租 -->
+                <el-button
+                  v-if="row.status === 'occupied' && row.lease_end"
+                  type="primary"
+                  size="small"
+                  :icon="Refresh"
+                  class="action-btn"
+                  @click="handle续租(row)"
+                >
+                  <span class="btn-text-full">续租</span>
+                  <span class="btn-text-short">续租</span>
+                </el-button>
                 <el-button
                   v-if="row.status === 'occupied'"
                   type="danger"
@@ -731,6 +782,69 @@ onMounted(() => {
         <el-button @click="checkinDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitting" @click="confirm入住">
           确认入住
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 续租对话框 -->
+    <el-dialog
+      v-model="renewDialogVisible"
+      title="续租"
+      width="500px"
+    >
+      <el-form :model="renewForm" label-width="120px">
+        <el-form-item label="房间">
+          <span>{{ currentRoom?.room_number }}</span>
+        </el-form-item>
+        <el-form-item label="当前租期结束">
+          <span>{{ currentRoom?.lease_end ? currentRoom.lease_end.split('T')[0] : '-' }}</span>
+        </el-form-item>
+        <el-form-item label="续租月数" required>
+          <el-input-number
+            v-model="renewForm.months"
+            :min="1"
+            :max="120"
+            :step="1"
+            style="width: 100%"
+          />
+          <span style="margin-left: 8px; color: #909399;">
+            （1-120个月）
+          </span>
+        </el-form-item>
+        <el-form-item label="新租金">
+          <el-input-number
+            v-model="renewForm.monthly_rent"
+            :min="0"
+            :precision="2"
+            :step="50"
+            controls-position="right"
+            placeholder="不修改则保持原租金"
+          />
+          <span style="margin-left: 8px; color: #909399;">
+            原租金：{{ currentRoom?.monthly_rent || '-' }}元
+          </span>
+        </el-form-item>
+        <el-form-item label="续租备注">
+          <el-input
+            v-model="renewForm.notes"
+            type="textarea"
+            :rows="3"
+            placeholder="选填"
+          />
+        </el-form-item>
+        <el-form-item>
+          <div style="color: #409EFF; font-size: 13px;">
+            <span v-if="currentRoom?.lease_end">
+              续租后租期将至：
+              {{ new Date(new Date(currentRoom.lease_end).setMonth(new Date(currentRoom.lease_end).getMonth() + renewForm.months)).toISOString().split('T')[0] }}
+            </span>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="renewDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="confirm续租">
+          确认续租
         </el-button>
       </template>
     </el-dialog>
