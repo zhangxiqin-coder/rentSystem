@@ -3,7 +3,7 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from datetime import date
 
 from app.database import get_db
@@ -18,11 +18,30 @@ router = APIRouter(prefix="/tenants", tags=["租客管理"])
 def list_tenants(
     skip: int = 0,
     limit: int = 100,
+    status: Optional[str] = None,
+    search: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """获取租客列表"""
+    from sqlalchemy import or_
     query = db.query(Tenant).filter(Tenant.owner_id == current_user.id)
+    
+    # 状态筛选
+    if status:
+        query = query.filter(Tenant.status == status)
+    
+    # 搜索（姓名/电话/身份证号）
+    if search:
+        keyword = f"%{search}%"
+        query = query.filter(
+            or_(
+                Tenant.name.like(keyword),
+                Tenant.phone.like(keyword),
+                Tenant.id_card.like(keyword),
+            )
+        )
+    
     tenants = query.order_by(Tenant.created_at.desc()).offset(skip).limit(limit).all()
     return tenants
 

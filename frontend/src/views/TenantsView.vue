@@ -1,20 +1,26 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete, User, House } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, User, Search } from '@element-plus/icons-vue'
 import { tenantsApi } from '@/api/tenants'
 import type { Tenant } from '@/types'
 
 const router = useRouter()
 const loading = ref(false)
 const tenants = ref<Tenant[]>([])
+const activeTab = ref('active')  // active: 在租, inactive: 已搬走
+const searchKeyword = ref('')
 
 // 获取租客列表
 const fetchTenants = async () => {
   loading.value = true
   try {
-    tenants.value = await tenantsApi.list()
+    const params: { status?: string; search?: string } = { status: activeTab.value }
+    if (searchKeyword.value.trim()) {
+      params.search = searchKeyword.value.trim()
+    }
+    tenants.value = await tenantsApi.list(params)
   } catch (error) {
     ElMessage.error('获取租客列表失败')
     console.error(error)
@@ -22,6 +28,11 @@ const fetchTenants = async () => {
     loading.value = false
   }
 }
+
+// 切换tab或搜索时重新加载
+watch([activeTab, searchKeyword], () => {
+  fetchTenants()
+})
 
 // 删除租客
 const handleDelete = async (tenant: Tenant) => {
@@ -68,6 +79,23 @@ onMounted(() => {
       <h2>租客管理</h2>
       <el-button type="primary" :icon="Plus" @click="handleAdd">新增租客</el-button>
     </div>
+
+    <!-- 搜索栏 -->
+    <div class="search-bar">
+      <el-input
+        v-model="searchKeyword"
+        placeholder="搜索姓名、电话或身份证号"
+        clearable
+        :prefix-icon="Search"
+        style="width: 320px"
+      />
+    </div>
+
+    <!-- tab切换 -->
+    <el-tabs v-model="activeTab" class="tenant-tabs">
+      <el-tab-pane label="在租租客" name="active" />
+      <el-tab-pane label="已搬走" name="inactive" />
+    </el-tabs>
 
     <el-table
       v-loading="loading"
@@ -119,12 +147,20 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .page-header h2 {
   margin: 0;
   font-size: 24px;
   font-weight: 600;
+}
+
+.search-bar {
+  margin-bottom: 8px;
+}
+
+.tenant-tabs {
+  margin-bottom: 8px;
 }
 </style>

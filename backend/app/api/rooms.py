@@ -11,7 +11,7 @@ import io
 
 from app.core.deps import get_db, get_current_user
 from app.core.permissions import apply_room_filter
-from app.models import User, Room, Payment, UtilityReading
+from app.models import User, Room, Payment, UtilityReading, Tenant
 from app.schemas import (
     RoomCreate, RoomUpdate, RoomResponse, PaginatedResponse,
     PaymentResponse, UtilityReadingResponse,
@@ -420,6 +420,12 @@ def checkout_room(
     room.lease_start = None
     room.lease_end = None
     room.last_payment_date = None
+    
+    # 将关联租客置为 inactive（已搬走）
+    if room.tenant_id:
+        tenant = db.query(Tenant).filter(Tenant.id == room.tenant_id).first()
+        if tenant:
+            tenant.status = 'inactive'
     
     # 创建退租记录（负数金额表示退款）
     refund_payment = Payment(

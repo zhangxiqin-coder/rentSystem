@@ -572,6 +572,7 @@ class TenantBase(BaseModel):
     emergency_contact: Optional[str] = Field(None, max_length=100, description="紧急联系人")
     emergency_phone: Optional[str] = Field(None, max_length=20, description="紧急联系电话")
     notes: Optional[str] = Field(None, max_length=1000, description="备注")
+    status: str = Field(default='active', description="状态: active=在租, inactive=已搬走")
 
 
 class TenantCreate(TenantBase):

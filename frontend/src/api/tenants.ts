@@ -6,8 +6,8 @@ import type { ApiResponse, Tenant, TenantCreate, TenantUpdate } from '@/types'
 
 export const tenantsApi = {
   // 获取租客列表
-  list: async () => {
-    const response = await request.get<Tenant[]>('/api/v1/tenants')
+  list: async (params?: { status?: string; search?: string }) => {
+    const response = await request.get<Tenant[]>('/api/v1/tenants', { params })
     return response.data
   },
 

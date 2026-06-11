@@ -256,6 +256,7 @@ export interface Tenant {
   emergency_contact?: string
   emergency_phone?: string
   notes?: string
+  status: string
   owner_id?: number
   created_at: string
   updated_at: string
@@ -268,6 +269,7 @@ export interface TenantCreate {
   emergency_contact?: string
   emergency_phone?: string
   notes?: string
+  status?: string
 }
 
 export interface TenantUpdate {
@@ -277,6 +279,7 @@ export interface TenantUpdate {
   emergency_contact?: string
   emergency_phone?: string
   notes?: string
+  status?: string
 }
 
 // LeaseRecord types（租赁记录类型）
