@@ -7,7 +7,7 @@ from typing import List
 from datetime import date
 
 from app.database import get_db
-from app.models import Tenant, LeaseRecord, User
+from app.models import Tenant, LeaseRecord, Room, User
 from app.schemas import TenantCreate, TenantUpdate, TenantResponse, LeaseRecordCreate, LeaseRecordResponse
 from app.api.auth import get_current_user
 
@@ -93,8 +93,7 @@ def update_tenant(
     
     # 如果租客有最新的租赁记录，同步更新关联房间的租期
     latest_lease = db.query(LeaseRecord).filter(
-        LeaseRecord.tenant_id == tenant.id,
-        LeaseRecord.status == 'active'
+        LeaseRecord.tenant_id == tenant.id
     ).order_by(LeaseRecord.lease_start.desc()).first()
     
     if latest_lease:
