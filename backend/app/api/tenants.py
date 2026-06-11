@@ -8,7 +8,7 @@ from datetime import date
 
 from app.database import get_db
 from app.models import Tenant, LeaseRecord, Room, User
-from app.schemas import TenantCreate, TenantUpdate, TenantResponse, LeaseRecordCreate, LeaseRecordResponse
+from app.schemas import TenantCreate, TenantUpdate, TenantResponse, LeaseRecordCreate, LeaseRecordResponse, RenewLeaseRequest
 from app.api.auth import get_current_user
 
 router = APIRouter(prefix="/tenants", tags=["租客管理"])
@@ -157,6 +157,85 @@ def delete_tenant(
     db.delete(tenant)
     db.commit()
     return None
+
+
+@router.post("/{tenant_id}/renew", response_model=LeaseRecordResponse)
+def renew_tenant_lease(
+    tenant_id: int,
+    renew_data: RenewLeaseRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    租客续租 — 生成一条新的租赁记录
+    
+    逻辑：
+    1. 找到租客当前的活跃租约
+    2. 将旧租约 is_active 设为 False
+    3. 创建新的 LeaseRecord
+    4. 更新 Room 的租期信息
+    5. 租客状态改为 active（如果之前是 inactive）
+    """
+    from dateutil.relativedelta import relativedelta
+    
+    # 验证租客
+    tenant = db.query(Tenant).filter(
+        Tenant.id == tenant_id,
+        Tenant.owner_id == current_user.id
+    ).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="租客不存在")
+    
+    # 找到当前活跃租约
+    active_lease = db.query(LeaseRecord).filter(
+        LeaseRecord.tenant_id == tenant_id,
+        LeaseRecord.is_active == True
+    ).order_by(LeaseRecord.lease_start.desc()).first()
+    
+    if not active_lease:
+        raise HTTPException(status_code=400, detail="该租客没有活跃的租赁记录，无法续租")
+    
+    # 获取关联房间
+    room = db.query(Room).filter(Room.id == active_lease.room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="关联房间不存在")
+    
+    # 1. 旧租约失效
+    active_lease.is_active = False
+    
+    # 2. 计算新租期
+    old_lease_end = active_lease.lease_end
+    new_lease_start = old_lease_end + relativedelta(days=1)  # 接着旧租约结束的下一天
+    new_lease_end = new_lease_start + relativedelta(months=renew_data.months) - relativedelta(days=1)
+    
+    # 新月租金
+    new_monthly_rent = renew_data.monthly_rent if renew_data.monthly_rent else active_lease.monthly_rent
+    
+    # 3. 创建新租赁记录
+    new_lease = LeaseRecord(
+        tenant_id=tenant_id,
+        room_id=active_lease.room_id,
+        lease_start=new_lease_start,
+        lease_end=new_lease_end,
+        monthly_rent=new_monthly_rent,
+        deposit_amount=active_lease.deposit_amount,
+        is_active=True,
+        notes=renew_data.notes,
+        owner_id=current_user.id
+    )
+    db.add(new_lease)
+    
+    # 4. 更新房间租期
+    room.lease_start = new_lease_start
+    room.lease_end = new_lease_end
+    room.monthly_rent = new_monthly_rent
+    
+    # 5. 租客状态改为 active
+    tenant.status = 'active'
+    
+    db.commit()
+    db.refresh(new_lease)
+    return new_lease
 
 
 @router.get("/{tenant_id}/leases", response_model=List[LeaseRecordResponse])

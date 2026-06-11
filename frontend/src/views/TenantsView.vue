@@ -2,15 +2,25 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete, User, Search } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, User, Search, Refresh } from '@element-plus/icons-vue'
 import { tenantsApi } from '@/api/tenants'
-import type { Tenant } from '@/types'
+import type { Tenant, LeaseRecord } from '@/types'
 
 const router = useRouter()
 const loading = ref(false)
 const tenants = ref<Tenant[]>([])
 const activeTab = ref('active')  // active: 在租, inactive: 已搬走
 const searchKeyword = ref('')
+
+// 续租对话框
+const renewDialogVisible = ref(false)
+const renewLoading = ref(false)
+const currentRenewTenant = ref<Tenant | null>(null)
+const renewForm = ref({
+  months: 1,
+  monthly_rent: undefined as number | undefined,
+  notes: ''
+})
 
 // 获取租客列表
 const fetchTenants = async () => {
@@ -68,6 +78,50 @@ const handleAdd = () => {
   router.push('/tenants/create')
 }
 
+// 打开续租对话框
+const handleRenew = async (tenant: Tenant) => {
+  currentRenewTenant.value = tenant
+  renewForm.value = {
+    months: 1,
+    monthly_rent: undefined,
+    notes: ''
+  }
+  renewDialogVisible.value = true
+}
+
+// 提交续租
+const submitRenew = async () => {
+  if (!currentRenewTenant.value) return
+  if (renewForm.value.months <= 0) {
+    ElMessage.warning('续租月数必须大于0')
+    return
+  }
+
+  renewLoading.value = true
+  try {
+    const data: { months: number; monthly_rent?: number; notes?: string } = {
+      months: renewForm.value.months
+    }
+    if (renewForm.value.monthly_rent) {
+      data.monthly_rent = renewForm.value.monthly_rent
+    }
+    if (renewForm.value.notes.trim()) {
+      data.notes = renewForm.value.notes.trim()
+    }
+
+    await tenantsApi.renew(currentRenewTenant.value.id, data)
+    ElMessage.success(`租客 ${currentRenewTenant.value.name} 续租成功`)
+    renewDialogVisible.value = false
+    await fetchTenants()
+  } catch (error: any) {
+    const msg = error?.response?.data?.detail || '续租失败'
+    ElMessage.error(msg)
+    console.error(error)
+  } finally {
+    renewLoading.value = false
+  }
+}
+
 onMounted(() => {
   fetchTenants()
 })
@@ -114,7 +168,7 @@ onMounted(() => {
           {{ new Date(row.created_at).toLocaleString('zh-CN') }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="250" fixed="right">
         <template #default="{ row }">
           <el-button
             type="primary"
@@ -123,6 +177,15 @@ onMounted(() => {
             @click="viewDetail(row)"
           >
             详情
+          </el-button>
+          <el-button
+            v-if="activeTab === 'active'"
+            type="success"
+            :icon="Refresh"
+            size="small"
+            @click="handleRenew(row)"
+          >
+            续租
           </el-button>
           <el-button
             type="danger"
@@ -135,6 +198,48 @@ onMounted(() => {
         </template>
       </el-table-column>
     </el-table>
+
+    <!-- 续租对话框 -->
+    <el-dialog
+      v-model="renewDialogVisible"
+      title="租客续租"
+      width="450px"
+      :close-on-click-modal="false"
+    >
+      <div v-if="currentRenewTenant" class="renew-info">
+        <p><strong>租客：</strong>{{ currentRenewTenant.name }}</p>
+        <p><strong>电话：</strong>{{ currentRenewTenant.phone }}</p>
+      </div>
+      <el-form label-width="100px" style="margin-top: 16px">
+        <el-form-item label="续租月数">
+          <el-input-number
+            v-model="renewForm.months"
+            :min="1"
+            :max="120"
+            :step="1"
+          />
+        </el-form-item>
+        <el-form-item label="新月租金">
+          <el-input
+            v-model.number="renewForm.monthly_rent"
+            placeholder="不填则保持原租金"
+            type="number"
+          />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input
+            v-model="renewForm.notes"
+            type="textarea"
+            :rows="3"
+            placeholder="可选备注"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="renewDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="renewLoading" @click="submitRenew">确认续租</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -162,5 +267,15 @@ onMounted(() => {
 
 .tenant-tabs {
   margin-bottom: 8px;
+}
+
+.renew-info {
+  background: #f5f7fa;
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+.renew-info p {
+  margin: 4px 0;
 }
 </style>
