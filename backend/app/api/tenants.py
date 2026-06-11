@@ -91,6 +91,22 @@ def update_tenant(
     for field, value in update_data.items():
         setattr(tenant, field, value)
     
+    # 如果租客有最新的租赁记录，同步更新关联房间的租期
+    latest_lease = db.query(LeaseRecord).filter(
+        LeaseRecord.tenant_id == tenant.id,
+        LeaseRecord.status == 'active'
+    ).order_by(LeaseRecord.lease_start.desc()).first()
+    
+    if latest_lease:
+        # 查找该租客在当前房间的租约对应房间
+        rooms = db.query(Room).filter(
+            Room.tenant_id == tenant.id,
+            Room.status == 'occupied'
+        ).all()
+        for room in rooms:
+            room.lease_start = latest_lease.lease_start
+            room.lease_end = latest_lease.lease_end
+    
     db.commit()
     db.refresh(tenant)
     return tenant
