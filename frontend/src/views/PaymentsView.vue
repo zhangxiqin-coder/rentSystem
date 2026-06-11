@@ -893,7 +893,8 @@ onMounted(() => {
         <!-- 月度明细 -->
         <div v-if="utilityProfit.monthly_breakdown.length > 0" class="monthly-breakdown">
           <h3>月度明细</h3>
-          <el-table :data="utilityProfit.monthly_breakdown" size="small">
+          <!-- 桌面端：表格 -->
+          <el-table :data="utilityProfit.monthly_breakdown" size="small" class="hidden-mobile">
             <el-table-column label="系列" width="100">
               <template #default="{ row }">
                 <div>{{ row.series }}</div>
@@ -930,6 +931,44 @@ onMounted(() => {
               </template>
             </el-table-column>
           </el-table>
+          <!-- 手机端：卡片 -->
+          <div class="monthly-cards hidden-desktop">
+            <div v-for="(row, idx) in utilityProfit.monthly_breakdown" :key="idx" class="monthly-card">
+              <div class="monthly-card-header">
+                <span>{{ row.series }} · {{ row.year }}年{{ row.month }}月</span>
+                <el-button type="primary" link size="small" @click="openSeriesDetail(row.series, row.year, row.month)">明细</el-button>
+              </div>
+              <div class="monthly-card-body">
+                <div class="monthly-card-cell">
+                  <span class="label">水收</span>
+                  <span>¥{{ row.water_collected.toFixed(2) }}</span>
+                </div>
+                <div class="monthly-card-cell">
+                  <span class="label">水支</span>
+                  <span>¥{{ row.water_cost.toFixed(2) }}</span>
+                </div>
+                <div class="monthly-card-cell">
+                  <span class="label">电收</span>
+                  <span>¥{{ row.electric_collected.toFixed(2) }}</span>
+                </div>
+                <div class="monthly-card-cell">
+                  <span class="label">电支</span>
+                  <span>¥{{ row.electric_cost.toFixed(2) }}</span>
+                </div>
+                <div class="monthly-card-cell">
+                  <span class="label">水益</span>
+                  <span class="profit-value">¥{{ row.water_profit.toFixed(2) }}</span>
+                </div>
+                <div class="monthly-card-cell">
+                  <span class="label">电益</span>
+                  <span class="profit-value">¥{{ row.electric_profit.toFixed(2) }}</span>
+                </div>
+                <div class="monthly-card-total">
+                  总收益: ¥{{ row.total_profit.toFixed(2) }}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1789,7 +1828,120 @@ td {
 }
 
 /* 移动端优化 */
+.hidden-mobile {
+  display: block;
+}
+
+.hidden-desktop {
+  display: none;
+}
+
 @media (max-width: 768px) {
+  .view-content {
+    padding: 0.75rem;
+  }
+
+  /* 水电收益统计 - 手机端适配 */
+  .utility-profit-card {
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .profit-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .profit-header h2 {
+    font-size: 1rem;
+  }
+
+  .profit-stats {
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .stat-item {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+  }
+
+  .stat-item.total {
+    flex-direction: row;
+  }
+
+  .stat-value {
+    font-size: 1.25rem;
+  }
+
+  .stat-item.total .stat-value {
+    font-size: 1.5rem;
+  }
+
+  /* 月度明细 - 手机端用卡片替代表格 */
+  .monthly-breakdown .el-table {
+    display: none !important;
+  }
+
+  .hidden-mobile {
+    display: none !important;
+  }
+
+  .hidden-desktop {
+    display: block !important;
+  }
+
+  .monthly-cards {
+    display: flex !important;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .monthly-card {
+    background: #f9fafb;
+    border-radius: 8px;
+    padding: 0.75rem;
+  }
+
+  .monthly-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+
+  .monthly-card-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .monthly-card-cell {
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .monthly-card-cell .label {
+    color: #666;
+  }
+
+  .monthly-card-total {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding-top: 0.5rem;
+    border-top: 1px solid #eee;
+    font-weight: 700;
+    color: #667eea;
+    font-size: 1rem;
+  }
+
   .payments-list {
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
