@@ -1107,7 +1107,7 @@ onMounted(() => {
 
       <!-- 收租概况 -->
       <div class="collection-toolbar">
-        <span class="collection-toolbar-label">收租概况：显示最近</span>
+        <span class="collection-toolbar-label">显示最近</span>
         <el-input-number
           v-model="lookbackMonths"
           :min="1"
@@ -1120,30 +1120,51 @@ onMounted(() => {
       </div>
       <div v-if="initialized && !loading && rentCollectionByMonth.length > 0" class="rent-collection">
         <div v-for="monthGroup in rentCollectionByMonth" :key="monthGroup.key" class="collection-month">
+          <!-- 月度统计卡片 -->
           <div class="collection-summary">
-            <span class="collection-month-label">{{ monthGroup.label }}</span>
-            <span class="collection-stat">
-              应收 <strong>{{ monthGroup.unpaid.length + monthGroup.paid.length }}</strong> 间
-              <template v-if="!hideAmounts">
-                <span class="stat-divider">|</span>
-                合计 <strong>¥{{ monthGroup.totalRent }}</strong>
-                <span class="stat-divider">|</span>
-                已收 <strong class="stat-paid">¥{{ monthGroup.paidRent }}</strong>
-                <span class="stat-divider">|</span>
-                未收 <strong class="stat-unpaid">¥{{ monthGroup.totalRent - monthGroup.paidRent }}</strong>
-              </template>
-            </span>
+            <div class="summary-title">{{ monthGroup.label }}</div>
+            <div class="summary-cards" v-if="!hideAmounts">
+              <div class="summary-card card-total">
+                <span class="sc-label">应收</span>
+                <span class="sc-value">{{ monthGroup.unpaid.length + monthGroup.paid.length }}间</span>
+                <span class="sc-amount">¥{{ monthGroup.totalRent }}</span>
+              </div>
+              <div class="summary-card card-paid">
+                <span class="sc-label">已收</span>
+                <span class="sc-value">{{ monthGroup.paid.length }}间</span>
+                <span class="sc-amount">¥{{ monthGroup.paidRent }}</span>
+              </div>
+              <div class="summary-card card-unpaid">
+                <span class="sc-label">未收</span>
+                <span class="sc-value">{{ monthGroup.unpaid.length }}间</span>
+                <span class="sc-amount">¥{{ monthGroup.totalRent - monthGroup.paidRent }}</span>
+              </div>
+            </div>
+            <div class="summary-cards" v-else>
+              <div class="summary-card card-total">
+                <span class="sc-label">应收</span>
+                <span class="sc-value">{{ monthGroup.unpaid.length + monthGroup.paid.length }}间</span>
+              </div>
+              <div class="summary-card card-paid">
+                <span class="sc-label">已收</span>
+                <span class="sc-value">{{ monthGroup.paid.length }}间</span>
+              </div>
+              <div class="summary-card card-unpaid">
+                <span class="sc-label">未收</span>
+                <span class="sc-value">{{ monthGroup.unpaid.length }}间</span>
+              </div>
+            </div>
           </div>
 
           <!-- 未收 -->
           <div v-if="monthGroup.unpaid.length > 0" class="unpaid-section">
             <div class="section-label unpaid-label">未收 {{ monthGroup.unpaid.length }} 间</div>
-            <div class="unpaid-room-list">
-              <div v-for="item in monthGroup.unpaid" :key="`u-${monthGroup.key}-${item.room.id}`" class="unpaid-room-item">
-                <span class="room-number">{{ item.room.room_number }}</span>
-                <span class="room-due">应交{{ item.dueDateStr }}</span>
-                <span class="room-cycle" v-if="item.cycle > 1">（{{ item.cycleLabel }}付）</span>
-                <span class="room-rent">{{ hideAmounts ? '****' : `¥${item.rentDue}` }}</span>
+            <div class="room-chips">
+              <div v-for="item in monthGroup.unpaid" :key="`u-${monthGroup.key}-${item.room.id}`" class="room-chip chip-unpaid">
+                <span class="chip-name">{{ item.room.room_number }}</span>
+                <span class="chip-due">{{ item.dueDateStr }}</span>
+                <span class="chip-rent">{{ hideAmounts ? '****' : `¥${item.rentDue}` }}</span>
+                <span class="chip-cycle" v-if="item.cycle > 1">{{ item.cycleLabel }}付</span>
               </div>
             </div>
           </div>
@@ -1151,12 +1172,12 @@ onMounted(() => {
           <!-- 已收 -->
           <div v-if="monthGroup.paid.length > 0" class="paid-section">
             <div class="section-label paid-label">已收 {{ monthGroup.paid.length }} 间</div>
-            <div class="paid-room-list">
-              <div v-for="item in monthGroup.paid" :key="`p-${monthGroup.key}-${item.room.id}`" class="paid-room-item">
-                <span class="room-number">{{ item.room.room_number }}</span>
-                <span class="room-due">{{ item.dueDateStr }}交</span>
-                <span class="room-cycle" v-if="item.cycle > 1">（{{ item.cycleLabel }}付）</span>
-                <span class="room-rent paid-rent">{{ hideAmounts ? '****' : `¥${item.rentDue}` }}</span>
+            <div class="room-chips">
+              <div v-for="item in monthGroup.paid" :key="`p-${monthGroup.key}-${item.room.id}`" class="room-chip chip-paid">
+                <span class="chip-name">{{ item.room.room_number }}</span>
+                <span class="chip-due">{{ item.dueDateStr }}交</span>
+                <span class="chip-rent chip-rent-paid">{{ hideAmounts ? '****' : `¥${item.rentDue}` }}</span>
+                <span class="chip-cycle" v-if="item.cycle > 1">{{ item.cycleLabel }}付</span>
               </div>
             </div>
           </div>
@@ -1164,10 +1185,10 @@ onMounted(() => {
           <!-- 不收租 -->
           <div v-if="monthGroup.skipped.length > 0" class="skipped-section">
             <div class="section-label skipped-label">不收租 {{ monthGroup.skipped.length }} 间</div>
-            <div class="skipped-room-list">
-              <div v-for="item in monthGroup.skipped" :key="`s-${monthGroup.key}-${item.room.id}`" class="skipped-room-item">
-                <span class="room-number">{{ item.room.room_number }}</span>
-                <span class="room-reason">{{ item.reason }}</span>
+            <div class="room-chips">
+              <div v-for="item in monthGroup.skipped" :key="`s-${monthGroup.key}-${item.room.id}`" class="room-chip chip-skipped">
+                <span class="chip-name">{{ item.room.room_number }}</span>
+                <span class="chip-reason">{{ item.reason }}</span>
               </div>
             </div>
           </div>
@@ -1493,148 +1514,186 @@ td {
 .collection-month {
   background: white;
   border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  padding: 1rem 1.5rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .collection-summary {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
   margin-bottom: 0.75rem;
-  flex-wrap: wrap;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #f0f0f0;
 }
 
-.collection-month-label {
+.summary-title {
   font-weight: 700;
-  font-size: 1rem;
+  font-size: 1.05rem;
+  color: #303133;
+  margin-bottom: 0.6rem;
+}
+
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+}
+
+.summary-card {
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.card-total {
+  background: linear-gradient(135deg, #e8f4fd, #d4ecfc);
+  border: 1px solid #b8daff;
+}
+
+.card-paid {
+  background: linear-gradient(135deg, #eaf8e8, #d4f0cf);
+  border: 1px solid #b8e6b0;
+}
+
+.card-unpaid {
+  background: linear-gradient(135deg, #fef0f0, #fce4e4);
+  border: 1px solid #f5c4c4;
+}
+
+.sc-label {
+  font-size: 0.75rem;
+  color: #909399;
+  font-weight: 500;
+}
+
+.sc-value {
+  font-size: 1.1rem;
+  font-weight: 700;
   color: #303133;
 }
 
-.collection-stat {
-  font-size: 0.875rem;
-  color: #606266;
+.sc-amount {
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
-.collection-stat strong {
-  font-size: 1rem;
-}
-
-.stat-divider {
-  color: #dcdfe6;
-  margin: 0 0.25rem;
-}
-
-.stat-paid {
-  color: #67c23a;
-}
-
-.stat-unpaid {
-  color: #f56c6c;
-}
+.card-total .sc-amount { color: #409eff; }
+.card-paid .sc-amount { color: #67c23a; }
+.card-unpaid .sc-amount { color: #f56c6c; }
 
 .section-label {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 600;
   margin-bottom: 0.4rem;
   padding-left: 0.25rem;
 }
 
-.unpaid-label {
-  color: #c45656;
-}
-
-.paid-label {
-  color: #529b2e;
-}
+.unpaid-label { color: #c45656; }
+.paid-label { color: #529b2e; }
 
 .unpaid-section {
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.6rem;
 }
 
-.paid-section {
-}
-
-.unpaid-room-list, .paid-room-list {
+/* 房间标签列表 */
+.room-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
-.unpaid-room-item {
-  display: flex;
+.room-chip {
+  display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  background: #fef0f0;
+  gap: 0.3rem;
+  border-radius: 6px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.chip-unpaid {
+  background: #fff5f5;
   border: 1px solid #fbc4c4;
-  border-radius: 6px;
-  padding: 0.35rem 0.75rem;
-  font-size: 0.875rem;
 }
 
-.paid-room-item {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: #f0f9eb;
+.chip-paid {
+  background: #f7fdf5;
   border: 1px solid #c2e7b0;
-  border-radius: 6px;
-  padding: 0.35rem 0.75rem;
-  font-size: 0.875rem;
 }
 
-.unpaid-room-item .room-number,
-.paid-room-item .room-number {
+.chip-skipped {
+  background: #f9fafb;
+  border: 1px solid #dcdfe6;
+}
+
+.chip-name {
   font-weight: 700;
   color: #303133;
 }
 
-.unpaid-room-item .room-due,
-.paid-room-item .room-due {
+.chip-due {
   color: #e6a23c;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
 }
 
-.unpaid-room-item .room-cycle,
-.paid-room-item .room-cycle {
+.chip-cycle {
   color: #e6a23c;
-  font-size: 0.8rem;
+  font-size: 0.7rem;
 }
 
-.unpaid-room-item .room-rent {
+.chip-rent {
   color: #f56c6c;
   font-weight: 600;
 }
 
-.paid-rent {
+.chip-rent-paid {
   color: #67c23a;
-  font-weight: 600;
 }
 
-.skipped-section {
-  margin-top: 0.5rem;
-}
-
-.skipped-label {
+.chip-reason {
   color: #909399;
+  font-size: 0.75rem;
 }
 
-.skipped-room-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
+/* 手机端适配 */
+@media (max-width: 768px) {
+  .collection-month {
+    padding: 0.75rem;
+    border-radius: 8px;
+  }
 
-.skipped-room-item {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: #f5f7fa;
-  border: 1px solid #dcdfe6;
-  border-radius: 6px;
-  padding: 0.35rem 0.75rem;
-  font-size: 0.875rem;
+  .summary-cards {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.4rem;
+  }
+
+  .summary-card {
+    padding: 0.5rem 0.5rem;
+    border-radius: 6px;
+  }
+
+  .sc-label {
+    font-size: 0.7rem;
+  }
+
+  .sc-value {
+    font-size: 0.95rem;
+  }
+
+  .sc-amount {
+    font-size: 0.85rem;
+  }
+
+  .room-chip {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .section-label {
+    font-size: 0.75rem;
+  }
 }
 
 .skipped-room-item .room-number {
