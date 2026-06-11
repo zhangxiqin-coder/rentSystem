@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft } from '@element-plus/icons-vue'
+import { ArrowLeft, MagicStick } from '@element-plus/icons-vue'
 import { tenantsApi } from '@/api/tenants'
 import type { Tenant, TenantCreate, TenantUpdate } from '@/types'
 
@@ -13,6 +13,40 @@ const isEdit = computed(() => !!route.params.id)
 
 const loading = ref(false)
 const saving = ref(false)
+const smartInput = ref('')
+
+// 智能识别：从粘贴的文本中提取姓名、电话、身份证号
+const parseSmartInput = () => {
+  const text = smartInput.value.trim()
+  if (!text) return
+
+  // 提取身份证号：18位，最后一位可能是X/x
+  const idCardMatch = text.match(/[1-9]\d{5}(?:18|19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx]/)
+  if (idCardMatch) {
+    const idCard = idCardMatch[0]
+    form.value.id_card = idCard.length === 17 ? idCard : idCard.toUpperCase()
+  }
+
+  // 提取手机号：11位，1开头
+  const phoneMatch = text.match(/1[3-9]\d{9}/)
+  if (phoneMatch) {
+    form.value.phone = phoneMatch[0]
+  }
+
+  // 提取姓名：去除身份证号和手机号后，剩下的中文部分
+  let remaining = text
+  if (idCardMatch) remaining = remaining.replace(idCardMatch[0], '')
+  if (phoneMatch) remaining = remaining.replace(phoneMatch[0], '')
+  // 提取连续的中文字符（2-4个字）
+  const nameMatch = remaining.match(/[\u4e00-\u9fa5]{2,4}/)
+  if (nameMatch) {
+    form.value.name = nameMatch[0]
+  }
+
+  // 清空智能输入框
+  smartInput.value = ''
+  ElMessage.success('已自动识别并填入')
+}
 
 const form = ref<TenantCreate>({
   name: '',
@@ -102,6 +136,28 @@ onMounted(() => {
           保存
         </el-button>
       </div>
+
+      <!-- 智能识别（仅新增模式） -->
+      <el-card v-if="!isEdit" class="smart-card">
+        <template #header>
+          <div class="smart-header">
+            <el-icon><MagicStick /></el-icon>
+            <span>智能识别</span>
+          </div>
+        </template>
+        <div class="smart-input-row">
+          <el-input
+            v-model="smartInput"
+            placeholder="粘贴姓名、电话、身份证号（混合在一起也行），自动识别填入"
+            clearable
+            @keyup.enter="parseSmartInput"
+          />
+          <el-button type="primary" @click="parseSmartInput" :disabled="!smartInput.trim()">
+            识别
+          </el-button>
+        </div>
+        <div class="smart-tip">支持格式：张三138001380003301002000101001234 或 张三 13800138000 3301002000101001234</div>
+      </el-card>
 
       <!-- 表单 -->
       <el-card class="form-card">
@@ -195,5 +251,37 @@ onMounted(() => {
 
 .form-card {
   margin-bottom: 20px;
+}
+
+.smart-card {
+  margin-bottom: 16px;
+}
+
+.smart-card :deep(.el-card__header) {
+  padding: 12px 20px;
+}
+
+.smart-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #409eff;
+}
+
+.smart-input-row {
+  display: flex;
+  gap: 10px;
+}
+
+.smart-input-row .el-input {
+  flex: 1;
+}
+
+.smart-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #909399;
 }
 </style>
