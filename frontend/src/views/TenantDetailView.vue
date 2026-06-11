@@ -6,10 +6,12 @@ import { ArrowLeft, Edit, Delete, Plus, House, Document, Refresh } from '@elemen
 import { tenantsApi } from '@/api/tenants'
 import { leaseRecordsApi } from '@/api/leaseRecords'
 import { roomApi } from '@/api/room'
+import { useAuthStore } from '@/stores/auth'
 import type { Tenant, LeaseRecord, Room } from '@/types'
 
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
 const tenantId = computed(() => Number(route.params.id))
 
 const loading = ref(false)
@@ -378,6 +380,7 @@ onMounted(() => {
                 恢复
               </el-button>
               <el-button
+                v-if="authStore.isSuperAdmin"
                 type="danger"
                 :icon="Delete"
                 size="small"

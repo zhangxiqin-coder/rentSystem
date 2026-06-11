@@ -4,9 +4,11 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, User, Search } from '@element-plus/icons-vue'
 import { tenantsApi } from '@/api/tenants'
+import { useAuthStore } from '@/stores/auth'
 import type { Tenant } from '@/types'
 
 const router = useRouter()
+const authStore = useAuthStore()
 const loading = ref(false)
 const tenants = ref<Tenant[]>([])
 const activeTab = ref('active')  // active: 在租, inactive: 已搬走
@@ -106,17 +108,13 @@ onMounted(() => {
       class="hidden-mobile"
     >
       <el-table-column prop="name" label="姓名" width="120" />
-      <el-table-column prop="phone" label="电话" width="150" />
-      <el-table-column prop="id_card" label="身份证号" width="180" />
-      <el-table-column prop="emergency_contact" label="紧急联系人" width="120" />
-      <el-table-column prop="emergency_phone" label="紧急联系电话" width="150" />
-      <el-table-column prop="notes" label="备注" show-overflow-tooltip />
-      <el-table-column prop="created_at" label="创建时间" width="180">
+      <el-table-column prop="phone" label="电话" width="160" />
+      <el-table-column prop="created_at" label="创建时间">
         <template #default="{ row }">
           {{ new Date(row.created_at).toLocaleString('zh-CN') }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="160" fixed="right" class-name="action-col">
+      <el-table-column label="操作" width="100" fixed="right" class-name="action-col">
         <template #default="{ row }">
           <div class="action-btns">
             <el-button
@@ -128,6 +126,7 @@ onMounted(() => {
               详情
             </el-button>
             <el-button
+              v-if="authStore.isSuperAdmin"
               type="danger"
               :icon="Delete"
               size="small"
@@ -152,14 +151,6 @@ onMounted(() => {
             <span class="card-label">电话</span>
             <span class="card-value">{{ tenant.phone }}</span>
           </div>
-          <div class="card-row" v-if="tenant.id_card">
-            <span class="card-label">身份证号</span>
-            <span class="card-value">{{ tenant.id_card }}</span>
-          </div>
-          <div class="card-row" v-if="tenant.notes">
-            <span class="card-label">备注</span>
-            <span class="card-value">{{ tenant.notes }}</span>
-          </div>
           <div class="card-row">
             <span class="card-label">创建时间</span>
             <span class="card-value">{{ new Date(tenant.created_at).toLocaleString('zh-CN') }}</span>
@@ -175,6 +166,7 @@ onMounted(() => {
             详情
           </el-button>
           <el-button
+            v-if="authStore.isSuperAdmin"
             type="danger"
             :icon="Delete"
             size="small"
