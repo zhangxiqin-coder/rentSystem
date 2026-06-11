@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
+
+// 响应式检测
+const isMobile = ref(window.innerWidth <= 768)
+const updateMobile = () => { isMobile.value = window.innerWidth <= 768 }
+onMounted(() => window.addEventListener('resize', updateMobile))
+onUnmounted(() => window.removeEventListener('resize', updateMobile))
 
 // Composables
 import { useAmountFormatting } from '@/composables/useAmountFormatting'
@@ -313,6 +319,7 @@ onMounted(async () => {
       title="录入水电表读数"
       width="600px"
       :close-on-click-modal="false"
+      :fullscreen="isMobile"
       @close="showFormDialog = false; selectedRoomId = undefined"
     >
       <UtilityReadingForm

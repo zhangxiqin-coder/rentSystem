@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Camera } from '@element-plus/icons-vue'
 import { roomApi } from '@/api/room'
 import { utilityApi } from '@/api/utility'
 import type { Room } from '@/types'
+
+// 响应式检测
+const isMobile = ref(window.innerWidth <= 768)
+const updateMobile = () => { isMobile.value = window.innerWidth <= 768 }
+onMounted(() => window.addEventListener('resize', updateMobile))
+onUnmounted(() => window.removeEventListener('resize', updateMobile))
 
 const props = defineProps<{
   roomId?: number
@@ -620,7 +626,7 @@ loadRooms()
 
 <template>
   <div class="utility-reading-form">
-    <el-form :model="formData" label-width="140px" @submit.prevent="submitForm">
+    <el-form :model="formData" :label-width="isMobile ? '100%' : '140px'" :label-position="isMobile ? 'top' : 'right'" @submit.prevent="submitForm">
       <!-- 房间选择 -->
       <el-form-item label="选择房间" required>
         <div v-if="props.roomId" style="padding: 8px 12px; background: #f5f7fa; border-radius: 4px; color: #606266; font-weight: 500;">
@@ -785,9 +791,9 @@ loadRooms()
 
       <el-form-item v-if="calculations.water" label="水费计算">
         <div class="calculation-result">
-          <span>用量：{{ calculations.water.usage.toFixed(2) }} 吨</span>
-          <span>费率：¥{{ calculations.water.rate }}/吨</span>
-          <span class="amount">费用：¥{{ calculations.water.amount.toFixed(2) }}</span>
+          <div class="calc-row">用量：{{ calculations.water.usage.toFixed(2) }} 吨</div>
+          <div class="calc-row">费率：¥{{ calculations.water.rate }}/吨</div>
+          <div class="calc-row amount">费用：¥{{ calculations.water.amount.toFixed(2) }}</div>
         </div>
       </el-form-item>
 
@@ -865,9 +871,9 @@ loadRooms()
 
       <el-form-item v-if="calculations.electric" label="电费计算">
         <div class="calculation-result">
-          <span>用量：{{ calculations.electric.usage.toFixed(2) }} 度</span>
-          <span>费率：¥{{ calculations.electric.rate }}/度</span>
-          <span class="amount">费用：¥{{ calculations.electric.amount.toFixed(2) }}</span>
+          <div class="calc-row">用量：{{ calculations.electric.usage.toFixed(2) }} 度</div>
+          <div class="calc-row">费率：¥{{ calculations.electric.rate }}/度</div>
+          <div class="calc-row amount">费用：¥{{ calculations.electric.amount.toFixed(2) }}</div>
         </div>
       </el-form-item>
 
@@ -890,10 +896,12 @@ loadRooms()
 
       <!-- 操作按钮 -->
       <el-form-item>
-        <el-button type="primary" :loading="loading" @click="submitForm">
-          保存记录
-        </el-button>
-        <el-button @click="handleCancel">取消</el-button>
+        <div class="form-actions">
+          <el-button type="primary" :loading="loading" @click="submitForm" class="submit-btn">
+            保存记录
+          </el-button>
+          <el-button @click="handleCancel">取消</el-button>
+        </div>
       </el-form-item>
     </el-form>
   </div>
@@ -903,7 +911,7 @@ loadRooms()
 .utility-reading-form {
   max-width: 800px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 1.5rem;
   background: white;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -911,11 +919,16 @@ loadRooms()
 
 .calculation-result {
   display: flex;
-  gap: 1rem;
+  gap: 0.75rem;
   padding: 0.75rem;
   background: #f5f7fa;
   border-radius: 4px;
   font-size: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.calculation-result .calc-row {
+  white-space: nowrap;
 }
 
 .calculation-result .amount {
@@ -961,5 +974,55 @@ loadRooms()
   padding: 8px;
   background: #f5f7fa;
   border-radius: 4px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 手机端适配 */
+@media (max-width: 768px) {
+  .utility-reading-form {
+    padding: 0.75rem;
+    box-shadow: none;
+    border-radius: 0;
+  }
+
+  .calculation-result {
+    flex-direction: column;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+  }
+
+  .calculation-result .amount {
+    margin-left: 0;
+  }
+
+  .total-amount {
+    font-size: 1.25rem;
+  }
+
+  .image-preview {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .image-preview img {
+    max-width: 100% !important;
+    max-height: 120px !important;
+  }
+
+  .form-actions {
+    flex-direction: column;
+  }
+
+  .form-actions .submit-btn {
+    width: 100%;
+  }
+
+  .form-actions .el-button {
+    width: 100%;
+  }
 }
 </style>
