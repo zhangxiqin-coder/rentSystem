@@ -58,11 +58,10 @@ export interface Room {
   water_rate: number
   electricity_rate: number
   status: 'available' | 'occupied' | 'maintenance'
+  tenant_id?: number
   tenant_name?: string
   tenant_phone?: string
   tenant_id_card?: string
-  initial_electricity_reading?: number
-  initial_water_reading?: number
   broadband_fee?: number
   lease_start?: string
   lease_end?: string
@@ -84,11 +83,10 @@ export interface CreateRoomRequest {
   water_rate?: number
   electricity_rate?: number
   status?: 'available' | 'occupied' | 'maintenance'
+  tenant_id?: number
   tenant_name?: string
   tenant_phone?: string
   tenant_id_card?: string
-  initial_electricity_reading?: number
-  initial_water_reading?: number
   broadband_fee?: number
   lease_start?: string
   lease_end?: string

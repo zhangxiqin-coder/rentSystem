@@ -141,6 +141,7 @@ class RoomBase(BaseModel):
     tenant_name: Optional[str] = Field(None, max_length=100)
     tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\d{9}$')
     tenant_id_card: Optional[str] = Field(None, pattern=r'^\d{17}[\dXx]$', max_length=18, description="租客身份证号码（18位）")
+    tenant_id: Optional[int] = Field(None, description="关联租客ID")
     initial_electricity_reading: Optional[Decimal] = Field(default=0, ge=0, description="初始电表读数")
     initial_water_reading: Optional[Decimal] = Field(default=0, ge=0, description="初始水表读数")
     broadband_fee: Optional[Decimal] = Field(default=0, ge=0, description="宽带费")

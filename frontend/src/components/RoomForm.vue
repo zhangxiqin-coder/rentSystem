@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import type { Room, CreateRoomRequest, UpdateRoomRequest } from '@/types'
+import type { Room, CreateRoomRequest, UpdateRoomRequest, Tenant } from '@/types'
+import { tenantsApi } from '@/api/tenants'
 
 interface Props {
   room?: Room
@@ -21,6 +22,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 
 const formRef = ref<FormInstance>()
+const tenantList = ref<Tenant[]>([])
 const formData = ref<CreateRoomRequest>({
   room_number: '',
   building: '',
@@ -32,14 +34,13 @@ const formData = ref<CreateRoomRequest>({
   water_rate: 5.00,
   electricity_rate: 1.00,
   status: 'available',
+  tenant_id: undefined,
   tenant_name: '',
   tenant_phone: '',
   lease_start: '',
   lease_end: '',
   description: '',
   series: '',
-  initial_water_reading: undefined,
-  initial_electricity_reading: undefined,
   broadband_fee: 0,
 })
 
@@ -60,6 +61,33 @@ const rules: FormRules<CreateRoomRequest> = {
   ],
 }
 
+// 加载租客列表
+const fetchTenants = async () => {
+  try {
+    tenantList.value = await tenantsApi.list()
+    // 如果表单已有租客ID，但租客列表刚加载完，触发一下选择以同步显示
+    if (formData.value.tenant_id) {
+      handleTenantChange(formData.value.tenant_id)
+    }
+  } catch (error) {
+    console.error('获取租客列表失败:', error)
+  }
+}
+
+// 选择租客后自动填充姓名和电话
+const handleTenantChange = (tenantId: number | undefined) => {
+  if (!tenantId) {
+    formData.value.tenant_name = ''
+    formData.value.tenant_phone = ''
+    return
+  }
+  const tenant = tenantList.value.find(t => t.id === tenantId)
+  if (tenant) {
+    formData.value.tenant_name = tenant.name
+    formData.value.tenant_phone = tenant.phone
+  }
+}
+
 // Watch for room prop changes to populate form
 watch(
   () => props.room,
@@ -76,20 +104,23 @@ watch(
         water_rate: newRoom.water_rate ?? 5.00,
         electricity_rate: newRoom.electricity_rate ?? 1.00,
         status: newRoom.status,
+        tenant_id: newRoom.tenant_id || undefined,
         tenant_name: newRoom.tenant_name || '',
         tenant_phone: newRoom.tenant_phone || '',
         lease_start: newRoom.lease_start || '',
         lease_end: newRoom.lease_end || '',
-      description: newRoom.description || '',
-      series: newRoom.series || '',
-      initial_water_reading: newRoom.initial_water_reading,
-      initial_electricity_reading: newRoom.initial_electricity_reading,
-      broadband_fee: newRoom.broadband_fee ?? 0,
-    }
+        description: newRoom.description || '',
+        series: newRoom.series || '',
+        broadband_fee: newRoom.broadband_fee ?? 0,
+      }
     }
   },
   { immediate: true },
 )
+
+onMounted(() => {
+  fetchTenants()
+})
 
 const handleSubmit = async () => {
   if (!formRef.value) return
@@ -216,30 +247,6 @@ const resetForm = () => {
       <span style="margin-left: 10px; color: #909399;">默认 0 元</span>
     </el-form-item>
 
-    <el-divider content-position="left">初始水电度数（选填）</el-divider>
-
-    <el-form-item label="初始水表度数" prop="initial_water_reading">
-      <el-input-number
-        v-model="formData.initial_water_reading"
-        :min="0"
-        :precision="1"
-        :step="1"
-        placeholder="初始水表读数"
-      />
-      <span style="margin-left: 10px; color: #909399;">租客入住时的水表读数（选填）</span>
-    </el-form-item>
-
-    <el-form-item label="初始电表度数" prop="initial_electricity_reading">
-      <el-input-number
-        v-model="formData.initial_electricity_reading"
-        :min="0"
-        :precision="1"
-        :step="1"
-        placeholder="初始电表读数"
-      />
-      <span style="margin-left: 10px; color: #909399;">租客入住时的电表读数（选填）</span>
-    </el-form-item>
-
     <el-divider content-position="left">状态与租客</el-divider>
 
     <el-form-item label="状态" prop="status">
@@ -250,12 +257,26 @@ const resetForm = () => {
       </el-select>
     </el-form-item>
 
-    <el-form-item label="租客姓名" prop="tenant_name">
-      <el-input v-model="formData.tenant_name" placeholder="租客姓名" />
+    <el-form-item label="租客">
+      <el-select
+        v-model="formData.tenant_id"
+        placeholder="请选择租客"
+        filterable
+        clearable
+        style="width: 100%"
+        @change="handleTenantChange"
+      >
+        <el-option
+          v-for="tenant in tenantList"
+          :key="tenant.id"
+          :label="`${tenant.name}（${tenant.phone || '无电话'}）`"
+          :value="tenant.id"
+        />
+      </el-select>
     </el-form-item>
 
     <el-form-item label="租客电话" prop="tenant_phone">
-      <el-input v-model="formData.tenant_phone" placeholder="租客电话" />
+      <el-input v-model="formData.tenant_phone" placeholder="选择租客后自动填充" disabled />
     </el-form-item>
 
     <el-form-item label="租约开始" prop="lease_start">

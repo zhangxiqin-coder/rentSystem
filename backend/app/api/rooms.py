@@ -274,6 +274,16 @@ def update_room(
     for key, value in update_data.items():
         setattr(room, key, value)
     
+    # 如果 tenant_id 为空但有 tenant_name，自动从 tenants 表回填
+    if not room.tenant_id and room.tenant_name:
+        from app.models import Tenant
+        tenant = db.query(Tenant).filter(
+            Tenant.name == room.tenant_name.strip(),
+            Tenant.owner_id == current_user.id
+        ).first()
+        if tenant:
+            room.tenant_id = tenant.id
+    
     # 只有在用户没有明确设置状态时，才根据租客信息自动更新状态
     if 'status' not in update_data:
         update_room_status(room)
@@ -468,6 +478,15 @@ def checkin_room(
     room.tenant_phone = checkin_data.tenant_phone
     room.lease_start = checkin_data.lease_start
     room.lease_end = checkin_data.lease_end
+    
+    # 自动关联租客ID
+    from app.models import Tenant
+    tenant = db.query(Tenant).filter(
+        Tenant.name == room.tenant_name.strip(),
+        Tenant.owner_id == current_user.id
+    ).first()
+    if tenant:
+        room.tenant_id = tenant.id
     
     # 更新租金、押金和付款周期（如果提供）
     if checkin_data.monthly_rent is not None:

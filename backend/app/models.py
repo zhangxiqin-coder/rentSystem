@@ -116,6 +116,7 @@ class Room(Base):
     tenant_name = Column(String(100))
     tenant_phone = Column(String(20))
     tenant_id_card = Column(String(18))  # 租客身份证号码（18位）
+    tenant_id = Column(Integer, nullable=True)  # 关联租客ID
     initial_electricity_reading = Column(DECIMAL(10, 2), default=0)  # 初始电表读数
     initial_water_reading = Column(DECIMAL(10, 2), default=0)  # 初始水表读数
     broadband_fee = Column(DECIMAL(10, 2), default=0)  # 宽带费
