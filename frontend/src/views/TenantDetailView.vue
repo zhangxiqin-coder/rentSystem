@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Edit, Delete, Plus, House, Document } from '@element-plus/icons-vue'
+import { ArrowLeft, Edit, Delete, Plus, House, Document, Refresh } from '@element-plus/icons-vue'
 import { tenantsApi } from '@/api/tenants'
 import { leaseRecordsApi } from '@/api/leaseRecords'
 import { roomApi } from '@/api/room'
@@ -29,6 +29,18 @@ const checkInForm = ref({
   deposit_amount: 0,
   notes: ''
 })
+
+// 续租对话框
+const renewDialogVisible = ref(false)
+const renewLoading = ref(false)
+const renewForm = ref({
+  months: 1,
+  monthly_rent: undefined as number | undefined,
+  notes: ''
+})
+
+// 判断是否有活跃租约
+const hasActiveLease = computed(() => leaseRecords.value.some(r => r.is_active))
 
 // 获取租客详情
 const fetchTenantDetail = async () => {
@@ -208,6 +220,45 @@ const goBack = () => {
   router.push('/tenants')
 }
 
+// 打开续租对话框
+const openRenewDialog = () => {
+  renewForm.value = {
+    months: 1,
+    monthly_rent: undefined,
+    notes: ''
+  }
+  renewDialogVisible.value = true
+}
+
+// 提交续租
+const submitRenew = async () => {
+  if (renewForm.value.months <= 0) {
+    ElMessage.warning('续租月数必须大于0')
+    return
+  }
+  renewLoading.value = true
+  try {
+    const data: { months: number; monthly_rent?: number; notes?: string } = {
+      months: renewForm.value.months
+    }
+    if (renewForm.value.monthly_rent) {
+      data.monthly_rent = renewForm.value.monthly_rent
+    }
+    if (renewForm.value.notes.trim()) {
+      data.notes = renewForm.value.notes.trim()
+    }
+    await tenantsApi.renew(tenantId.value, data)
+    ElMessage.success('续租成功')
+    renewDialogVisible.value = false
+    await fetchLeaseRecords()
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.detail || '续租失败')
+    console.error(error)
+  } finally {
+    renewLoading.value = false
+  }
+}
+
 onMounted(() => {
   fetchTenantDetail()
   fetchLeaseRecords()
@@ -221,6 +272,14 @@ onMounted(() => {
       <div class="page-header">
         <el-button :icon="ArrowLeft" @click="goBack">返回</el-button>
         <div class="header-actions">
+          <el-button
+            v-if="hasActiveLease"
+            type="success"
+            :icon="Refresh"
+            @click="openRenewDialog"
+          >
+            续租
+          </el-button>
           <el-button type="primary" :icon="House" @click="openCheckInDialog">
             入住
           </el-button>
@@ -421,6 +480,48 @@ onMounted(() => {
         <el-button type="primary" @click="handleCheckIn">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 续租对话框 -->
+    <el-dialog
+      v-model="renewDialogVisible"
+      title="租客续租"
+      width="450px"
+      :close-on-click-modal="false"
+    >
+      <div v-if="tenant" class="renew-info">
+        <p><strong>租客：</strong>{{ tenant.name }}</p>
+        <p><strong>电话：</strong>{{ tenant.phone }}</p>
+      </div>
+      <el-form label-width="100px" style="margin-top: 16px">
+        <el-form-item label="续租月数">
+          <el-input-number
+            v-model="renewForm.months"
+            :min="1"
+            :max="120"
+            :step="1"
+          />
+        </el-form-item>
+        <el-form-item label="新月租金">
+          <el-input
+            v-model.number="renewForm.monthly_rent"
+            placeholder="不填则保持原租金"
+            type="number"
+          />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input
+            v-model="renewForm.notes"
+            type="textarea"
+            :rows="3"
+            placeholder="可选备注"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="renewDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="renewLoading" @click="submitRenew">确认续租</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -456,5 +557,15 @@ onMounted(() => {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
+}
+
+.renew-info {
+  background: #f5f7fa;
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+.renew-info p {
+  margin: 4px 0;
 }
 </style>

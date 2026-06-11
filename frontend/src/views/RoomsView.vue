@@ -515,12 +515,13 @@ onMounted(() => {
       <!-- Loading State -->
       <div v-if="loading" v-loading="loading" class="loading-container"></div>
 
-      <!-- Rooms Table -->
+      <template v-else>
+      <!-- 桌面端：表格 -->
       <el-table
-        v-else
         :data="paginatedRooms"
         stripe
         style="width: 100%"
+        class="hidden-mobile"
         :expand-row-keys="expandedRows"
         :row-key="(row: any) => String(row.id)"
         @row-click="(row: Room) => viewRoomDetail(row.id)"
@@ -573,7 +574,6 @@ onMounted(() => {
           <template #default="{ row }">
             <div class="action-row">
               <div class="action-buttons">
-                <!-- 已租房间：显示续租和退租 -->
                 <el-button
                   v-if="row.status === 'occupied' && row.lease_end"
                   type="primary"
@@ -581,10 +581,7 @@ onMounted(() => {
                   :icon="Refresh"
                   class="action-btn"
                   @click="handle续租(row)"
-                >
-                  <span class="btn-text-full">续租</span>
-                  <span class="btn-text-short">续租</span>
-                </el-button>
+                >续租</el-button>
                 <el-button
                   v-if="row.status === 'occupied'"
                   type="warning"
@@ -592,11 +589,7 @@ onMounted(() => {
                   :icon="Document"
                   class="action-btn"
                   @click="handle退租(row)"
-                >
-                  <span class="btn-text-full">退租</span>
-                  <span class="btn-text-short">退租</span>
-                </el-button>
-                <!-- 空房：显示入住 -->
+                >退租</el-button>
                 <el-button
                   v-if="row.status === 'available'"
                   type="success"
@@ -604,22 +597,14 @@ onMounted(() => {
                   :icon="CircleCheck"
                   class="action-btn"
                   @click="handle入住(row)"
-                >
-                  <span class="btn-text-full">入住</span>
-                  <span class="btn-text-short">入住</span>
-                </el-button>
-                <!-- 编辑 -->
+                >入住</el-button>
                 <el-button
                   type="primary"
                   size="small"
                   :icon="Edit"
                   class="action-btn"
                   @click="handle编辑(row)"
-                >
-                  <span class="btn-text-full">编辑</span>
-                  <span class="btn-text-short">编辑</span>
-                </el-button>
-                <!-- 删除 -->
+                >编辑</el-button>
                 <el-button
                   v-if="showDeleteButton"
                   type="danger"
@@ -627,15 +612,77 @@ onMounted(() => {
                   :icon="Delete"
                   class="action-btn"
                   @click="handle删除(row)"
-                >
-                  <span class="btn-text-full">删除</span>
-                  <span class="btn-text-short">删除</span>
-                </el-button>
+                >删除</el-button>
               </div>
             </div>
           </template>
         </el-table-column>
       </el-table>
+
+      <!-- 手机端：卡片列表 -->
+      <div class="room-cards hidden-desktop">
+        <div
+          v-for="room in paginatedRooms"
+          :key="room.id"
+          class="room-card"
+          @click="viewRoomDetail(room.id)"
+        >
+          <div class="room-card-header">
+            <span class="room-card-number">{{ room.room_number }}</span>
+            <el-tag :type="getStatusType(room.status)" size="small">
+              {{ getStatusLabel(room.status) }}
+            </el-tag>
+          </div>
+          <div class="room-card-body">
+            <div class="room-card-info">
+              <span class="info-label">租客</span>
+              <span class="info-value">{{ room.tenant_name || '-' }}</span>
+            </div>
+            <div class="room-card-info">
+              <span class="info-label">租金</span>
+              <span class="info-value">{{ formatAmount(Number(room.monthly_rent || 0)) }}</span>
+            </div>
+            <div class="room-card-info">
+              <span class="info-label">租约结束</span>
+              <span class="info-value">{{ room.lease_end ? room.lease_end.split('T')[0] : '-' }}</span>
+            </div>
+            <div class="room-card-info" v-if="room.series">
+              <span class="info-label">系列</span>
+              <span class="info-value">{{ room.series }}</span>
+            </div>
+          </div>
+          <div class="room-card-actions" @click.stop>
+            <el-button
+              v-if="room.status === 'occupied' && room.lease_end"
+              type="primary"
+              size="small"
+              @click="handle续租(room)"
+            >续租</el-button>
+            <el-button
+              v-if="room.status === 'occupied'"
+              type="warning"
+              size="small"
+              @click="handle退租(room)"
+            >退租</el-button>
+            <el-button
+              v-if="room.status === 'available'"
+              type="success"
+              size="small"
+              @click="handle入住(room)"
+            >入住</el-button>
+            <el-button
+              size="small"
+              @click="handle编辑(room)"
+            >编辑</el-button>
+            <el-button
+              v-if="showDeleteButton"
+              type="danger"
+              size="small"
+              @click="handle删除(room)"
+            >删除</el-button>
+          </div>
+        </div>
+      </div>
 
       <!-- Pagination -->
       <div class="pagination">
@@ -647,6 +694,7 @@ onMounted(() => {
           layout="total, sizes, prev, pager, next, jumper"
         />
       </div>
+      </template>
     </el-card>
 
     <!-- Room Form Dialog -->
@@ -1029,50 +1077,96 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: flex-start;
 }
 
-/* 电脑端：操作按钮左对齐 */
-@media (min-width: 769px) {
-  .action-buttons {
-    justify-content: flex-start;
-  }
+/* === 响应式：桌面/手机切换 === */
+.hidden-mobile {
+  display: block;
 }
 
-/* 手机端：操作按钮左对齐 */
+.hidden-desktop {
+  display: none;
+}
+
+/* === 手机端卡片样式 === */
+.room-cards {
+  flex-direction: column;
+  gap: 12px;
+}
+
+.room-card {
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  padding: 14px;
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+
+.room-card:active {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.room-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.room-card-number {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.room-card-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 16px;
+  margin-bottom: 10px;
+}
+
+.room-card-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.room-card-info .info-label {
+  color: #909399;
+  min-width: 50px;
+}
+
+.room-card-info .info-value {
+  color: #303133;
+  font-weight: 500;
+}
+
+.room-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-top: 1px solid #f0f0f0;
+  padding-top: 10px;
+}
+
+/* === 移动端优化 === */
 @media (max-width: 768px) {
-  .action-buttons {
-    justify-content: flex-start;
+  .hidden-mobile {
+    display: none !important;
   }
 
-  .action-btn {
-    flex: 0 0 auto;
-    min-width: auto;
-    padding: 5px 12px;
+  .hidden-desktop {
+    display: block !important;
   }
 
-  /* 移动端隐藏完整文字，显示简短文字 */
-  .btn-text-full {
-    display: none;
+  .room-cards {
+    display: flex !important;
   }
 
-  .btn-text-short {
-    display: inline;
-  }
-}
-
-/* 桌面端显示完整文字 */
-@media (min-width: 769px) {
-  .btn-text-full {
-    display: inline;
-  }
-
-  .btn-text-short {
-    display: none;
-  }
-}
-
-/* 移动端优化 */
-@media (max-width: 768px) {
   .header-content {
     flex-direction: column;
     gap: 12px;
@@ -1105,24 +1199,6 @@ onMounted(() => {
 
   .filters .el-checkbox {
     margin-right: 0;
-  }
-
-  /* 表格响应式 */
-  :deep(.el-table) {
-    font-size: 12px;
-  }
-
-  :deep(.el-table th) {
-    padding: 8px 4px;
-  }
-
-  :deep(.el-table td) {
-    padding: 8px 4px;
-  }
-
-  :deep(.el-button--small) {
-    padding: 4px 8px;
-    font-size: 12px;
   }
 
   /* 分页器移动端优化 */
@@ -1171,18 +1247,13 @@ onMounted(() => {
     font-size: 11px;
   }
 
-  :deep(.el-table) {
-    font-size: 11px;
+  .room-card-body {
+    grid-template-columns: 1fr;
   }
 
-  :deep(.el-button--small) {
-    padding: 3px 6px;
-    font-size: 11px;
-  }
-
-  /* 在超小屏幕上隐藏部分列 */
-  :deep(.el-table__body-wrapper) {
-    overflow-x: auto;
+  .room-card-actions .el-button {
+    padding: 4px 8px;
+    font-size: 12px;
   }
 }
 </style>
