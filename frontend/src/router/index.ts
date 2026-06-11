@@ -62,6 +62,30 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/tenants',
+    name: 'Tenants',
+    component: () => import('@/views/TenantsView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/tenants/create',
+    name: 'TenantCreate',
+    component: () => import('@/views/TenantFormView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/tenants/:id',
+    name: 'TenantDetail',
+    component: () => import('@/views/TenantDetailView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/tenants/:id/edit',
+    name: 'TenantEdit',
+    component: () => import('@/views/TenantFormView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/settings',
     name: 'Settings',
     component: () => import('@/views/SettingsView.vue'),

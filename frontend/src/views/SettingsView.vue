@@ -28,6 +28,11 @@ const tempSuperAdminMode = ref(authStore.superAdminMode)
 const tempDisplayName = ref(authStore.user?.full_name || '')
 const savingName = ref(false)
 
+// 甲方（房东）信息
+const tempLandlordName = ref(authStore.user?.landlord_name || '张锡琴')
+const tempLandlordPhone = ref(authStore.user?.landlord_phone || '13806504936')
+const savingLandlordInfo = ref(false)
+
 // 修改密码相关
 const showPasswordDialog = ref(false)
 const changingPassword = ref(false)
@@ -82,6 +87,23 @@ const handleSaveName = async () => {
     ElMessage.error('更新失败')
   } finally {
     savingName.value = false
+  }
+}
+
+const handleSaveLandlordInfo = async () => {
+  if (!authStore.user) return
+  savingLandlordInfo.value = true
+  try {
+    await authApi.updateProfile(authStore.user.id, { 
+      landlord_name: tempLandlordName.value,
+      landlord_phone: tempLandlordPhone.value
+    })
+    await authStore.getCurrentUser()
+    ElMessage.success('甲方信息已更新')
+  } catch {
+    ElMessage.error('更新失败')
+  } finally {
+    savingLandlordInfo.value = false
   }
 }
 
@@ -261,6 +283,21 @@ const handleToggleSuperAdmin = async () => {
           <div class="name-edit">
             <el-input v-model="tempDisplayName" placeholder="请输入显示名称" style="width: 200px" />
             <el-button type="primary" size="small" :loading="savingName" @click="handleSaveName">保存</el-button>
+          </div>
+        </div>
+        <el-divider />
+        <div style="margin-bottom: 15px; font-weight: 500; color: #409eff;">甲方（房东）信息</div>
+        <div class="info-row">
+          <span class="info-label">甲方姓名</span>
+          <div class="name-edit">
+            <el-input v-model="tempLandlordName" placeholder="请输入甲方姓名" style="width: 200px" />
+          </div>
+        </div>
+        <div class="info-row">
+          <span class="info-label">甲方电话</span>
+          <div class="name-edit">
+            <el-input v-model="tempLandlordPhone" placeholder="请输入甲方电话" style="width: 200px" />
+            <el-button type="primary" size="small" :loading="savingLandlordInfo" @click="handleSaveLandlordInfo">保存</el-button>
           </div>
         </div>
         <el-divider />

@@ -2,7 +2,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, ArrowDown, Edit, Delete, CircleCheck, CircleClose, UploadFilled, Refresh } from '@element-plus/icons-vue'
+import { Plus, Search, ArrowDown, Edit, Delete, CircleCheck, CircleClose, UploadFilled, Refresh, Document } from '@element-plus/icons-vue'
 import type { Room } from '@/types'
 import { roomApi } from '@/api/room'
 import RoomForm from '@/components/RoomForm.vue'
@@ -222,6 +222,7 @@ const renewForm = ref({
 const checkinForm = ref({
   tenant_name: '',
   tenant_phone: '',
+  tenant_id_card: '',
   lease_start: '',
   lease_end: '',
   monthly_rent: 0,
@@ -241,6 +242,7 @@ const handle入住 = (room: Room) => {
   // 默认付款周期为1
   checkinForm.value.tenant_name = ''
   checkinForm.value.tenant_phone = ''
+  checkinForm.value.tenant_id_card = ''
   checkinForm.value.lease_start = ''
   checkinForm.value.lease_end = ''
   checkinForm.value.payment_cycle = Number(room.payment_cycle) || 1
@@ -337,6 +339,7 @@ const confirm入住 = async () => {
       ...checkinForm.value,
       tenant_name: checkinForm.value.tenant_name?.trim() || undefined,
       tenant_phone: checkinForm.value.tenant_phone?.trim() || undefined,
+      tenant_id_card: checkinForm.value.tenant_id_card?.trim() || undefined,
       monthly_rent: Number(checkinForm.value.monthly_rent) > 0 ? Number(checkinForm.value.monthly_rent) : undefined,
       lease_start: startDateStr,
       lease_end: endDateStr
@@ -584,9 +587,9 @@ onMounted(() => {
                 </el-button>
                 <el-button
                   v-if="row.status === 'occupied'"
-                  type="danger"
+                  type="warning"
                   size="small"
-                  :icon="CircleClose"
+                  :icon="Document"
                   class="action-btn"
                   @click="handle退租(row)"
                 >
@@ -734,6 +737,9 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="租客电话">
           <el-input v-model="checkinForm.tenant_phone" placeholder="可为空；填写时需为手机号" />
+        </el-form-item>
+        <el-form-item label="身份证号码">
+          <el-input v-model="checkinForm.tenant_id_card" placeholder="可为空；填写时需为18位身份证号码" maxlength="18" />
         </el-form-item>
         <el-form-item label="租约开始日期" required>
           <el-date-picker

@@ -71,6 +71,10 @@ class User(Base):
     full_name = Column(String(100))
     role = Column(String(20), nullable=False, default="landlord", index=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    
+    # 甲方（房东）信息
+    landlord_name = Column(String(100))
+    landlord_phone = Column(String(20))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -111,6 +115,10 @@ class Room(Base):
     status = Column(String(20), nullable=False, default="available")
     tenant_name = Column(String(100))
     tenant_phone = Column(String(20))
+    tenant_id_card = Column(String(18))  # 租客身份证号码（18位）
+    initial_electricity_reading = Column(DECIMAL(10, 2), default=0)  # 初始电表读数
+    initial_water_reading = Column(DECIMAL(10, 2), default=0)  # 初始水表读数
+    broadband_fee = Column(DECIMAL(10, 2), default=0)  # 宽带费
     lease_start = Column(Date)
     lease_end = Column(Date)
     last_payment_date = Column(Date)
@@ -158,6 +166,62 @@ class Payment(Base):
 
     def __repr__(self):
         return f"<Payment(id={self.id}, room_id={self.room_id}, amount={self.amount}, type='{self.payment_type}')>"
+
+
+class Tenant(Base):
+    """租客模型：独立管理租客信息"""
+    __tablename__ = "tenants"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String(100), nullable=False)
+    phone = Column(String(20), nullable=False)
+    id_card = Column(String(20), unique=True, nullable=False, index=True)
+    emergency_contact = Column(String(100))
+    emergency_phone = Column(String(20))
+    notes = Column(Text)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # 关系
+    owner = relationship("User", foreign_keys=[owner_id])
+    lease_records = relationship("LeaseRecord", back_populates="tenant", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Tenant(id={self.id}, name='{self.name}', id_card='{self.id_card}')>"
+
+
+class LeaseRecord(Base):
+    """租赁记录表：记录租客在不同房间的租赁历史"""
+    __tablename__ = "lease_records"
+    __table_args__ = (
+        CheckConstraint('lease_end > lease_start', name='check_lease_dates'),
+        Index('idx_lease_tenant_date', 'tenant_id', 'lease_start'),
+        Index('idx_lease_room_date', 'room_id', 'lease_start'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    room_id = Column(Integer, ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False, index=True)
+    lease_start = Column(Date, nullable=False)
+    lease_end = Column(Date, nullable=False)
+    monthly_rent = Column(DECIMAL(10, 2), nullable=False)
+    deposit_amount = Column(DECIMAL(10, 2))
+    is_active = Column(Boolean, default=True, index=True)  # 是否当前生效
+    notes = Column(Text)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    initial_electricity_reading = Column(DECIMAL(10, 2), server_default="0")  # 初始电表读数
+    initial_water_reading = Column(DECIMAL(10, 2), server_default="0")  # 初始水表读数
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # 关系
+    tenant = relationship("Tenant", back_populates="lease_records")
+    room = relationship("Room")
+    owner = relationship("User", foreign_keys=[owner_id])
+
+    def __repr__(self):
+        return f"<LeaseRecord(id={self.id}, tenant_id={self.tenant_id}, room_id={self.room_id}, lease_start={self.lease_start})>"
 
 
 class UtilityReading(Base):

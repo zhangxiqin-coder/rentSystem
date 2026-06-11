@@ -9,12 +9,18 @@ import type {
 } from '@/types'
 
 export const roomApi = {
+  // Get all rooms
+  list: async () => {
+    const response = await request.get<ApiListResponse<Room>>('/api/v1/rooms', { params: { page: 1, size: 1000 } })
+    return response.data.items || []
+  },
+
   // Get all rooms with pagination
   getRooms: (params?: PaginationParams) =>
     request.get<ApiListResponse<Room>>('/api/v1/rooms', { params }),
 
   // Get room by id
-  getRoom: (id: number) => request.get<Room>(`/api/v1/rooms/${id}`),
+  getRoom: (id: number) => request.get<ApiResponse<Room>>(`/api/v1/rooms/${id}`),
 
   // Get rooms expiring soon
   getExpiringSoon: (days: number = 7) =>
@@ -42,11 +48,14 @@ export const roomApi = {
   checkinRoom: (id: number, data: {
     tenant_name?: string
     tenant_phone?: string
+    tenant_id_card?: string
     lease_start: string
     lease_end: string
     monthly_rent?: number
     deposit_amount?: number
     payment_cycle?: number
+    initial_electricity_reading?: number
+    initial_water_reading?: number
   }) => request.post<ApiResponse<Room>>(`/api/v1/rooms/${id}/checkin`, data),
 
   // 续租房间

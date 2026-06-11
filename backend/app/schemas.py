@@ -69,6 +69,8 @@ class UserBase(BaseModel):
     username: str = Field(..., min_length=1, max_length=50)
     email: Optional[EmailStr] = None
     full_name: Optional[str] = Field(None, max_length=100)
+    landlord_name: Optional[str] = Field(None, max_length=100, description="甲方姓名（房东姓名）")
+    landlord_phone: Optional[str] = Field(None, max_length=20, description="甲方联系电话")
 
 
 class UserCreate(UserBase):
@@ -138,6 +140,10 @@ class RoomBase(BaseModel):
     status: Optional[RoomStatus] = Field(default=RoomStatus.AVAILABLE)
     tenant_name: Optional[str] = Field(None, max_length=100)
     tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\d{9}$')
+    tenant_id_card: Optional[str] = Field(None, pattern=r'^\d{17}[\dXx]$', max_length=18, description="租客身份证号码（18位）")
+    initial_electricity_reading: Optional[Decimal] = Field(default=0, ge=0, description="初始电表读数")
+    initial_water_reading: Optional[Decimal] = Field(default=0, ge=0, description="初始水表读数")
+    broadband_fee: Optional[Decimal] = Field(default=0, ge=0, description="宽带费")
     lease_start: Optional[date] = None
     lease_end: Optional[date] = None
     description: Optional[str] = None
@@ -169,6 +175,7 @@ class RoomUpdate(BaseModel):
     status: Optional[RoomStatus] = None
     tenant_name: Optional[str] = Field(None, max_length=100)
     tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\d{9}$')
+    tenant_id_card: Optional[str] = Field(None, pattern=r'^\d{17}[\dXx]$', max_length=18, description="租客身份证号码（18位）")
     lease_start: Optional[date] = None
     lease_end: Optional[date] = None
     description: Optional[str] = None
@@ -207,11 +214,14 @@ class CheckinRequest(BaseModel):
     """入住请求 schema"""
     tenant_name: Optional[str] = Field(None, max_length=100, description="租客姓名（可为空）")
     tenant_phone: Optional[str] = Field(None, pattern=r'^1[3-9]\d{9}$', description="租客电话（可为空）")
+    tenant_id_card: Optional[str] = Field(None, pattern=r'^\d{17}[\dXx]$', max_length=18, description="租客身份证号码（可为空，18位）")
     lease_start: date = Field(..., description="租约开始日期")
     lease_end: date = Field(..., description="租约结束日期")
     monthly_rent: Optional[Decimal] = Field(None, gt=0, description="月租金")
     deposit_amount: Optional[Decimal] = Field(None, ge=0, description="押金金额")
     payment_cycle: Optional[int] = Field(1, gt=0, le=12, description="付款周期（月）")
+    initial_electricity_reading: Optional[Decimal] = Field(None, ge=0, description="初始电表读数（可选）")
+    initial_water_reading: Optional[Decimal] = Field(None, ge=0, description="初始水表读数（可选）")
 
     @model_validator(mode='after')
     def validate_lease_dates(self):
@@ -549,4 +559,89 @@ class BillWithProfit(UtilityBillResponse):
     electric_collected: float = Field(description="从租客收取的电费")
     water_profit: float = Field(description="水费收益")
     electric_profit: float = Field(description="电费收益")
+
+
+# ==================== 租客相关 ====================
+
+class TenantBase(BaseModel):
+    """租客基础schema"""
+    name: str = Field(..., min_length=1, max_length=100, description="姓名")
+    phone: str = Field(..., min_length=1, max_length=20, description="联系电话")
+    id_card: Optional[str] = Field(None, min_length=15, max_length=20, description="身份证号码")
+    emergency_contact: Optional[str] = Field(None, max_length=100, description="紧急联系人")
+    emergency_phone: Optional[str] = Field(None, max_length=20, description="紧急联系电话")
+    notes: Optional[str] = Field(None, max_length=1000, description="备注")
+
+
+class TenantCreate(TenantBase):
+    """创建租客"""
+    pass
+
+
+class TenantUpdate(BaseModel):
+    """更新租客"""
+    name: Optional[str] = Field(None, min_length=1, max_length=100, description="姓名")
+    phone: Optional[str] = Field(None, min_length=1, max_length=20, description="联系电话")
+    id_card: Optional[str] = Field(None, min_length=15, max_length=20, description="身份证号码")
+    emergency_contact: Optional[str] = Field(None, max_length=100, description="紧急联系人")
+    emergency_phone: Optional[str] = Field(None, max_length=20, description="紧急联系电话")
+    notes: Optional[str] = Field(None, max_length=1000, description="备注")
+
+
+class TenantResponse(TenantBase):
+    """租客响应"""
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== 租赁记录相关 ====================
+
+class LeaseRecordBase(BaseModel):
+    """租赁记录基础schema"""
+    tenant_id: int = Field(..., description="租客ID")
+    room_id: int = Field(..., description="房间ID")
+    lease_start: date = Field(..., description="租期开始日期")
+    lease_end: date = Field(..., description="租期结束日期")
+    monthly_rent: Decimal = Field(..., ge=0, description="月租金")
+    deposit_amount: Optional[Decimal] = Field(None, ge=0, description="押金")
+    is_active: bool = Field(True, description="是否当前生效")
+    notes: Optional[str] = Field(None, max_length=1000, description="备注")
+    initial_electricity_reading: Optional[Decimal] = Field(0, ge=0, description="初始电表读数")
+    initial_water_reading: Optional[Decimal] = Field(0, ge=0, description="初始水表读数")
+
+
+class LeaseRecordCreate(LeaseRecordBase):
+    """创建租赁记录"""
+    pass
+
+
+class LeaseRecordUpdate(BaseModel):
+    """更新租赁记录"""
+    lease_start: Optional[date] = Field(None, description="租期开始日期")
+    lease_end: Optional[date] = Field(None, description="租期结束日期")
+    monthly_rent: Optional[Decimal] = Field(None, ge=0, description="月租金")
+    deposit_amount: Optional[Decimal] = Field(None, ge=0, description="押金")
+    is_active: Optional[bool] = Field(None, description="是否当前生效")
+    notes: Optional[str] = Field(None, max_length=1000, description="备注")
+    initial_electricity_reading: Optional[Decimal] = Field(None, ge=0, description="初始电表读数")
+    initial_water_reading: Optional[Decimal] = Field(None, ge=0, description="初始水表读数")
+
+
+class LeaseRecordResponse(LeaseRecordBase):
+    """租赁记录响应"""
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    tenant: TenantResponse = Field(description="租客信息")
+    room: Optional['RoomResponse'] = Field(None, description="房间信息")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LeaseRecordWithRoom(LeaseRecordResponse):
+    """带房间完整信息的租赁记录"""
+    room: 'RoomResponse' = Field(description="房间信息")
     total_profit: float = Field(description="总收益")

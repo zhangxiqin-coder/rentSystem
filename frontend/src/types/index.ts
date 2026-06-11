@@ -20,6 +20,8 @@ export interface User {
   full_name?: string
   role: 'admin' | 'super_landlord' | 'landlord' | 'tenant'
   is_active: boolean
+  landlord_name?: string
+  landlord_phone?: string
   created_at: string
   updated_at: string
 }
@@ -58,6 +60,10 @@ export interface Room {
   status: 'available' | 'occupied' | 'maintenance'
   tenant_name?: string
   tenant_phone?: string
+  tenant_id_card?: string
+  initial_electricity_reading?: number
+  initial_water_reading?: number
+  broadband_fee?: number
   lease_start?: string
   lease_end?: string
   last_payment_date?: string
@@ -80,6 +86,10 @@ export interface CreateRoomRequest {
   status?: 'available' | 'occupied' | 'maintenance'
   tenant_name?: string
   tenant_phone?: string
+  tenant_id_card?: string
+  initial_electricity_reading?: number
+  initial_water_reading?: number
+  broadband_fee?: number
   lease_start?: string
   lease_end?: string
   description?: string
@@ -237,4 +247,76 @@ export interface ExpiringLease {
   tenant_name: string
   lease_end: string
   days_remaining: number
+}
+
+// Tenant types（租客类型）
+export interface Tenant {
+  id: number
+  name: string
+  phone: string
+  id_card?: string
+  emergency_contact?: string
+  emergency_phone?: string
+  notes?: string
+  owner_id?: number
+  created_at: string
+  updated_at: string
+}
+
+export interface TenantCreate {
+  name: string
+  phone: string
+  id_card: string
+  emergency_contact?: string
+  emergency_phone?: string
+  notes?: string
+}
+
+export interface TenantUpdate {
+  name?: string
+  phone?: string
+  id_card?: string
+  emergency_contact?: string
+  emergency_phone?: string
+  notes?: string
+}
+
+// LeaseRecord types（租赁记录类型）
+export interface LeaseRecord {
+  id: number
+  tenant_id: number
+  room_id: number
+  lease_start: string
+  lease_end: string
+  monthly_rent: number
+  deposit_amount?: number
+  is_active: boolean
+  notes?: string
+  owner_id: number
+  created_at: string
+  updated_at: string
+  initial_electricity_reading?: number
+  initial_water_reading?: number
+  // 关联对象
+  tenant?: Tenant
+  room?: Room
+}
+
+export interface LeaseRecordCreate {
+  tenant_id: number
+  room_id: number
+  lease_start: string
+  lease_end: string
+  monthly_rent: number
+  deposit_amount?: number
+  notes?: string
+}
+
+export interface LeaseRecordUpdate {
+  lease_start?: string
+  lease_end?: string
+  monthly_rent?: number
+  deposit_amount?: number
+  is_active?: boolean
+  notes?: string
 }

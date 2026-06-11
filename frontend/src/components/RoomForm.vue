@@ -38,6 +38,9 @@ const formData = ref<CreateRoomRequest>({
   lease_end: '',
   description: '',
   series: '',
+  initial_water_reading: undefined,
+  initial_electricity_reading: undefined,
+  broadband_fee: 0,
 })
 
 const rules: FormRules<CreateRoomRequest> = {
@@ -77,9 +80,12 @@ watch(
         tenant_phone: newRoom.tenant_phone || '',
         lease_start: newRoom.lease_start || '',
         lease_end: newRoom.lease_end || '',
-        description: newRoom.description || '',
-        series: newRoom.series || '',
-      }
+      description: newRoom.description || '',
+      series: newRoom.series || '',
+      initial_water_reading: newRoom.initial_water_reading,
+      initial_electricity_reading: newRoom.initial_electricity_reading,
+      broadband_fee: newRoom.broadband_fee ?? 0,
+    }
     }
   },
   { immediate: true },
@@ -197,6 +203,41 @@ const resetForm = () => {
         placeholder="默认1元/度"
       />
       <span style="margin-left: 10px; color: #909399;">默认 1.00 元/度</span>
+    </el-form-item>
+
+    <el-form-item label="宽带费 (元)" prop="broadband_fee">
+      <el-input-number
+        v-model="formData.broadband_fee"
+        :min="0"
+        :precision="2"
+        :step="10"
+        placeholder="宽带费"
+      />
+      <span style="margin-left: 10px; color: #909399;">默认 0 元</span>
+    </el-form-item>
+
+    <el-divider content-position="left">初始水电度数（选填）</el-divider>
+
+    <el-form-item label="初始水表度数" prop="initial_water_reading">
+      <el-input-number
+        v-model="formData.initial_water_reading"
+        :min="0"
+        :precision="1"
+        :step="1"
+        placeholder="初始水表读数"
+      />
+      <span style="margin-left: 10px; color: #909399;">租客入住时的水表读数（选填）</span>
+    </el-form-item>
+
+    <el-form-item label="初始电表度数" prop="initial_electricity_reading">
+      <el-input-number
+        v-model="formData.initial_electricity_reading"
+        :min="0"
+        :precision="1"
+        :step="1"
+        placeholder="初始电表读数"
+      />
+      <span style="margin-left: 10px; color: #909399;">租客入住时的电表读数（选填）</span>
     </el-form-item>
 
     <el-divider content-position="left">状态与租客</el-divider>

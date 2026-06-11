@@ -477,6 +477,12 @@ def checkin_room(
     if checkin_data.payment_cycle is not None:
         room.payment_cycle = checkin_data.payment_cycle
     
+    # 更新初始水电读数（如果提供）
+    if checkin_data.initial_electricity_reading is not None:
+        room.initial_electricity_reading = checkin_data.initial_electricity_reading
+    if checkin_data.initial_water_reading is not None:
+        room.initial_water_reading = checkin_data.initial_water_reading
+    
     db.commit()
     db.refresh(room)
     

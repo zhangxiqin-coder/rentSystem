@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>房屋租赁合同</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "SimSun", "宋体", serif;
+            font-size: 16px;
+            line-height: 1.8;
+            color: #333;
+            background: #fff;
+        }
+
+        .contract-container {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            padding: 25mm 20mm;
+            background: #fff;
+        }
+
+        .contract-title {
+            text-align: center;
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 30px;
+            color: #000;
+        }
+
+        .section {
+            margin-bottom: 20px;
+        }
+
+        .party-info {
+            margin-bottom: 25px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            background: #f9f9f9;
+        }
+
+        .party-info p {
+            margin: 8px 0;
+            line-height: 1.8;
+        }
+
+        .party-info .label {
+            display: inline;
+            font-weight: bold;
+        }
+
+        .party-info .value {
+            display: inline-block;
+            min-width: 200px;
+            border-bottom: 1px solid #333;
+            padding: 0 10px;
+        }
+
+        .party-info .static-value {
+            display: inline;
+        }
+
+        .article {
+            margin-bottom: 15px;
+        }
+
+        .article-title {
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .article-content {
+            text-indent: 2em;
+            margin-bottom: 8px;
+        }
+
+        .checkbox-group {
+            display: inline-block;
+            margin: 0 5px;
+        }
+
+        .checkbox-item {
+            display: inline-block;
+            margin: 0 8px;
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            margin-right: 3px;
+        }
+
+        .input-line {
+            display: inline-block;
+            min-width: 80px;
+            border-bottom: 1px solid #333;
+            padding: 0 5px;
+        }
+
+        .utility-table {
+            width: 100%;
+            margin: 15px 0;
+            border-collapse: collapse;
+        }
+
+        .utility-table th,
+        .utility-table td {
+            border: 1px solid #000;
+            padding: 10px;
+            text-align: center;
+        }
+
+        .utility-table th {
+            background: #f0f0f0;
+            font-weight: bold;
+        }
+
+        .signature-section {
+            margin-top: 40px;
+            padding: 20px 0;
+        }
+
+        .signature-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .signature-box {
+            width: 45%;
+        }
+
+        .signature-line {
+            margin-top: 50px;
+            border-bottom: 1px solid #000;
+        }
+
+        .date-line {
+            text-align: right;
+            margin-top: 30px;
+        }
+
+        .note {
+            font-size: 14px;
+            color: #666;
+            font-style: italic;
+            margin: 10px 0;
+        }
+
+        @media print {
+            body {
+                background: #fff;
+            }
+
+            .contract-container {
+                width: 100%;
+                margin: 0;
+                padding: 20mm 15mm;
+            }
+
+            .input-line {
+                border-bottom: 1px solid #000;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="contract-container">
+        <h1 class="contract-title">房屋租赁合同</h1>
+
+        <!-- 双方信息 -->
+        <div class="party-info">
+            <p>
+                <span class="label">出租方（甲方）：</span>
+                <span class="static-value">{{ landlord_name }}</span>
+                <span style="margin-left: 20px;">
+                    <span class="label">联系电话：</span>
+                    <span class="static-value">{{ landlord_phone }}</span>
+                </span>
+            </p>
+
+        </div>
+
+        <div class="party-info">
+            <p>
+                <span class="label">承租方（乙方）：</span>
+                <span class="static-value">{{ tenant_name }}</span>
+                <span style="margin-left: 20px;">
+                    <span class="label">联系电话：</span>
+                    <span class="static-value">{{ tenant_phone }}</span>
+                </span>
+                <span style="margin-left: 20px;">
+                    <span class="label">身份证号码：</span>
+                    <span class="static-value">{{ tenant_id_card }}</span>
+                </span>
+            </p>
+        </div>
+
+        <!-- 第一条 -->
+        <div class="section">
+            <div class="article">
+                <div class="article-title">一、房屋基本情况</div>
+                <div class="article-content">
+                    1、甲方将{{ building }} {{ room }}房出租给乙方居住使用，乙方对甲方所要出租的房屋做了充分了解，愿意承租该房屋。没有甲方的书面同意书，乙方不得改变居住用途和房间的物理结构以及将房屋转租、转让、转借他人使用。
+                </div>
+                <div class="article-content">
+                    2、室内水电齐全，房间内有：
+                    <span class="checkbox-item">☑ 空调</span>
+                    <span class="checkbox-item">☑ 热水器</span>
+                    <span class="checkbox-item">☑ 油烟机</span>
+                    <span class="checkbox-item">☑ 冰箱</span>
+                    <span class="checkbox-item">☑ 洗衣机</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 第二条 -->
+        <div class="section">
+            <div class="article">
+                <div class="article-title">二、租赁条款</div>
+                <div class="article-content">
+                    1、该房屋租赁期为<span class="input-line">{{ lease_months }}</span>个月，自
+                    <span class="input-line">{{ lease_start_year }}</span>年
+                    <span class="input-line">{{ lease_start_month }}</span>月
+                    <span class="input-line">{{ lease_start_day }}</span>日起至
+                    <span class="input-line">{{ lease_end_year }}</span>年
+                    <span class="input-line">{{ lease_end_month }}</span>月
+                    <span class="input-line">{{ lease_end_day }}</span>日止。
+                    <span class="note">租赁期满，如不搬家，需提前签订合同，如合同期满未重新签订合同，默认合同顺延一年，房租不变。</span>
+                </div>
+                <div class="article-content">
+                    2、该房屋租金为：<span class="input-line">{{ monthly_rent }}</span>元/月，
+                    <span class="input-line">{{ payment_cycle }}</span>个月缴纳一次，先交租金后住房，乙方提前5天缴纳租金和水电费，逾期视为乙方违约，甲方有权终止合同。
+                    <p class="note">注：房租价格为不含税价格。如需开票，租客自理税费。合同签订之日，合同即刻生效。违约金为1个月房租。</p>
+                </div>
+                <div class="article-content">
+                    3、该房屋押金为<span class="input-line">{{ deposit_amount }}</span>元。押金不可抵扣房租。合同到期搬离押金即刻退还。
+                </div>
+                <div class="article-content">
+                    4、乙方在合同期内如搬离或者违约，必须将水电费结清，并且不予退还房租及押金。
+                </div>
+            </div>
+        </div>
+
+        <!-- 第三条 -->
+        <div class="section">
+            <div class="article">
+                <div class="article-title">三、居住管理规定</div>
+                <div class="article-content">
+                    1、乙方入住三天内必须办理流动人口登记（支付宝浙里办），否则属于违约。后期如有人合租进来，也请立刻办理登记。如因为未进行登记，派出所的行政罚款，请租客缴纳。
+                </div>
+                <div class="article-content">
+                    2、屋内禁放危险物，在出租屋内做好防火防盗等安全工作，如有违反，一切后果由乙方负责。甲方不承担任何法律责任和经济赔偿。
+                </div>
+                <div class="article-content">
+                    3、本合同一式二份，由甲乙双方各执一份。
+                </div>
+            </div>
+        </div>
+
+        <!-- 第四条 -->
+        <div class="section">
+            <div class="article">
+                <div class="article-title">四、设施及违约责任</div>
+                <div class="article-content">
+                    1、甲方交付乙方屋门钥匙<span class="input-line">{{ keys_count }}</span>把，乙方丢失钥匙应赔偿甲方100元换锁费。
+                </div>
+                <div class="article-content">
+                    2、乙方搬离前必须将房屋内恢复原样，否则将扣除200元为房屋清洁费。
+                </div>
+                <div class="article-content">
+                    3、乙方入住时必须清点每一件设施的好坏，在租房期间应爱护好房屋内的一切设施，如乙方人为损坏，应按物价赔偿给甲方或者购买新的还给甲方。
+                </div>
+            </div>
+        </div>
+
+        <!-- 第五条 水电费 -->
+        <div class="section">
+            <div class="article">
+                <div class="article-title">五、水电费及其他约定</div>
+                <div class="article-content">
+                    承租期间，乙方在承租房内所发生的一切安全事故由乙方自行负责。
+                </div>
+
+                <table class="utility-table">
+                    <thead>
+                        <tr>
+                            <th>项目</th>
+                            <th>起始读数</th>
+                            <th>单价</th>
+                            <th>备注</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>电表</td>
+                            <td>{{ electricity_initial_reading }}</td>
+                            <td>{{ electricity_rate }} 元/度</td>
+                            <td>{{ electricity_note }}</td>
+                        </tr>
+                        <tr>
+                            <td>水表</td>
+                            <td>{{ water_initial_reading }}</td>
+                            <td>{{ water_rate }} 元/吨</td>
+                            <td>{{ water_note }}</td>
+                        </tr>
+                        <tr>
+                            <td>宽带费</td>
+                            <td>-</td>
+                            <td>{{ broadband_fee }} 元/月</td>
+                            <td>{{ broadband_note }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 签字区 -->
+        <div class="signature-section">
+            <div class="signature-row">
+                <div class="signature-box">
+                    <p>甲方（签字）：</p>
+                    <div class="signature-line"></div>
+                </div>
+                <div class="signature-box">
+                    <p>乙方（签字）：</p>
+                    <div class="signature-line"></div>
+                </div>
+            </div>
+            <div class="date-line">
+                <span class="input-line">{{ sign_year }}</span>年
+                <span class="input-line">{{ sign_month }}</span>月
+                <span class="input-line">{{ sign_day }}</span>日
+            </div>
+        </div>
+    </div>
+</body>
+</html>

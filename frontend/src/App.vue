@@ -16,6 +16,7 @@ const showTopTabs = computed(() => {
 
 const activeTab = computed(() => {
   if (route.path.startsWith('/rooms')) return 'rooms'
+  if (route.path.startsWith('/tenants')) return 'tenants'
   if (route.path.startsWith('/payments')) return 'payments'
   if (route.path.startsWith('/utility')) return 'utility'
   return 'rooms'
@@ -23,6 +24,7 @@ const activeTab = computed(() => {
 
 const handleTabChange = (name: string | number) => {
   if (name === 'rooms') router.push('/rooms')
+  if (name === 'tenants') router.push('/tenants')
   if (name === 'payments') router.push('/payments')
   if (name === 'utility') router.push('/utility')
 }
@@ -34,6 +36,13 @@ const handleLogout = async () => {
 
 onMounted(() => {
   authStore.initializeAuth()
+  
+  // 移动端检测
+  const isMobile = window.innerWidth <= 768
+  const detector = document.getElementById('mobile-detector')
+  if (detector && isMobile) {
+    detector.style.display = 'block'
+  }
 })
 </script>
 
@@ -42,6 +51,13 @@ onMounted(() => {
     <!-- 调试标记：看到红色"V2.0"表示新代码已加载 -->
     <div style="position:fixed;top:0;left:0;background:red;color:white;font-size:12px;z-index:9999;padding:2px 5px;">
       🎉 V2.0
+    </div>
+    <!-- 移动端检测标记 -->
+    <div 
+      id="mobile-detector" 
+      style="position:fixed;top:0;right:0;background:orange;color:white;font-size:10px;z-index:9998;padding:2px 5px;display:none;"
+    >
+      📱 Mobile
     </div>
     <!-- 移动端顶部栏 -->
     <header v-if="showTopTabs" class="mobile-top-nav">
@@ -62,6 +78,7 @@ onMounted(() => {
       <div class="brand">租赁管理系统</div>
       <el-tabs :model-value="activeTab" class="nav-tabs" @tab-change="handleTabChange">
         <el-tab-pane label="房间管理" name="rooms" />
+        <el-tab-pane label="租客管理" name="tenants" />
         <el-tab-pane label="交租记录" name="payments" />
         <el-tab-pane label="水电管理" name="utility" />
       </el-tabs>
@@ -90,6 +107,14 @@ onMounted(() => {
       >
         <span class="icon">🏠</span>
         <span class="label">房间</span>
+      </div>
+      <div
+        class="nav-item"
+        :class="{ active: activeTab === 'tenants' }"
+        @click="handleTabChange('tenants')"
+      >
+        <span class="icon">👥</span>
+        <span class="label">租客</span>
       </div>
       <div
         class="nav-item"
@@ -209,12 +234,14 @@ onMounted(() => {
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 100;
+  z-index: 1000;
   background: white;
   border-top: 1px solid #ebeef5;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
-  padding: 8px 0;
-  padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  padding: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  height: 60px;
+  height: calc(60px + env(safe-area-inset-bottom, 0));
 }
 
 .mobile-bottom-nav .nav-item {
@@ -224,14 +251,32 @@ onMounted(() => {
   justify-content: center;
   gap: 4px;
   flex: 1;
-  padding: 8px 0;
+  padding: 8px 4px;
   cursor: pointer;
   transition: all 0.3s ease;
   color: #909399;
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-bottom-nav .nav-item:active {
+  background-color: #f5f7fa;
 }
 
 .mobile-bottom-nav .nav-item.active {
   color: #667eea;
+}
+
+.mobile-bottom-nav .nav-item.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 3px;
+  background-color: #667eea;
+  border-radius: 2px;
 }
 
 .mobile-bottom-nav .nav-item .icon {
@@ -242,6 +287,7 @@ onMounted(() => {
 .mobile-bottom-nav .nav-item .label {
   font-size: 12px;
   line-height: 1;
+  font-weight: 500;
 }
 
 /* 响应式：移动端 */
@@ -253,15 +299,15 @@ onMounted(() => {
   }
 
   .desktop-nav {
-    display: none;
+    display: none !important;
   }
 
   .mobile-bottom-nav {
-    display: flex;
+    display: flex !important;
   }
 
   .main-content.with-mobile-nav {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: 70px;
   }
 }
 
