@@ -14,6 +14,7 @@ const {
   recentPaymentDays, setRecentPaymentDays,
   recentReadingDays, setRecentReadingDays,
   lookbackMonths, setLookbackMonths,
+  leaseExpiryWarningDays, setLeaseExpiryWarningDays,
   resetDefaults, defaults,
 } = useOverdueConfig()
 
@@ -23,6 +24,7 @@ const tempExpiringDays = ref(expiringDays.value)
 const tempRecentPaymentDays = ref(recentPaymentDays.value)
 const tempRecentReadingDays = ref(recentReadingDays.value)
 const tempLookbackMonths = ref(lookbackMonths.value)
+const tempLeaseExpiryWarningDays = ref(leaseExpiryWarningDays.value)
 const tempSuperAdminMode = ref(authStore.superAdminMode)
 
 const tempDisplayName = ref(authStore.user?.full_name || '')
@@ -73,6 +75,7 @@ const handleSave = async () => {
   setRecentPaymentDays(tempRecentPaymentDays.value)
   setRecentReadingDays(tempRecentReadingDays.value)
   setLookbackMonths(tempLookbackMonths.value)
+  setLeaseExpiryWarningDays(tempLeaseExpiryWarningDays.value)
   ElMessage.success('保存成功，刷新页面后生效')
 }
 
@@ -155,6 +158,7 @@ const handleReset = async () => {
     tempRecentPaymentDays.value = defaults.recentPaymentDays as number
     tempRecentReadingDays.value = defaults.recentReadingDays as number
     tempLookbackMonths.value = defaults.lookbackMonths as number
+    tempLeaseExpiryWarningDays.value = defaults.leaseExpiryWarningDays as number
     ElMessage.success('已恢复默认值，刷新页面后生效')
   } catch {}
 }
@@ -258,6 +262,16 @@ const handleToggleSuperAdmin = async () => {
           <div class="setting-desc">缴费记录页收租概况显示最近几个月的数据（默认 {{ defaults.lookbackMonths }} 个月，即当月和上月）</div>
         </div>
         <el-input-number v-model="tempLookbackMonths" :min="1" :max="12" style="width: 150px" />
+      </div>
+
+      <el-divider />
+
+      <div class="setting-item">
+        <div class="setting-info">
+          <div class="setting-label">合同到期提醒天数</div>
+          <div class="setting-desc">租客管理页面提前多少天显示合同到期提醒（默认 {{ defaults.leaseExpiryWarningDays }} 天，即到期前1个月）</div>
+        </div>
+        <el-input-number v-model="tempLeaseExpiryWarningDays" :min="1" :max="365" style="width: 150px" />
       </div>
 
       <div style="margin-top: 20px; text-align: right;">

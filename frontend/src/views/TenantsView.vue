@@ -1,18 +1,75 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, User, Search } from '@element-plus/icons-vue'
 import { tenantsApi } from '@/api/tenants'
+import { roomApi } from '@/api/room'
 import { useAuthStore } from '@/stores/auth'
+import { useOverdueConfig } from '@/composables/useOverdueConfig'
 import type { Tenant } from '@/types'
+import type { Room } from '@/types'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const loading = ref(false)
 const tenants = ref<Tenant[]>([])
+const rooms = ref<Room[]>([])
 const activeTab = ref('active')  // active: 在租, inactive: 已搬走
 const searchKeyword = ref('')
+const { leaseExpiryWarningDays } = useOverdueConfig()
+
+// 合同到期提醒接口
+interface LeaseExpiryWarning {
+  roomId: number
+  roomNumber: string
+  tenantName: string
+  leaseEnd: string
+  daysLeft: number
+}
+
+// 计算即将到期租客
+const leaseExpiryWarnings = computed<LeaseExpiryWarning[]>(() => {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const warningDays = leaseExpiryWarningDays.value
+  const warnings: LeaseExpiryWarning[] = []
+
+  rooms.value.forEach(room => {
+    if (room.status !== 'occupied') return
+    if (!room.lease_end) return
+    if (!room.tenant_name) return
+
+    const leaseEnd = new Date(room.lease_end)
+    leaseEnd.setHours(0, 0, 0, 0)
+    const diffMs = leaseEnd.getTime() - today.getTime()
+    const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+
+    // 包含已过期和即将在warningDays天内到期的
+    if (daysLeft <= warningDays) {
+      warnings.push({
+        roomId: room.id,
+        roomNumber: room.room_number,
+        tenantName: room.tenant_name,
+        leaseEnd: room.lease_end.toString().split('T')[0],
+        daysLeft
+      })
+    }
+  })
+
+  // 按剩余天数升序排列（最紧急的在前）
+  warnings.sort((a, b) => a.daysLeft - b.daysLeft)
+  return warnings
+})
+
+// 获取房间列表
+const fetchRooms = async () => {
+  try {
+    rooms.value = await roomApi.list()
+  } catch (error) {
+    console.error('获取房间列表失败:', error)
+  }
+}
 
 // 获取租客列表
 const fetchTenants = async () => {
@@ -71,6 +128,7 @@ const handleAdd = () => {
 }
 
 onMounted(() => {
+  fetchRooms()
   fetchTenants()
 })
 </script>
@@ -80,6 +138,27 @@ onMounted(() => {
     <div class="page-header">
       <h2>租客管理</h2>
       <el-button type="primary" :icon="Plus" @click="handleAdd">新增租客</el-button>
+    </div>
+
+    <!-- 合同到期提醒 -->
+    <div v-if="leaseExpiryWarnings.length > 0" class="warning-alert">
+      <div class="alert-icon">⏰</div>
+      <div class="alert-content">
+        <strong>合同到期提醒：</strong>
+        <ul>
+          <li v-for="warning in leaseExpiryWarnings" :key="warning.roomId" class="warning-item">
+            <span v-if="warning.daysLeft < 0" class="warning-text warning-overdue">
+              {{ warning.roomNumber }} {{ warning.tenantName }} 合同已于 {{ warning.leaseEnd }} 到期（已过期 {{ Math.abs(warning.daysLeft) }} 天）
+            </span>
+            <span v-else-if="warning.daysLeft === 0" class="warning-text warning-today">
+              {{ warning.roomNumber }} {{ warning.tenantName }} 合同今天到期（{{ warning.leaseEnd }}）
+            </span>
+            <span v-else class="warning-text">
+              {{ warning.roomNumber }} {{ warning.tenantName }} 合同将于 {{ warning.leaseEnd }} 到期（还有 {{ warning.daysLeft }} 天）
+            </span>
+          </li>
+        </ul>
+      </div>
     </div>
 
     <!-- 搜索栏 -->
@@ -256,6 +335,62 @@ onMounted(() => {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid #ebeef5;
+}
+
+/* 合同到期提醒样式 */
+.warning-alert {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  box-shadow: 0 2px 4px rgba(255, 193, 7, 0.2);
+}
+
+.alert-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.alert-content {
+  flex: 1;
+}
+
+.alert-content strong {
+  color: #856404;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.alert-content ul {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.warning-item {
+  color: #856404;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.warning-item:last-child {
+  margin-bottom: 0;
+}
+
+.warning-text.warning-overdue {
+  color: #f56c6c;
+  font-weight: 600;
+}
+
+.warning-text.warning-today {
+  color: #e6a23c;
+  font-weight: 600;
 }
 
 @media (max-width: 768px) {

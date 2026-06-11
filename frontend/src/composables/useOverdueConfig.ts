@@ -7,6 +7,7 @@ const config = {
   recentPaymentDays: { key: 'recent_payment_days', default: 7 },
   recentReadingDays: { key: 'recent_reading_days', default: 45 },
   lookbackMonths: { key: 'lookback_months', default: 1 },
+  leaseExpiryWarningDays: { key: 'lease_expiry_warning_days', default: 30 },
 } as const
 
 function loadVal<T>(key: string, defaultVal: T, parse: (v: string) => T): T {
@@ -20,6 +21,7 @@ const expiringDays = ref(loadVal(config.expiringDays.key, config.expiringDays.de
 const recentPaymentDays = ref(loadVal(config.recentPaymentDays.key, config.recentPaymentDays.default, Number))
 const recentReadingDays = ref(loadVal(config.recentReadingDays.key, config.recentReadingDays.default, Number))
 const lookbackMonths = ref(loadVal(config.lookbackMonths.key, config.lookbackMonths.default, Number))
+const leaseExpiryWarningDays = ref(loadVal(config.leaseExpiryWarningDays.key, config.leaseExpiryWarningDays.default, Number))
 
 function makeSetter<T extends string | number>(ref_: Ref<T>, key: string) {
   return (val: T) => {
@@ -49,6 +51,8 @@ export function useOverdueConfig() {
     setRecentReadingDays: makeSetter(recentReadingDays, config.recentReadingDays.key),
     lookbackMonths,
     setLookbackMonths: makeSetter(lookbackMonths, config.lookbackMonths.key),
+    leaseExpiryWarningDays,
+    setLeaseExpiryWarningDays: makeSetter(leaseExpiryWarningDays, config.leaseExpiryWarningDays.key),
     // Reset all to defaults
     resetDefaults: () => {
       overdueCutoffDate.value = config.overdueCutoffDate.default
@@ -57,6 +61,7 @@ export function useOverdueConfig() {
       recentPaymentDays.value = config.recentPaymentDays.default
       recentReadingDays.value = config.recentReadingDays.default
       lookbackMonths.value = config.lookbackMonths.default
+      leaseExpiryWarningDays.value = config.leaseExpiryWarningDays.default
       Object.values(config).forEach(c => localStorage.removeItem(c.key))
     },
     // All defaults for display
@@ -67,6 +72,7 @@ export function useOverdueConfig() {
       recentPaymentDays: config.recentPaymentDays.default,
       recentReadingDays: config.recentReadingDays.default,
       lookbackMonths: config.lookbackMonths.default,
+      leaseExpiryWarningDays: config.leaseExpiryWarningDays.default,
     },
   }
 }
