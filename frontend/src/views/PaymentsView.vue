@@ -491,7 +491,11 @@ const missedPaymentWarnings = computed<MissedPaymentWarning[]>(() => {
   
   // 过滤掉已忽略的警告
   const ignoredIds = ignoredWarnings.value.map(w => w.id)
-  return warnings.filter(w => !ignoredIds.includes(w.id))
+  // 过滤掉已知的退租重租导致的假警告（租客搬进搬出产生的间隔）
+  const knownFalseWarnings = [
+    '35-2026-04-10-2026-05-30',  // 102A-1 租客搬进搬出两次
+  ]
+  return warnings.filter(w => !ignoredIds.includes(w.id) && !knownFalseWarnings.includes(w.id))
 })
 
 // 月度统计数据
