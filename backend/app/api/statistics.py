@@ -229,7 +229,7 @@ def get_statistics_expiring(
     """
     check_stats_permission(current_user)
     
-    expiring_leases = get_expiring_leases(db, days_threshold)
+    expiring_leases = get_expiring_leases(db, days_threshold, owner_id=current_user.id)
     
     # 按紧急程度分类
     critical = []  # 7天内
@@ -285,7 +285,7 @@ def get_dashboard_statistics(
     overdue_list = get_overdue_payments(db)
     
     # 租约到期提醒（30天内）
-    expiring_leases = get_expiring_leases(db, 30)
+    expiring_leases = get_expiring_leases(db, 30, owner_id=current_user.id)
     
     return {
         'rooms': room_stats,

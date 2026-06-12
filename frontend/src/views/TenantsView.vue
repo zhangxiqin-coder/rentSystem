@@ -5,69 +5,56 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, User, Search } from '@element-plus/icons-vue'
 import { tenantsApi } from '@/api/tenants'
 import { roomApi } from '@/api/room'
+import { statisticsApi } from '@/api/statistics'
 import { useAuthStore } from '@/stores/auth'
 import { useOverdueConfig } from '@/composables/useOverdueConfig'
 import type { Tenant } from '@/types'
-import type { Room } from '@/types'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const loading = ref(false)
 const tenants = ref<Tenant[]>([])
-const rooms = ref<Room[]>([])
 const activeTab = ref('active')  // active: 在租, inactive: 已搬走
 const searchKeyword = ref('')
 const { leaseExpiryWarningDays } = useOverdueConfig()
 
-// 合同到期提醒接口
+// 合同到期提醒接口（从后端LeaseRecord获取）
 interface LeaseExpiryWarning {
   roomId: number
   roomNumber: string
+  tenantId: number
   tenantName: string
   leaseEnd: string
   daysLeft: number
+  monthlyRent: number
 }
 
-// 计算即将到期租客
-const leaseExpiryWarnings = computed<LeaseExpiryWarning[]>(() => {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const warningDays = leaseExpiryWarningDays.value
-  const warnings: LeaseExpiryWarning[] = []
+const leaseExpiryWarnings = ref<LeaseExpiryWarning[]>([])
 
-  rooms.value.forEach(room => {
-    if (room.status !== 'occupied') return
-    if (!room.lease_end) return
-    if (!room.tenant_name) return
-
-    const leaseEnd = new Date(room.lease_end)
-    leaseEnd.setHours(0, 0, 0, 0)
-    const diffMs = leaseEnd.getTime() - today.getTime()
-    const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
-
-    // 包含已过期和即将在warningDays天内到期的
-    if (daysLeft <= warningDays) {
-      warnings.push({
-        roomId: room.id,
-        roomNumber: room.room_number,
-        tenantName: room.tenant_name,
-        leaseEnd: room.lease_end.toString().split('T')[0],
-        daysLeft
-      })
-    }
-  })
-
-  // 按剩余天数升序排列（最紧急的在前）
-  warnings.sort((a, b) => a.daysLeft - b.daysLeft)
-  return warnings
-})
-
-// 获取房间列表
-const fetchRooms = async () => {
+// 从后端获取到期提醒（基于LeaseRecord，以租客为准）
+const fetchExpiringLeases = async () => {
   try {
-    rooms.value = await roomApi.list()
+    const days = leaseExpiryWarningDays.value || 30
+    const res = await statisticsApi.getExpiringLeases(days)
+    // axios response.data 就是后端返回的数据
+    const data = res.data || {}
+    // 后端返回分类的critical/warning/normal，合并所有
+    const all = [
+      ...(data.critical || []),
+      ...(data.warning || []),
+      ...(data.normal || [])
+    ]
+    leaseExpiryWarnings.value = all.map((item: any) => ({
+      roomId: item.room_id,
+      roomNumber: item.room_number,
+      tenantId: item.tenant_id,
+      tenantName: item.tenant_name,
+      leaseEnd: item.lease_end,
+      daysLeft: item.days_remaining,
+      monthlyRent: item.monthly_rent || 0
+    })).sort((a: LeaseExpiryWarning, b: LeaseExpiryWarning) => a.daysLeft - b.daysLeft)
   } catch (error) {
-    console.error('获取房间列表失败:', error)
+    console.error('获取到期提醒失败:', error)
   }
 }
 
@@ -128,7 +115,7 @@ const handleAdd = () => {
 }
 
 onMounted(() => {
-  fetchRooms()
+  fetchExpiringLeases()
   fetchTenants()
 })
 </script>
@@ -141,23 +128,40 @@ onMounted(() => {
     </div>
 
     <!-- 合同到期提醒 -->
-    <div v-if="leaseExpiryWarnings.length > 0" class="warning-alert">
-      <div class="alert-icon">⏰</div>
-      <div class="alert-content">
-        <strong>合同到期提醒：</strong>
-        <ul>
-          <li v-for="warning in leaseExpiryWarnings" :key="warning.roomId" class="warning-item">
-            <span v-if="warning.daysLeft < 0" class="warning-text warning-overdue">
-              {{ warning.roomNumber }} {{ warning.tenantName }} 合同已于 {{ warning.leaseEnd }} 到期（已过期 {{ Math.abs(warning.daysLeft) }} 天）
-            </span>
-            <span v-else-if="warning.daysLeft === 0" class="warning-text warning-today">
-              {{ warning.roomNumber }} {{ warning.tenantName }} 合同今天到期（{{ warning.leaseEnd }}）
-            </span>
-            <span v-else class="warning-text">
-              {{ warning.roomNumber }} {{ warning.tenantName }} 合同将于 {{ warning.leaseEnd }} 到期（还有 {{ warning.daysLeft }} 天）
-            </span>
-          </li>
-        </ul>
+    <div v-if="leaseExpiryWarnings.length > 0" class="expiry-section">
+      <div class="expiry-header">
+        <span class="expiry-header-icon">📋</span>
+        <span class="expiry-header-title">合同到期提醒</span>
+        <span class="expiry-header-count">{{ leaseExpiryWarnings.length }} 个租客</span>
+      </div>
+      <div class="expiry-cards">
+        <div
+          v-for="warning in leaseExpiryWarnings"
+          :key="warning.roomId"
+          class="expiry-card"
+          :class="{
+            'expiry-card-danger': warning.daysLeft < 0,
+            'expiry-card-warning': warning.daysLeft >= 0 && warning.daysLeft <= 7,
+            'expiry-card-info': warning.daysLeft > 7
+          }"
+        >
+          <div class="expiry-card-left">
+            <div class="expiry-room">{{ warning.roomNumber }}</div>
+            <div class="expiry-tenant">{{ warning.tenantName }}</div>
+          </div>
+          <div class="expiry-card-right">
+            <div class="expiry-date">到期日：{{ warning.leaseEnd }}</div>
+            <div class="expiry-days" v-if="warning.daysLeft < 0">
+              已过期 <span class="days-num days-num-danger">{{ Math.abs(warning.daysLeft) }}</span> 天
+            </div>
+            <div class="expiry-days" v-else-if="warning.daysLeft === 0">
+              <span class="days-num days-num-warning">今天到期</span>
+            </div>
+            <div class="expiry-days" v-else>
+              还有 <span class="days-num">{{ warning.daysLeft }}</span> 天
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -338,59 +342,120 @@ onMounted(() => {
 }
 
 /* 合同到期提醒样式 */
-.warning-alert {
-  background: #fff3cd;
-  border: 1px solid #ffc107;
-  border-radius: 8px;
-  padding: 1rem 1.5rem;
+.expiry-section {
   margin-bottom: 1rem;
-  display: flex;
-  align-items: flex-start;
-  gap: 1rem;
-  box-shadow: 0 2px 4px rgba(255, 193, 7, 0.2);
 }
 
-.alert-icon {
-  font-size: 1.5rem;
+.expiry-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 0 2px;
+}
+
+.expiry-header-icon {
+  font-size: 1.2rem;
+}
+
+.expiry-header-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.expiry-header-count {
+  font-size: 12px;
+  background: #e6e8eb;
+  color: #606266;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.expiry-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.expiry-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border-left: 4px solid;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.expiry-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* 默认（>7天）- 蓝色系 */
+.expiry-card-info {
+  background: linear-gradient(135deg, #e8f4fd 0%, #d6ecfa 100%);
+  border-left-color: #409eff;
+}
+
+.expiry-card-info .expiry-room { color: #337ecc; }
+.expiry-card-info .expiry-tenant { color: #409eff; }
+.expiry-card-info .expiry-date { color: #79bbff; }
+.expiry-card-info .expiry-days { color: #337ecc; }
+.expiry-card-info .days-num { color: #409eff; font-weight: 700; font-size: 1.1em; }
+
+/* 即将到期（0-7天）- 橙色系 */
+.expiry-card-warning {
+  background: linear-gradient(135deg, #fef6e0 0%, #fdf0c7 100%);
+  border-left-color: #e6a23c;
+}
+
+.expiry-card-warning .expiry-room { color: #b88230; }
+.expiry-card-warning .expiry-tenant { color: #e6a23c; }
+.expiry-card-warning .expiry-date { color: #c9a063; }
+.expiry-card-warning .expiry-days { color: #b88230; }
+.expiry-card-warning .days-num { color: #e6a23c; font-weight: 700; font-size: 1.1em; }
+.days-num-warning { color: #e6a23c !important; font-weight: 700; font-size: 1em; }
+
+/* 已过期 - 红色系 */
+.expiry-card-danger {
+  background: linear-gradient(135deg, #fef0f0 0%, #fde2e2 100%);
+  border-left-color: #f56c6c;
+}
+
+.expiry-card-danger .expiry-room { color: #c45656; }
+.expiry-card-danger .expiry-tenant { color: #f56c6c; }
+.expiry-card-danger .expiry-date { color: #c99191; }
+.expiry-card-danger .expiry-days { color: #c45656; }
+.days-num-danger { color: #f56c6c !important; font-weight: 700; font-size: 1.1em; }
+
+.expiry-card-left {
   flex-shrink: 0;
 }
 
-.alert-content {
-  flex: 1;
+.expiry-room {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 2px;
 }
 
-.alert-content strong {
-  color: #856404;
-  display: block;
-  margin-bottom: 0.5rem;
+.expiry-tenant {
+  font-size: 13px;
+  font-weight: 500;
 }
 
-.alert-content ul {
-  margin: 0;
-  padding-left: 0;
-  list-style: none;
+.expiry-card-right {
+  text-align: right;
 }
 
-.warning-item {
-  color: #856404;
-  margin-bottom: 0.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+.expiry-date {
+  font-size: 12px;
+  margin-bottom: 2px;
 }
 
-.warning-item:last-child {
-  margin-bottom: 0;
-}
-
-.warning-text.warning-overdue {
-  color: #f56c6c;
-  font-weight: 600;
-}
-
-.warning-text.warning-today {
-  color: #e6a23c;
-  font-weight: 600;
+.expiry-days {
+  font-size: 13px;
 }
 
 @media (max-width: 768px) {
@@ -408,6 +473,15 @@ onMounted(() => {
   }
   .search-bar .el-input {
     width: 100% !important;
+  }
+  .expiry-cards {
+    grid-template-columns: 1fr;
+  }
+  .expiry-card {
+    padding: 10px 12px;
+  }
+  .expiry-room {
+    font-size: 15px;
   }
 }
 </style>

@@ -8,7 +8,7 @@ from typing import Optional, Tuple, List
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 
-from app.models import Room, Payment, UtilityReading, UtilityRate, User
+from app.models import Room, Payment, UtilityReading, UtilityRate, User, LeaseRecord, Tenant
 
 
 # ==================== 房租计算 ====================
@@ -319,37 +319,52 @@ def update_room_status(room: Room) -> Room:
 
 def get_expiring_leases(
     db: Session, 
-    days_threshold: int = 30
+    days_threshold: int = 30,
+    owner_id: int = None
 ) -> List[dict]:
     """
-    获取即将到期的租约
+    获取即将到期的租约（以LeaseRecord为准）
     
     Args:
         db: 数据库会话
         days_threshold: 天数阈值（默认30天）
+        owner_id: 用户ID过滤
     
     Returns:
         即将到期的租约列表
     """
     threshold_date = date.today() + timedelta(days=days_threshold)
     
-    rooms = db.query(Room).filter(
+    query = db.query(LeaseRecord).filter(
         and_(
-            Room.lease_end.isnot(None),
-            Room.lease_end <= threshold_date,
-            Room.status == 'occupied'
+            LeaseRecord.lease_end.isnot(None),
+            LeaseRecord.lease_end <= threshold_date,
+            LeaseRecord.is_active == True
         )
-    ).all()
+    )
+    
+    if owner_id:
+        query = query.filter(LeaseRecord.owner_id == owner_id)
+    
+    leases = query.all()
     
     result = []
-    for room in rooms:
-        days_remaining = (room.lease_end - date.today()).days
+    for lease in leases:
+        tenant = db.query(Tenant).filter(Tenant.id == lease.tenant_id).first()
+        room = db.query(Room).filter(Room.id == lease.room_id).first()
+        if not tenant or not room:
+            continue
+        
+        days_remaining = (lease.lease_end - date.today()).days
         result.append({
+            'lease_record_id': lease.id,
             'room_id': room.id,
             'room_number': room.room_number,
-            'tenant_name': room.tenant_name,
-            'lease_end': room.lease_end,
-            'days_remaining': days_remaining
+            'tenant_id': tenant.id,
+            'tenant_name': tenant.name,
+            'lease_end': lease.lease_end,
+            'days_remaining': days_remaining,
+            'monthly_rent': float(lease.monthly_rent) if lease.monthly_rent else 0
         })
     
     return result

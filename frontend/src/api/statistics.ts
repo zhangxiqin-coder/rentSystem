@@ -25,8 +25,8 @@ export const statisticsApi = {
 
   // Get expiring leases
   getExpiringLeases: (days?: number) =>
-    request.get<ApiResponse<ExpiringLease[]>>('/api/v1/statistics/expiring-leases', {
-      params: { days },
+    request.get('/api/v1/stats/expiring', {
+      params: { days_threshold: days },
     }),
 
   // Get dashboard summary
