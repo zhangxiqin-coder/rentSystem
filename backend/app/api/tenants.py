@@ -27,9 +27,24 @@ def list_tenants(
     from sqlalchemy import or_
     query = db.query(Tenant).filter(Tenant.owner_id == current_user.id)
     
-    # 状态筛选
-    if status:
-        query = query.filter(Tenant.status == status)
+    # 状态筛选：未入住(unassigned)/入住(active)/搬离(inactive)
+    if status == 'unassigned':
+        # 未入住：active但没有活跃租约
+        active_subquery = db.query(LeaseRecord.id).filter(
+            LeaseRecord.tenant_id == Tenant.id,
+            LeaseRecord.is_active == True
+        )
+        query = query.filter(Tenant.status == 'active', ~active_subquery.exists())
+    elif status == 'active':
+        # 入住：active且有活跃租约
+        active_subquery = db.query(LeaseRecord.id).filter(
+            LeaseRecord.tenant_id == Tenant.id,
+            LeaseRecord.is_active == True
+        )
+        query = query.filter(Tenant.status == 'active', active_subquery.exists())
+    elif status == 'inactive':
+        # 搬离
+        query = query.filter(Tenant.status == 'inactive')
     
     # 搜索（姓名/电话/身份证号）
     if search:

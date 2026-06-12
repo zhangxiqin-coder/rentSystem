@@ -14,7 +14,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const loading = ref(false)
 const tenants = ref<Tenant[]>([])
-const activeTab = ref('active')  // active: 在租, inactive: 已搬走
+const activeTab = ref('active')  // active: 入住, unassigned: 未入住, inactive: 搬离
 const searchKeyword = ref('')
 const { leaseExpiryWarningDays } = useOverdueConfig()
 
@@ -178,8 +178,9 @@ onMounted(() => {
 
     <!-- tab切换 -->
     <el-tabs v-model="activeTab" class="tenant-tabs">
-      <el-tab-pane label="在租租客" name="active" />
-      <el-tab-pane label="已搬走" name="inactive" />
+      <el-tab-pane label="入住" name="active" />
+      <el-tab-pane label="未入住" name="unassigned" />
+      <el-tab-pane label="搬离" name="inactive" />
     </el-tabs>
 
     <!-- 电脑端：表格 -->
