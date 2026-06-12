@@ -184,6 +184,7 @@ const showDeleteButtons = computed(() => authStore.isSuperAdmin)
 const startDate = ref<Date>(() => {
   const d = new Date()
   d.setMonth(d.getMonth() - 3)
+  d.setDate(1)
   return d
 })
 const endDate = ref<Date>(new Date())
