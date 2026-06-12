@@ -181,12 +181,12 @@ const formatIgnoredAt = (ignoredAt: string) => {
 const showDeleteButtons = computed(() => authStore.isSuperAdmin)
 
 // 日期范围筛选（默认最近3个月）
-const startDate = ref<Date>(() => {
+const startDate = ref<Date>((() => {
   const d = new Date()
   d.setMonth(d.getMonth() - 3)
   d.setDate(1)
   return d
-})
+})())
 const endDate = ref<Date>(new Date())
 
 // 批量选择相关
