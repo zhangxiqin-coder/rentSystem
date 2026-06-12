@@ -181,12 +181,12 @@ const formatIgnoredAt = (ignoredAt: string) => {
 const showDeleteButtons = computed(() => authStore.isSuperAdmin)
 
 // 日期范围筛选（默认最近3个月）
-const dateRange = ref<[Date, Date]>(() => {
-  const end = new Date()
-  const start = new Date()
-  start.setMonth(start.getMonth() - 3)
-  return [start, end]
+const startDate = ref<Date>(() => {
+  const d = new Date()
+  d.setMonth(d.getMonth() - 3)
+  return d
 })
+const endDate = ref<Date>(new Date())
 
 // 批量选择相关
 const selectedGroups = ref<string[]>([])
@@ -627,9 +627,11 @@ const loadPayments = async () => {
     }
 
     const params: any = { page: 1, size: 1000 }
-    if (dateRange.value && dateRange.value.length === 2) {
-      params.start_date = formatDate(dateRange.value[0])
-      params.end_date = formatDate(dateRange.value[1])
+    if (startDate.value) {
+      params.start_date = formatDate(startDate.value)
+    }
+    if (endDate.value) {
+      params.end_date = formatDate(endDate.value)
     }
 
     const [paymentsRes, roomsRes] = await Promise.all([
@@ -1211,16 +1213,25 @@ onMounted(() => {
           </select>
         </label>
         <label class="filter-label">
-          日期范围：
+          开始日期：
           <el-date-picker
-            v-model="dateRange"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
+            v-model="startDate"
+            type="date"
+            placeholder="开始日期"
             format="YYYY-MM-DD"
             @change="loadPayments"
-            style="width: 240px"
+            style="width: 150px"
+          />
+        </label>
+        <label class="filter-label">
+          结束日期：
+          <el-date-picker
+            v-model="endDate"
+            type="date"
+            placeholder="结束日期"
+            format="YYYY-MM-DD"
+            @change="loadPayments"
+            style="width: 150px"
           />
         </label>
         <span v-if="selectedRoomId" class="filter-info">
