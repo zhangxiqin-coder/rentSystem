@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { paymentApi } from '@/api/payment'
 import { roomApi } from '@/api/room'
@@ -341,6 +341,17 @@ const rentCollectionByMonth = computed(() => {
 
   return months
 })
+
+// 收租概况倒序（最新月份在前）+ 当前选中tab
+const rentCollectionByMonthDesc = computed(() => [...rentCollectionByMonth.value].reverse())
+const activeMonthTab = ref('')
+
+// 数据加载后默认选中第一个（最新的）
+watch(rentCollectionByMonthDesc, (val) => {
+  if (val.length > 0 && !activeMonthTab.value) {
+    activeMonthTab.value = val[0].key
+  }
+}, { immediate: true })
 
 const getStatusLabel = (status: string) => {
   const labels: Record<string, string> = {
@@ -1133,10 +1144,10 @@ onMounted(() => {
         <span class="collection-toolbar-label">个月</span>
       </div>
       <div v-if="initialized && !loading && rentCollectionByMonth.length > 0" class="rent-collection">
-        <div v-for="monthGroup in rentCollectionByMonth" :key="monthGroup.key" class="collection-month">
+        <el-tabs v-model="activeMonthTab" type="border-card">
+          <el-tab-pane v-for="monthGroup in rentCollectionByMonthDesc" :key="monthGroup.key" :label="monthGroup.label" :name="monthGroup.key">
           <!-- 月度统计卡片 -->
           <div class="collection-summary">
-            <div class="summary-title">{{ monthGroup.label }}</div>
             <div class="summary-cards" v-if="!hideAmounts">
               <div class="summary-card card-total">
                 <span class="sc-label">应收</span>
@@ -1170,8 +1181,7 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- 未收 -->
-          <div v-if="monthGroup.unpaid.length > 0" class="unpaid-section">
+          <!-- 未收 -->          <div v-if="monthGroup.unpaid.length > 0" class="unpaid-section">
             <div class="section-label unpaid-label">未收 {{ monthGroup.unpaid.length }} 间</div>
             <div class="room-chips">
               <div v-for="item in monthGroup.unpaid" :key="`u-${monthGroup.key}-${item.room.id}`" class="room-chip chip-unpaid">
@@ -1206,7 +1216,8 @@ onMounted(() => {
               </div>
             </div>
           </div>
-        </div>
+          </el-tab-pane>
+        </el-tabs>
       </div>
 
       <!-- 筛选工具栏 -->
