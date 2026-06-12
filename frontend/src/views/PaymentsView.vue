@@ -180,14 +180,15 @@ const formatIgnoredAt = (ignoredAt: string) => {
 // 是否显示删除按钮（仅超级管理员可见）
 const showDeleteButtons = computed(() => authStore.isSuperAdmin)
 
-// 日期范围筛选（默认最近3个月）
+// 日期范围筛选（默认全年，用于API请求）
 const startDate = ref<Date>((() => {
   const d = new Date()
-  d.setMonth(d.getMonth() - 3)
-  d.setDate(1)
-  return d
+  return new Date(d.getFullYear(), 0, 1)
 })())
-const endDate = ref<Date>(new Date())
+const endDate = ref<Date>((() => {
+  const d = new Date()
+  return new Date(d.getFullYear(), 11, 31)
+})())
 
 // 批量选择相关
 const selectedGroups = ref<string[]>([])
@@ -424,9 +425,20 @@ const groupedPayments = computed(() => {
   })
   
   // 转为数组并按日期降序排序
-  return Object.values(groups).sort((a, b) => 
+  const sorted = Object.values(groups).sort((a, b) => 
     new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()
   )
+
+  // 按当前选中月份tab过滤
+  if (activeMonthTab.value) {
+    return sorted.filter(p => {
+      if (!p.payment_date) return false
+      const d = new Date(p.payment_date)
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      return ym === activeMonthTab.value
+    })
+  }
+  return sorted
 })
 
 // 检测漏交月份的提醒
@@ -1227,36 +1239,6 @@ onMounted(() => {
           </template>
           </el-tab-pane>
         </el-tabs>
-      </div>
-
-      <!-- 筛选工具栏 -->
-      <div class="filter-toolbar">
-        <label class="filter-label">
-          开始日期：
-          <el-date-picker
-            v-model="startDate"
-            type="date"
-            placeholder="开始日期"
-            format="YYYY-MM-DD"
-            @change="loadPayments"
-            style="width: 150px"
-          />
-        </label>
-        <label class="filter-label">
-          结束日期：
-          <el-date-picker
-            v-model="endDate"
-            type="date"
-            placeholder="结束日期"
-            format="YYYY-MM-DD"
-            @change="loadPayments"
-            style="width: 150px"
-          />
-        </label>
-        <button @click="setYearToDate" class="clear-btn" style="margin-left: 4px">今年以来</button>
-      </div>
-      <div v-if="monthlyStats.length > 0" class="chart-container">
-        <v-chart :option="chartOption" style="height: 400px" autoresize />
       </div>
 
       <div v-if="loading" class="loading">加载中...</div>
