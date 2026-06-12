@@ -1219,7 +1219,6 @@ onMounted(() => {
             start-placeholder="开始日期"
             end-placeholder="结束日期"
             format="YYYY-MM-DD"
-            value-format="YYYY-MM-DD"
             @change="loadPayments"
             style="width: 240px"
           />
