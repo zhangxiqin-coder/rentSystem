@@ -180,15 +180,28 @@ const formatIgnoredAt = (ignoredAt: string) => {
 // 是否显示删除按钮（仅超级管理员可见）
 const showDeleteButtons = computed(() => authStore.isSuperAdmin)
 
-// 日期范围筛选（默认全年，用于API请求）
-const startDate = ref<Date>((() => {
-  const d = new Date()
-  return new Date(d.getFullYear(), 0, 1)
-})())
-const endDate = ref<Date>((() => {
-  const d = new Date()
-  return new Date(d.getFullYear(), 11, 31)
-})())
+// 日期范围：由 lookbackMonths 控制，统一影响全页面
+const startDate = ref<Date>(new Date())
+const endDate = ref<Date>(new Date())
+
+// 根据lookbackMonths更新日期范围
+const updateDateRange = () => {
+  const now = new Date()
+  const months = lookbackMonths.value || 1
+  // 开始日期：N个月前的1号
+  startDate.value = new Date(now.getFullYear(), now.getMonth() - months + 1, 1)
+  // 结束日期：当月最后一天
+  endDate.value = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+}
+
+// 初始化
+updateDateRange()
+
+// 日期范围显示文本
+const dateRangeDisplay = computed(() => {
+  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  return `${fmt(startDate.value)} ~ ${fmt(endDate.value)}`
+})
 
 // 批量选择相关
 const selectedGroups = ref<string[]>([])
@@ -900,6 +913,14 @@ onMounted(() => {
   loadUtilityProfit()
   loadUtilityBills()
 })
+
+// lookbackMonths变化 → 更新日期范围 → 重新加载全部数据
+watch(lookbackMonths, () => {
+  updateDateRange()
+  loadPayments()
+  loadUtilityProfit()
+  loadUtilityBills()
+})
 </script>
 
 <template>
@@ -909,6 +930,21 @@ onMounted(() => {
     </header>
 
     <main class="view-content">
+      <!-- 全局时间控制 -->
+      <div class="global-time-control">
+        <span class="time-control-label">📅 显示最近</span>
+        <el-input-number
+          v-model="lookbackMonths"
+          :min="1"
+          :max="12"
+          :step="1"
+          size="small"
+          style="width: 100px"
+        />
+        <span class="time-control-label">个月</span>
+        <span class="time-control-hint">（{{ dateRangeDisplay }}）</span>
+      </div>
+
       <!-- 水电收益统计 -->
       <div v-if="!hideAmounts && utilityProfit" class="utility-profit-card">
         <div class="profit-header">
@@ -1148,18 +1184,6 @@ onMounted(() => {
       </div>
 
       <!-- 收租概况 -->
-      <div class="collection-toolbar">
-        <span class="collection-toolbar-label">显示最近</span>
-        <el-input-number
-          v-model="lookbackMonths"
-          :min="1"
-          :max="12"
-          :step="1"
-          size="small"
-          style="width: 100px"
-        />
-        <span class="collection-toolbar-label">个月</span>
-      </div>
       <div v-if="initialized && !loading && rentCollectionByMonth.length > 0" class="rent-collection">
         <el-tabs v-model="activeMonthTab" type="border-card">
           <el-tab-pane v-for="monthGroup in rentCollectionByMonthDesc" :key="monthGroup.key" :label="monthGroup.label" :name="monthGroup.key">
@@ -1503,20 +1527,27 @@ td {
 }
 
 /* 收租概况样式 */
-.collection-toolbar {
+.global-time-control {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.75rem;
-  background: white;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  padding: 0.5rem 1rem;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, #f0f5ff 0%, #e8f4f8 100%);
+  border: 1px solid #d0e3f0;
+  border-radius: 10px;
+  padding: 0.6rem 1rem;
 }
 
-.collection-toolbar-label {
-  font-size: 0.875rem;
-  color: #606266;
+.time-control-label {
+  font-size: 0.9rem;
+  color: #409eff;
+  font-weight: 500;
+}
+
+.time-control-hint {
+  font-size: 0.8rem;
+  color: #909399;
+  margin-left: 0.3rem;
 }
 
 .rent-collection {
@@ -2047,12 +2078,12 @@ td {
     width: 100% !important;
   }
 
-  .collection-toolbar {
-    flex-direction: column;
-    gap: 8px;
+  .global-time-control {
+    flex-wrap: wrap;
+    gap: 6px;
   }
 
-  .collection-toolbar-label {
+  .time-control-label {
     font-size: 14px;
   }
 }
