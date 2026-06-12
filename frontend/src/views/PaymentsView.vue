@@ -180,11 +180,11 @@ const formatIgnoredAt = (ignoredAt: string) => {
 // 是否显示删除按钮（仅超级管理员可见）
 const showDeleteButtons = computed(() => authStore.isSuperAdmin)
 
-// 日期范围筛选（默认最近2个月）
+// 日期范围筛选（默认最近3个月）
 const dateRange = ref<[Date, Date]>(() => {
   const end = new Date()
   const start = new Date()
-  start.setMonth(start.getMonth() - 2)
+  start.setMonth(start.getMonth() - 3)
   return [start, end]
 })
 
