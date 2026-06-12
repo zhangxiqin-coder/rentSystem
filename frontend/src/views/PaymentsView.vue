@@ -180,6 +180,9 @@ const formatIgnoredAt = (ignoredAt: string) => {
 // 是否显示删除按钮（仅超级管理员可见）
 const showDeleteButtons = computed(() => authStore.isSuperAdmin)
 
+// 先初始化配置（lookbackMonths等）
+const { overdueCutoffDate, lookbackMonths } = useOverdueConfig()
+
 // 日期范围：由 lookbackMonths 控制，统一影响全页面
 const startDate = ref<Date>(new Date())
 const endDate = ref<Date>(new Date())
@@ -206,8 +209,6 @@ const dateRangeDisplay = computed(() => {
 // 批量选择相关
 const selectedGroups = ref<string[]>([])
 const selectAll = ref(false)
-
-const { overdueCutoffDate, lookbackMonths } = useOverdueConfig()
 
 // 收租概况：按月分组，区分已收/未收/不收租
 const rentCollectionByMonth = computed(() => {
