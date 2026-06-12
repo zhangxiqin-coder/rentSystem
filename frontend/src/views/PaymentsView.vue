@@ -345,6 +345,11 @@ const rentCollectionByMonth = computed(() => {
 // 收租概况倒序（最新月份在前）+ 当前选中tab
 const rentCollectionByMonthDesc = computed(() => [...rentCollectionByMonth.value].reverse())
 const activeMonthTab = ref('')
+const expandedMonthDetail = ref<Record<string, boolean>>({})
+
+const toggleMonthDetail = (key: string, _type: string) => {
+  expandedMonthDetail.value[key] = !expandedMonthDetail.value[key]
+}
 
 // 数据加载后默认选中第一个（最新的）
 watch(rentCollectionByMonthDesc, (val) => {
@@ -1149,39 +1154,42 @@ onMounted(() => {
           <!-- 月度统计卡片 -->
           <div class="collection-summary">
             <div class="summary-cards" v-if="!hideAmounts">
-              <div class="summary-card card-total">
+              <div class="summary-card card-total" @click="toggleMonthDetail(monthGroup.key, 'unpaid')">
                 <span class="sc-label">应收</span>
                 <span class="sc-value">{{ monthGroup.unpaid.length + monthGroup.paid.length }}间</span>
                 <span class="sc-amount">¥{{ monthGroup.totalRent }}</span>
               </div>
-              <div class="summary-card card-paid">
+              <div class="summary-card card-paid" @click="toggleMonthDetail(monthGroup.key, 'paid')">
                 <span class="sc-label">已收</span>
                 <span class="sc-value">{{ monthGroup.paid.length }}间</span>
                 <span class="sc-amount">¥{{ monthGroup.paidRent }}</span>
               </div>
-              <div class="summary-card card-unpaid">
+              <div class="summary-card card-unpaid" @click="toggleMonthDetail(monthGroup.key, 'unpaid')">
                 <span class="sc-label">未收</span>
                 <span class="sc-value">{{ monthGroup.unpaid.length }}间</span>
                 <span class="sc-amount">¥{{ monthGroup.totalRent - monthGroup.paidRent }}</span>
               </div>
             </div>
             <div class="summary-cards" v-else>
-              <div class="summary-card card-total">
+              <div class="summary-card card-total" @click="toggleMonthDetail(monthGroup.key, 'unpaid')">
                 <span class="sc-label">应收</span>
                 <span class="sc-value">{{ monthGroup.unpaid.length + monthGroup.paid.length }}间</span>
               </div>
-              <div class="summary-card card-paid">
+              <div class="summary-card card-paid" @click="toggleMonthDetail(monthGroup.key, 'paid')">
                 <span class="sc-label">已收</span>
                 <span class="sc-value">{{ monthGroup.paid.length }}间</span>
               </div>
-              <div class="summary-card card-unpaid">
+              <div class="summary-card card-unpaid" @click="toggleMonthDetail(monthGroup.key, 'unpaid')">
                 <span class="sc-label">未收</span>
                 <span class="sc-value">{{ monthGroup.unpaid.length }}间</span>
               </div>
             </div>
           </div>
 
-          <!-- 未收 -->          <div v-if="monthGroup.unpaid.length > 0" class="unpaid-section">
+          <!-- 明细（点击展开） -->
+          <template v-if="expandedMonthDetail[monthGroup.key]">
+          <!-- 未收 -->
+          <div v-if="monthGroup.unpaid.length > 0" class="unpaid-section">
             <div class="section-label unpaid-label">未收 {{ monthGroup.unpaid.length }} 间</div>
             <div class="room-chips">
               <div v-for="item in monthGroup.unpaid" :key="`u-${monthGroup.key}-${item.room.id}`" class="room-chip chip-unpaid">
@@ -1216,21 +1224,13 @@ onMounted(() => {
               </div>
             </div>
           </div>
+          </template>
           </el-tab-pane>
         </el-tabs>
       </div>
 
       <!-- 筛选工具栏 -->
       <div class="filter-toolbar">
-        <label class="filter-label">
-          筛选房号：
-          <select v-model="selectedRoomId" class="room-select" @change="loadPayments">
-            <option :value="null">全部房间</option>
-            <option v-for="room in rooms" :key="room.id" :value="room.id">
-              {{ room.room_number }}
-            </option>
-          </select>
-        </label>
         <label class="filter-label">
           开始日期：
           <el-date-picker
@@ -1253,10 +1253,6 @@ onMounted(() => {
             style="width: 150px"
           />
         </label>
-        <span v-if="selectedRoomId" class="filter-info">
-          已选择：{{ rooms.find(r => r.id === selectedRoomId)?.room_number }}
-          <button @click="selectedRoomId = null; loadPayments()" class="clear-btn">清除</button>
-        </span>
         <button @click="setYearToDate" class="clear-btn" style="margin-left: 4px">今年以来</button>
       </div>
       <div v-if="monthlyStats.length > 0" class="chart-container">
@@ -1576,6 +1572,12 @@ td {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+
+.summary-card:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
 }
 
 .card-total {
