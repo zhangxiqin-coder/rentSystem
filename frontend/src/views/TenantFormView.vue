@@ -97,11 +97,18 @@ const handleSave = async () => {
 
   saving.value = true
   try {
+    // 空字符串转null，避免后端min_length校验失败
+    const payload = { ...form.value }
+    if (!payload.id_card) payload.id_card = undefined
+    if (!payload.emergency_contact) payload.emergency_contact = undefined
+    if (!payload.emergency_phone) payload.emergency_phone = undefined
+    if (!payload.notes) payload.notes = undefined
+
     if (isEdit.value) {
-      await tenantsApi.update(tenantId.value, form.value as TenantUpdate)
+      await tenantsApi.update(tenantId.value, payload as TenantUpdate)
       ElMessage.success('更新成功')
     } else {
-      await tenantsApi.create(form.value)
+      await tenantsApi.create(payload)
       ElMessage.success('创建成功')
     }
     router.push('/tenants')

@@ -86,10 +86,11 @@ def create_tenant(
     db: Session = Depends(get_db)
 ):
     """创建租客"""
-    # 检查身份证号是否已存在
-    existing = db.query(Tenant).filter(Tenant.id_card == tenant.id_card).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="该身份证号已存在")
+    # 检查身份证号是否已存在（只检查有身份证号的）
+    if tenant.id_card:
+        existing = db.query(Tenant).filter(Tenant.id_card == tenant.id_card).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="该身份证号已存在")
     
     new_tenant = Tenant(**tenant.model_dump(), owner_id=current_user.id)
     db.add(new_tenant)
