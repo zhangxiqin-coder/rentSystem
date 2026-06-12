@@ -25,7 +25,7 @@ const fileList = ref<any[]>([])
 const importResult = ref<any>(null)
 
 // 系列tab
-const activeSeriesTab = ref('all')
+const activeSeriesTab = ref('102')
 
 // Pagination
 const currentPage = ref(1)
