@@ -1418,14 +1418,14 @@ onMounted(() => {
 }
 
 .stat-value {
-  font-size: 1.5rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: #333;
 }
 
 .stat-item.total .stat-value {
   color: white;
-  font-size: 2rem;
+  font-size: 1.25rem;
 }
 
 .water-profit {
@@ -1955,11 +1955,11 @@ td {
   }
 
   .stat-value {
-    font-size: 1.25rem;
+    font-size: 1rem;
   }
 
   .stat-item.total .stat-value {
-    font-size: 1.5rem;
+    font-size: 1.1rem;
   }
 
   /* 月度明细 - 手机端用卡片替代表格 */
