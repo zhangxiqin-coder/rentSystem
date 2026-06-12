@@ -24,6 +24,9 @@ const uploading = ref(false)
 const fileList = ref<any[]>([])
 const importResult = ref<any>(null)
 
+// 系列tab
+const activeSeriesTab = ref('all')
+
 // Pagination
 const currentPage = ref(1)
 const pageSize = ref(5)
@@ -32,8 +35,24 @@ const total = ref(0)
 // Status filters
 const statusFilters = ref<string[]>([])
 
+// 动态提取系列列表
+const seriesList = computed(() => {
+  const seriesSet = new Set<string>()
+  rooms.value.forEach(room => {
+    if (room.series) {
+      seriesSet.add(room.series)
+    }
+  })
+  return Array.from(seriesSet).sort()
+})
+
 const filteredRooms = computed(() => {
   let result = rooms.value
+
+  // 按系列tab过滤
+  if (activeSeriesTab.value !== 'all') {
+    result = result.filter(room => room.series === activeSeriesTab.value)
+  }
 
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
@@ -492,6 +511,17 @@ onMounted(() => {
     </el-card>
 
     <el-card class="content-card">
+      <!-- 系列Tab切换 -->
+      <el-tabs v-model="activeSeriesTab" class="series-tabs" @tab-change="currentPage = 1">
+        <el-tab-pane label="全部" name="all" />
+        <el-tab-pane
+          v-for="series in seriesList"
+          :key="series"
+          :label="series"
+          :name="series"
+        />
+      </el-tabs>
+
       <!-- Filters -->
       <div class="filters">
         <el-input
@@ -1040,6 +1070,14 @@ onMounted(() => {
 
 .content-card {
   min-height: 600px;
+}
+
+.series-tabs {
+  margin-bottom: 16px;
+}
+
+.series-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
 }
 
 .filters {

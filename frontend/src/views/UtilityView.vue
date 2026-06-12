@@ -244,6 +244,14 @@ onMounted(async () => {
               />
             </el-form-item>
 
+            <el-form-item label="收租状态">
+              <el-select v-model="filters.is_paid" placeholder="收租状态" style="width: 120px">
+                <el-option label="未收" value="unpaid" />
+                <el-option label="已收" value="paid" />
+                <el-option label="全部" value="all" />
+              </el-select>
+            </el-form-item>
+
             <el-form-item>
               <el-button type="primary" @click="handleFilter">筛选</el-button>
               <el-button @click="resetFilter">重置</el-button>

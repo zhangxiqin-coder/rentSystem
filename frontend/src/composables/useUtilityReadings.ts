@@ -30,6 +30,7 @@ export function useUtilityReadings(deps: {
     room_id: undefined as number | undefined,
     start_date: '',
     end_date: '',
+    is_paid: 'unpaid' as 'all' | 'paid' | 'unpaid',  // 默认只显示未收的
   })
 
   // 加载所有水电记录（分页全部加载）
@@ -109,6 +110,7 @@ export function useUtilityReadings(deps: {
       room_id: undefined,
       start_date: '',
       end_date: '',
+      is_paid: 'unpaid',
     }
     pagination.value.page = 1
     loadReadings()
@@ -205,7 +207,7 @@ export function useUtilityReadings(deps: {
     })
 
     // 排序：第一优先级未支付排前面，第二优先级按时间倒序
-    return result.sort((a, b) => {
+    const sorted = result.sort((a, b) => {
       // 第一优先级：未支付的排前面
       if (a.is_paid !== b.is_paid) {
         return a.is_paid ? 1 : -1  // 未支付(-1)排在已支付(1)前面
@@ -213,6 +215,14 @@ export function useUtilityReadings(deps: {
       // 第二优先级：时间倒序（最新的在前）
       return new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime()
     })
+
+    // is_paid 筛选
+    if (filters.value.is_paid === 'unpaid') {
+      return sorted.filter(r => !r.is_paid)
+    } else if (filters.value.is_paid === 'paid') {
+      return sorted.filter(r => r.is_paid)
+    }
+    return sorted
   })
 
   return {

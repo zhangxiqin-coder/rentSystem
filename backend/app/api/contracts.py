@@ -98,11 +98,15 @@ async def generate_lease_contract(
             month_diff = lease_record.lease_end.month - lease_record.lease_start.month
             lease_months = year_diff * 12 + month_diff
 
-        # 签订日期默认为今天
+        # 签订日期：如果租期开始日期早于今天，用租期开始日期，否则用今天
         today = date.today()
-        sign_year = today.year
-        sign_month = today.month
-        sign_day = today.day
+        if lease_record.lease_start and lease_record.lease_start < today:
+            sign_date = lease_record.lease_start
+        else:
+            sign_date = today
+        sign_year = sign_date.year
+        sign_month = sign_date.month
+        sign_day = sign_date.day
 
         # 填充模板数据
         contract_data = {

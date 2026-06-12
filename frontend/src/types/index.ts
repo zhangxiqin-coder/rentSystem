@@ -320,4 +320,6 @@ export interface LeaseRecordUpdate {
   deposit_amount?: number
   is_active?: boolean
   notes?: string
+  initial_electricity_reading?: number
+  initial_water_reading?: number
 }

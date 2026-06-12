@@ -13,46 +13,46 @@
 
         body {
             font-family: "SimSun", "宋体", serif;
-            font-size: 16px;
-            line-height: 1.8;
+            font-size: 11px;
+            line-height: 1.5;
             color: #333;
             background: #fff;
         }
 
         .contract-container {
             width: 210mm;
-            min-height: 297mm;
+            height: 297mm;
             margin: 0 auto;
-            padding: 25mm 20mm;
+            padding: 10mm 15mm;
             background: #fff;
         }
 
         .contract-title {
             text-align: center;
-            font-size: 28px;
+            font-size: 18px;
             font-weight: bold;
-            margin-bottom: 30px;
+            margin-bottom: 8px;
             color: #000;
         }
 
         .section {
-            margin-bottom: 20px;
+            margin-bottom: 4px;
         }
 
         .party-info {
-            margin-bottom: 25px;
-            padding: 15px;
-            border: 1px solid #ddd;
-            background: #f9f9f9;
+            margin-bottom: 4px;
+            padding: 4px 8px;
+            border: 1px solid #ccc;
+            background: #fafafa;
         }
 
         .party-info p {
-            margin: 8px 0;
+            margin: 1px 0;
+            line-height: 1.5;
         }
 
         .party-info .label {
-            display: inline-block;
-            width: 100px;
+            display: inline;
             font-weight: bold;
         }
 
@@ -64,43 +64,58 @@
         }
 
         .party-info .static-value {
-            display: inline-block;
+            display: inline;
         }
 
         .article {
-            margin-bottom: 15px;
+            margin-bottom: 2px;
         }
 
         .article-title {
             font-weight: bold;
-            font-size: 18px;
-            margin-bottom: 10px;
+            font-size: 12px;
+            margin-bottom: 2px;
         }
 
         .article-content {
             text-indent: 2em;
-            margin-bottom: 8px;
+            margin-bottom: 1px;
+        }
+
+        .checkbox-group {
+            display: inline-block;
+            margin: 0 5px;
+        }
+
+        .checkbox-item {
+            display: inline-block;
+            margin: 0 4px;
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            margin-right: 2px;
         }
 
         .input-line {
             display: inline-block;
-            min-width: 80px;
+            min-width: 50px;
             border-bottom: 1px solid #333;
-            padding: 0 5px;
+            padding: 0 3px;
             font-weight: bold;
         }
 
         .utility-table {
             width: 100%;
-            margin: 15px 0;
+            margin: 3px 0;
             border-collapse: collapse;
         }
 
         .utility-table th,
         .utility-table td {
             border: 1px solid #000;
-            padding: 10px;
+            padding: 2px 6px;
             text-align: center;
+            font-size: 11px;
         }
 
         .utility-table th {
@@ -109,14 +124,14 @@
         }
 
         .signature-section {
-            margin-top: 40px;
-            padding: 20px 0;
+            margin-top: 10px;
+            padding: 5px 0;
         }
 
         .signature-row {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 20px;
+            margin-bottom: 8px;
         }
 
         .signature-box {
@@ -124,36 +139,39 @@
         }
 
         .signature-line {
-            margin-top: 50px;
+            margin-top: 25px;
             border-bottom: 1px solid #000;
         }
 
         .date-line {
             text-align: right;
-            margin-top: 30px;
+            margin-top: 6px;
         }
 
         .note {
-            font-size: 14px;
+            font-size: 10px;
             color: #666;
             font-style: italic;
-            margin: 10px 0;
-        }
-
-        .checkbox-item {
-            display: inline-block;
-            margin: 0 8px;
+            margin: 2px 0;
         }
 
         @media print {
+            @page {
+                size: A4;
+                margin: 5mm;
+            }
+
             body {
                 background: #fff;
+                margin: 0;
+                padding: 0;
             }
 
             .contract-container {
                 width: 100%;
+                height: auto;
                 margin: 0;
-                padding: 20mm 15mm;
+                padding: 5mm 10mm;
             }
         }
     </style>
@@ -167,14 +185,10 @@
             <p>
                 <span class="label">出租方（甲方）：</span>
                 <span class="static-value">张锡琴</span>
-                <span style="margin-left: 20px;">
+                <span style="margin-left: 15px;">
                     <span class="label">联系电话：</span>
                     <span class="static-value">13806504936</span>
                 </span>
-            </p>
-            <p>
-                <span class="label">微信号：</span>
-                <span class="static-value">13806504936</span>
             </p>
         </div>
 
@@ -182,14 +196,14 @@
             <p>
                 <span class="label">承租方（乙方）：</span>
                 <span class="value">李明</span>
-            </p>
-            <p>
-                <span class="label">身份证号码：</span>
-                <span class="value">330106199001011234</span>
-            </p>
-            <p>
-                <span class="label">联系电话：</span>
-                <span class="value">13912345678</span>
+                <span style="margin-left: 15px;">
+                    <span class="label">身份证号码：</span>
+                    <span class="value">330106199001011234</span>
+                </span>
+                <span style="margin-left: 15px;">
+                    <span class="label">联系电话：</span>
+                    <span class="value">13912345678</span>
+                </span>
             </p>
         </div>
 
@@ -228,7 +242,7 @@
                 <div class="article-content">
                     2、该房屋租金为：<span class="input-line">1500</span>元/月，
                     <span class="input-line">3</span>个月缴纳一次，先交租金后住房，乙方提前5天缴纳租金和水电费，逾期视为乙方违约，甲方有权终止合同。
-                    <p class="note">注：房租价格为不含税价格。如需开票，租客自理税费。合同签订之日，合同即刻生效。违约金为1个月房租。</p>
+                    <span class="note">注：房租价格为不含税价格。如需开票，租客自理税费。合同签订之日，合同即刻生效。违约金为1个月房租。</span>
                 </div>
                 <div class="article-content">
                     3、该房屋押金为<span class="input-line">1500</span>元。押金不可抵扣房租。合同到期搬离押金即刻退还。

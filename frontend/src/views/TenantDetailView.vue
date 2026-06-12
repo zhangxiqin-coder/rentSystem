@@ -32,6 +32,20 @@ const checkInForm = ref({
   notes: ''
 })
 
+// 编辑租赁记录对话框
+const editDialogVisible = ref(false)
+const editLoading = ref(false)
+const editForm = ref({
+  id: 0,
+  lease_start: '',
+  lease_end: '',
+  monthly_rent: 0,
+  deposit_amount: 0,
+  initial_electricity_reading: 0,
+  initial_water_reading: 0,
+  notes: ''
+})
+
 // 续租对话框
 const renewDialogVisible = ref(false)
 const renewLoading = ref(false)
@@ -217,6 +231,49 @@ const handleEdit = () => {
   router.push(`/tenants/${tenantId.value}/edit`)
 }
 
+// 打开编辑租赁记录对话框
+const openEditDialog = (record: LeaseRecord) => {
+  editForm.value = {
+    id: record.id,
+    lease_start: record.lease_start,
+    lease_end: record.lease_end,
+    monthly_rent: Number(record.monthly_rent) || 0,
+    deposit_amount: Number(record.deposit_amount) || 0,
+    initial_electricity_reading: Number(record.initial_electricity_reading) || 0,
+    initial_water_reading: Number(record.initial_water_reading) || 0,
+    notes: record.notes || ''
+  }
+  editDialogVisible.value = true
+}
+
+// 提交编辑租赁记录
+const submitEdit = async () => {
+  if (!editForm.value.lease_start || !editForm.value.lease_end) {
+    ElMessage.warning('请设置租期')
+    return
+  }
+  editLoading.value = true
+  try {
+    await leaseRecordsApi.update(editForm.value.id, {
+      lease_start: editForm.value.lease_start,
+      lease_end: editForm.value.lease_end,
+      monthly_rent: editForm.value.monthly_rent,
+      deposit_amount: editForm.value.deposit_amount,
+      initial_electricity_reading: editForm.value.initial_electricity_reading,
+      initial_water_reading: editForm.value.initial_water_reading,
+      notes: editForm.value.notes || undefined
+    })
+    ElMessage.success('修改成功')
+    editDialogVisible.value = false
+    await fetchLeaseRecords()
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.detail || '修改失败')
+    console.error(error)
+  } finally {
+    editLoading.value = false
+  }
+}
+
 // 返回列表
 const goBack = () => {
   router.push('/tenants')
@@ -354,8 +411,16 @@ onMounted(() => {
             </template>
           </el-table-column>
           <el-table-column prop="notes" label="备注" show-overflow-tooltip />
-          <el-table-column label="操作" width="240" fixed="right">
+          <el-table-column label="操作" width="280" fixed="right">
             <template #default="{ row }">
+              <el-button
+                type="default"
+                size="small"
+                :icon="Edit"
+                @click="openEditDialog(row)"
+              >
+                编辑
+              </el-button>
               <el-button
                 type="primary"
                 size="small"
@@ -481,6 +546,80 @@ onMounted(() => {
       <template #footer>
         <el-button @click="checkInDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handleCheckIn">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑租赁记录对话框 -->
+    <el-dialog
+      v-model="editDialogVisible"
+      title="编辑租赁记录"
+      width="500px"
+    >
+      <el-form :model="editForm" label-width="120px">
+        <el-form-item label="租期开始">
+          <el-date-picker
+            v-model="editForm.lease_start"
+            type="date"
+            placeholder="选择开始日期"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="租期结束">
+          <el-date-picker
+            v-model="editForm.lease_end"
+            type="date"
+            placeholder="选择结束日期"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="月租金">
+          <el-input-number
+            v-model="editForm.monthly_rent"
+            :min="0"
+            :precision="2"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="押金">
+          <el-input-number
+            v-model="editForm.deposit_amount"
+            :min="0"
+            :precision="2"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="初始电表读数">
+          <el-input-number
+            v-model="editForm.initial_electricity_reading"
+            :min="0"
+            :precision="2"
+            :step="10"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="初始水表读数">
+          <el-input-number
+            v-model="editForm.initial_water_reading"
+            :min="0"
+            :precision="2"
+            :step="1"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input
+            v-model="editForm.notes"
+            type="textarea"
+            :rows="3"
+            placeholder="选填"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="editLoading" @click="submitEdit">保存</el-button>
       </template>
     </el-dialog>
 
