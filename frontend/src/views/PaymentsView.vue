@@ -616,6 +616,13 @@ const chartOption = computed(() => {
   }
 })
 
+const setYearToDate = () => {
+  const now = new Date()
+  startDate.value = new Date(now.getFullYear(), 0, 1)
+  endDate.value = now
+  loadPayments()
+}
+
 const loadPayments = async () => {
   loading.value = true
   try {
@@ -1239,9 +1246,8 @@ onMounted(() => {
           已选择：{{ rooms.find(r => r.id === selectedRoomId)?.room_number }}
           <button @click="selectedRoomId = null; loadPayments()" class="clear-btn">清除</button>
         </span>
+        <button @click="setYearToDate" class="clear-btn" style="margin-left: 4px">今年以来</button>
       </div>
-
-      <!-- 月度统计图表 -->
       <div v-if="monthlyStats.length > 0" class="chart-container">
         <v-chart :option="chartOption" style="height: 400px" autoresize />
       </div>
