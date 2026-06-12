@@ -6,7 +6,7 @@ const config = {
   expiringDays: { key: 'expiring_days', default: 7 },
   recentPaymentDays: { key: 'recent_payment_days', default: 7 },
   recentReadingDays: { key: 'recent_reading_days', default: 45 },
-  lookbackMonths: { key: 'lookback_months', default: 1 },
+  lookbackMonths: { key: 'lookback_months', default: 3 },
   leaseExpiryWarningDays: { key: 'lease_expiry_warning_days', default: 30 },
 } as const
 

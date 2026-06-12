@@ -373,6 +373,28 @@ watch(rentCollectionByMonthDesc, (val) => {
   }
 }, { immediate: true })
 
+// 水电月度明细按月份分组
+const utilityBreakdownByMonth = computed(() => {
+  if (!utilityProfit.value?.monthly_breakdown) return []
+  const map = new Map<string, { key: string; label: string; rows: typeof utilityProfit.value.monthly_breakdown }>()
+  for (const row of utilityProfit.value.monthly_breakdown) {
+    const key = `${row.year}-${String(row.month).padStart(2, '0')}`
+    if (!map.has(key)) {
+      map.set(key, { key, label: `${row.year}年${row.month}月`, rows: [] })
+    }
+    map.get(key)!.rows.push(row)
+  }
+  // 倒序（最新在前）
+  return [...map.values()].reverse()
+})
+const utilityMonthTab = ref('')
+watch(utilityBreakdownByMonth, (val) => {
+  if (val.length > 0 && !utilityMonthTab.value) {
+    utilityMonthTab.value = val[0].key
+  }
+}, { immediate: true })
+
+
 const getStatusLabel = (status: string) => {
   const labels: Record<string, string> = {
     pending: '待处理',
@@ -931,19 +953,16 @@ watch(lookbackMonths, () => {
     </header>
 
     <main class="view-content">
-      <!-- 全局时间控制 -->
+      <!-- 全局时间提示（从设置读取） -->
       <div class="global-time-control">
-        <span class="time-control-label">📅 显示最近</span>
-        <el-input-number
-          v-model="lookbackMonths"
-          :min="1"
-          :max="12"
-          :step="1"
-          size="small"
-          style="width: 100px"
-        />
-        <span class="time-control-label">个月</span>
+        <span class="time-control-label">📅 显示最近 {{ lookbackMonths }} 个月</span>
         <span class="time-control-hint">（{{ dateRangeDisplay }}）</span>
+        <router-link to="/settings" class="time-control-link">修改设置</router-link>
+      </div>
+
+      <!-- 月度趋势图表 -->
+      <div v-if="monthlyStats.length > 0" class="chart-container">
+        <v-chart :option="chartOption" style="height: 350px" autoresize />
       </div>
 
       <!-- 水电收益统计 -->
@@ -972,82 +991,84 @@ watch(lookbackMonths, () => {
         <!-- 月度明细 -->
         <div v-if="utilityProfit.monthly_breakdown.length > 0" class="monthly-breakdown">
           <h3>月度明细</h3>
-          <!-- 桌面端：表格 -->
-          <el-table :data="utilityProfit.monthly_breakdown" size="small" class="hidden-mobile">
-            <el-table-column label="系列" width="100">
-              <template #default="{ row }">
-                <div>{{ row.series }}</div>
-                <el-button 
-                  type="primary" 
-                  link 
-                  size="small" 
-                  @click="openSeriesDetail(row.series, row.year, row.month)"
-                  style="margin-top: 4px;"
-                >
-                  查看明细
-                </el-button>
-              </template>
-            </el-table-column>
-            <el-table-column prop="year" label="年份" width="80" />
-            <el-table-column prop="month" label="月份" width="80" />
-            <el-table-column label="水费">
-              <template #default="{ row }">
-                <div>收: ¥{{ row.water_collected.toFixed(2) }}</div>
-                <div>支: ¥{{ row.water_cost.toFixed(2) }}</div>
-                <div class="profit-value">益: ¥{{ row.water_profit.toFixed(2) }}</div>
-              </template>
-            </el-table-column>
-            <el-table-column label="电费">
-              <template #default="{ row }">
-                <div>收: ¥{{ row.electric_collected.toFixed(2) }}</div>
-                <div>支: ¥{{ row.electric_cost.toFixed(2) }}</div>
-                <div class="profit-value">益: ¥{{ row.electric_profit.toFixed(2) }}</div>
-              </template>
-            </el-table-column>
-            <el-table-column label="总收益">
-              <template #default="{ row }">
-                <span class="total-profit">¥{{ row.total_profit.toFixed(2) }}</span>
-              </template>
-            </el-table-column>
-          </el-table>
-          <!-- 手机端：卡片 -->
-          <div class="monthly-cards hidden-desktop">
-            <div v-for="(row, idx) in utilityProfit.monthly_breakdown" :key="idx" class="monthly-card">
-              <div class="monthly-card-header">
-                <span>{{ row.series }} · {{ row.year }}年{{ row.month }}月</span>
-                <el-button type="primary" link size="small" @click="openSeriesDetail(row.series, row.year, row.month)">明细</el-button>
+          <el-tabs v-model="utilityMonthTab" type="border-card">
+            <el-tab-pane v-for="monthGroup in utilityBreakdownByMonth" :key="monthGroup.key" :label="monthGroup.label" :name="monthGroup.key">
+              <!-- 桌面端：表格 -->
+              <el-table :data="monthGroup.rows" size="small" class="hidden-mobile">
+                <el-table-column label="系列" width="100">
+                  <template #default="{ row }">
+                    <div>{{ row.series }}</div>
+                    <el-button
+                      type="primary"
+                      link
+                      size="small"
+                      @click="openSeriesDetail(row.series, row.year, row.month)"
+                      style="margin-top: 4px;"
+                    >
+                      查看明细
+                    </el-button>
+                  </template>
+                </el-table-column>
+                <el-table-column label="水费">
+                  <template #default="{ row }">
+                    <div>收: ¥{{ row.water_collected.toFixed(2) }}</div>
+                    <div>支: ¥{{ row.water_cost.toFixed(2) }}</div>
+                    <div class="profit-value">益: ¥{{ row.water_profit.toFixed(2) }}</div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="电费">
+                  <template #default="{ row }">
+                    <div>收: ¥{{ row.electric_collected.toFixed(2) }}</div>
+                    <div>支: ¥{{ row.electric_cost.toFixed(2) }}</div>
+                    <div class="profit-value">益: ¥{{ row.electric_profit.toFixed(2) }}</div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="总收益">
+                  <template #default="{ row }">
+                    <span class="total-profit">¥{{ row.total_profit.toFixed(2) }}</span>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <!-- 手机端：卡片 -->
+              <div class="monthly-cards hidden-desktop">
+                <div v-for="(row, idx) in monthGroup.rows" :key="idx" class="monthly-card">
+                  <div class="monthly-card-header">
+                    <span>{{ row.series }}</span>
+                    <el-button type="primary" link size="small" @click="openSeriesDetail(row.series, row.year, row.month)">明细</el-button>
+                  </div>
+                  <div class="monthly-card-body">
+                    <div class="monthly-card-cell">
+                      <span class="label">水收</span>
+                      <span>¥{{ row.water_collected.toFixed(2) }}</span>
+                    </div>
+                    <div class="monthly-card-cell">
+                      <span class="label">水支</span>
+                      <span>¥{{ row.water_cost.toFixed(2) }}</span>
+                    </div>
+                    <div class="monthly-card-cell">
+                      <span class="label">电收</span>
+                      <span>¥{{ row.electric_collected.toFixed(2) }}</span>
+                    </div>
+                    <div class="monthly-card-cell">
+                      <span class="label">电支</span>
+                      <span>¥{{ row.electric_cost.toFixed(2) }}</span>
+                    </div>
+                    <div class="monthly-card-cell">
+                      <span class="label">水益</span>
+                      <span class="profit-value">¥{{ row.water_profit.toFixed(2) }}</span>
+                    </div>
+                    <div class="monthly-card-cell">
+                      <span class="label">电益</span>
+                      <span class="profit-value">¥{{ row.electric_profit.toFixed(2) }}</span>
+                    </div>
+                    <div class="monthly-card-total">
+                      总收益: ¥{{ row.total_profit.toFixed(2) }}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="monthly-card-body">
-                <div class="monthly-card-cell">
-                  <span class="label">水收</span>
-                  <span>¥{{ row.water_collected.toFixed(2) }}</span>
-                </div>
-                <div class="monthly-card-cell">
-                  <span class="label">水支</span>
-                  <span>¥{{ row.water_cost.toFixed(2) }}</span>
-                </div>
-                <div class="monthly-card-cell">
-                  <span class="label">电收</span>
-                  <span>¥{{ row.electric_collected.toFixed(2) }}</span>
-                </div>
-                <div class="monthly-card-cell">
-                  <span class="label">电支</span>
-                  <span>¥{{ row.electric_cost.toFixed(2) }}</span>
-                </div>
-                <div class="monthly-card-cell">
-                  <span class="label">水益</span>
-                  <span class="profit-value">¥{{ row.water_profit.toFixed(2) }}</span>
-                </div>
-                <div class="monthly-card-cell">
-                  <span class="label">电益</span>
-                  <span class="profit-value">¥{{ row.electric_profit.toFixed(2) }}</span>
-                </div>
-                <div class="monthly-card-total">
-                  总收益: ¥{{ row.total_profit.toFixed(2) }}
-                </div>
-              </div>
-            </div>
-          </div>
+            </el-tab-pane>
+          </el-tabs>
         </div>
       </div>
 
@@ -1264,11 +1285,6 @@ watch(lookbackMonths, () => {
           </template>
           </el-tab-pane>
         </el-tabs>
-      </div>
-
-      <!-- 月度趋势图表 -->
-      <div v-if="monthlyStats.length > 0" class="chart-container">
-        <v-chart :option="chartOption" style="height: 350px" autoresize />
       </div>
 
       <div v-if="loading" class="loading">加载中...</div>
@@ -1549,6 +1565,16 @@ td {
   font-size: 0.8rem;
   color: #909399;
   margin-left: 0.3rem;
+}
+
+.time-control-link {
+  font-size: 0.8rem;
+  color: #409eff;
+  margin-left: auto;
+  text-decoration: none;
+}
+.time-control-link:hover {
+  text-decoration: underline;
 }
 
 .rent-collection {
