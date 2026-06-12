@@ -1241,6 +1241,11 @@ onMounted(() => {
         </el-tabs>
       </div>
 
+      <!-- 月度趋势图表 -->
+      <div v-if="monthlyStats.length > 0" class="chart-container">
+        <v-chart :option="chartOption" style="height: 350px" autoresize />
+      </div>
+
       <div v-if="loading" class="loading">加载中...</div>
       <div v-else class="payments-list">
         <table>
