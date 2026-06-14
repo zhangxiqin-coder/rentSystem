@@ -25,7 +25,7 @@ const fileList = ref<any[]>([])
 const importResult = ref<any>(null)
 
 // 系列tab
-const activeSeriesTab = ref('102')
+const activeSeriesTab = ref('all')
 
 // Pagination
 const currentPage = ref(1)
@@ -132,7 +132,7 @@ const handleBatchImport = () => {
 }
 
 const handleDownloadTemplate = () => {
-  const csvContent = '房间号,楼栋,租金,水费率,电费率,付款周期,租客,租约开始,租约结束,初始水表,初始电表\n301,1栋,1500,5,0.8,1个月,张三,2025-06-19,2026-06-19,100,500\n302,1栋,1800,,,1个月,,,110,600'
+  const csvContent = '房间号,楼栋,系列,租金,水费率,电费率,付款周期,租客姓名,租客电话,租约开始,租约结束,初始水表,初始电表\n301,1栋,301,1500,5,0.8,1个月,张三,13800001111,2025-06-19,2026-06-19,100,500\n302,1栋,301,1800,5,1,1个月,李四,13800002222,2025-07-01,2026-07-01,110,600\n303,1栋,303,1200,5,1,3个月,,,,0,0'
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
   const link = document.createElement('a')
   const url = URL.createObjectURL(blob)
@@ -942,16 +942,17 @@ onMounted(() => {
       <div class="batch-import-content">
         <!-- 步骤说明 -->
         <el-alert
-          title="导入步骤"
+          title="导入说明"
           type="info"
           :closable="false"
           style="margin-bottom: 20px"
         >
-          <ol style="margin: 10px 0 0 20px; padding: 0;">
+          <ol style="margin: 10px 0 0 20px; padding: 0; line-height: 2;">
             <li>下载CSV模板文件</li>
-            <li>按照模板格式填写房间信息</li>
+            <li>按模板格式填写：房间号、楼栋、系列、租金、费率、租客信息、租约日期、初始水电</li>
+            <li>有租客姓名的行会自动创建租客和租约记录</li>
+            <li>租客姓名为空 = 空置房间</li>
             <li>上传填写好的CSV文件</li>
-            <li>查看导入结果</li>
           </ol>
         </el-alert>
 
