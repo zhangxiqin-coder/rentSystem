@@ -20,7 +20,82 @@ from app.core.deps import get_current_user
 router = APIRouter(prefix="/payments", tags=["payments"])
 
 
-# ==================== 具体路径路由（优先匹配） ====================
+@router.get("/export")
+def export_payments_csv(
+    year: Optional[int] = Query(None, description="年份，默认为当前年份"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """按年份导出支付记录（CSV格式），包含关联的水电读数详情"""
+    if not year:
+        year = datetime.now().year
+
+    # 构建查询
+    if current_user.role in ("admin", "super_landlord"):
+        query = db.query(Payment).join(Room)
+    else:
+        query = db.query(Payment).join(Room).filter(Room.owner_id == current_user.id)
+
+    query = query.filter(
+        func.strftime('%Y', Payment.payment_date) == str(year)
+    ).order_by(Payment.payment_date.desc())
+
+    payments = query.all()
+
+    # 批量收集所有payment_id，一次性查关联水电读数
+    payment_ids = [p.id for p in payments]
+    utility_map = {}  # payment_id -> list of readings
+    if payment_ids:
+        readings = db.query(UtilityReading).filter(
+            UtilityReading.payment_id.in_(payment_ids)
+        ).all()
+        for r in readings:
+            if r.payment_id not in utility_map:
+                utility_map[r.payment_id] = []
+            utility_map[r.payment_id].append(r)
+
+    # 手动构建CSV（带水电读数详情）
+    lines = ['日期,房间号,类型,金额,支付方式,状态,水表读数,电表读数,备注,创建时间']
+    for p in payments:
+        date = p.payment_date.isoformat() if p.payment_date else ''
+        room = p.room.room_number if p.room else ''
+        ptype = p.payment_type or ''
+        amount = f'{float(p.amount):.2f}' if p.amount else '0.00'
+        method = p.payment_method or ''
+        status = p.status or ''
+        desc = (p.description or '').replace(',', '，').replace('"', '""')
+        created = p.created_at.isoformat() if p.created_at else ''
+
+        # 查关联的水电读数
+        readings = utility_map.get(p.id, [])
+        water_info = ''
+        elec_info = ''
+        for ur in readings:
+            prev = f'{float(ur.previous_reading):.1f}' if ur.previous_reading else '-'
+            curr = f'{float(ur.reading):.1f}' if ur.reading else '-'
+            used = f'{float(ur.usage):.1f}' if ur.usage else '-'
+            amt = f'{float(ur.amount):.2f}' if ur.amount else '0.00'
+            detail = f'{prev}→{curr} 用量{used} 费¥{amt}'
+            if ur.utility_type == 'water':
+                water_info = detail
+            else:
+                elec_info = detail
+
+        water_info = water_info.replace(',', '，')
+        elec_info = elec_info.replace(',', '，')
+
+        lines.append(f'{date},{room},{ptype},{amount},{method},{status},{water_info},{elec_info},{desc},{created}')
+
+    csv_content = '\n'.join(lines)
+
+    from fastapi.responses import Response
+    return Response(
+        content='\ufeff' + csv_content,
+        media_type="text/csv; charset=utf-8-sig",
+        headers={
+            "Content-Disposition": "attachment; filename=payment_records_{}.csv".format(year)
+        }
+    )
 
 @router.get("/stats/yearly")
 def get_yearly_stats(

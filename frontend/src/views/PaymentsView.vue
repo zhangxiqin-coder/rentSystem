@@ -395,6 +395,31 @@ watch(utilityBreakdownByMonth, (val) => {
 }, { immediate: true })
 
 
+const exportYear = ref(new Date().getFullYear())
+const exporting = ref(false)
+
+const handleExportCSV = async () => {
+  exporting.value = true
+  try {
+    const res = await paymentApi.exportPaymentsByYear(exportYear.value)
+    const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `交租记录_${exportYear.value}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    ElMessage.success(`已导出 ${exportYear.value} 年交租记录`)
+  } catch (error: any) {
+    console.error('导出失败:', error)
+    ElMessage.error(error.response?.data?.detail || '导出失败')
+  } finally {
+    exporting.value = false
+  }
+}
+
 const getStatusLabel = (status: string) => {
   const labels: Record<string, string> = {
     pending: '待处理',
@@ -950,6 +975,19 @@ watch(lookbackMonths, () => {
   <div class="payments-view">
     <header class="view-header">
       <h1>缴费记录</h1>
+      <div class="header-actions">
+        <el-select v-model="exportYear" style="width: 120px; margin-right: 8px;">
+          <el-option
+            v-for="y in [...Array(10)].map((_, i) => new Date().getFullYear() - i)"
+            :key="y"
+            :label="`${y}年`"
+            :value="y"
+          />
+        </el-select>
+        <el-button type="success" :loading="exporting" @click="handleExportCSV">
+          📥 导出CSV
+        </el-button>
+      </div>
     </header>
 
     <main class="view-content">
@@ -1387,6 +1425,9 @@ watch(lookbackMonths, () => {
   background: white;
   padding: 1.5rem 2rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .view-header h1 {

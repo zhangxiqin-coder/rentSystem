@@ -60,5 +60,12 @@ export const paymentApi = {
 
   // 批量删除支付记录
   batchDeletePayments: (ids: number[]) =>
-    request.delete('/api/v1/payments/batch', { data: ids })
+    request.delete('/api/v1/payments/batch', { data: ids }),
+
+  // 按年份导出支付记录（CSV格式）
+  exportPaymentsByYear: (year: number) =>
+    request.get('/api/v1/payments/export', {
+      params: { year },
+      responseType: 'blob'
+    })
 }
