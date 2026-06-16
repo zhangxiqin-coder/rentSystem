@@ -237,7 +237,7 @@
                 </div>
                 <div class="article-content">
                     2、该房屋租金为：<span class="input-line">{{ monthly_rent }}</span>元/月，
-                    <span class="input-line">1</span>个月缴纳一次，先交租金后住房，乙方提前7天缴纳租金，逾期视为乙方违约，甲方有权终止合同。
+                    <span class="input-line">{{ payment_cycle }}</span>个月缴纳一次，先交租金后住房，乙方提前7天缴纳租金，逾期视为乙方违约，甲方有权终止合同。
                 </div>
                 <div class="article-content">
                     3、该房屋押金为<span class="input-line">{{ deposit_amount }}</span>元。押金不可抵扣租金。
@@ -277,38 +277,6 @@
                 <div class="article-content">
                     2、乙方入住时必须清点每一件设施的好坏，在租房期间应爱护好房屋内的一切设施，如乙方使用损坏，应按物价赔偿给甲方或者购买新的还给甲方。日常损耗，甲方负责。
                 </div>
-            </div>
-        </div>
-
-        <!-- 第五条 水电表读数 -->
-        <div class="section">
-            <div class="article">
-                <div class="article-title">五、水电表读数</div>
-
-                <table class="utility-table">
-                    <thead>
-                        <tr>
-                            <th>项目</th>
-                            <th>起始读数</th>
-                            <th>单价</th>
-                            <th>备注</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>电表</td>
-                            <td>{{ electricity_initial_reading }}</td>
-                            <td>{{ electricity_rate }} 元/度</td>
-                            <td>{{ electricity_note }}</td>
-                        </tr>
-                        <tr>
-                            <td>水表</td>
-                            <td>{{ water_initial_reading }}</td>
-                            <td>{{ water_rate }} 元/吨</td>
-                            <td>{{ water_note }}</td>
-                        </tr>
-                    </tbody>
-                </table>
             </div>
         </div>
 
