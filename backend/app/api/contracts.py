@@ -13,6 +13,20 @@ router = APIRouter()
 # 项目路径配置
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent  # 到达项目根目录
 TEMPLATE_PATH = BASE_DIR / "frontend" / "public" / "templates" / "lease-contract-template.html"
+TEMPLATE_GOLING_PATH = BASE_DIR / "frontend" / "public" / "templates" / "lease-contract-template-goling.html"
+
+
+def get_contract_template(series: str) -> Path:
+    """根据房间系列返回对应的合同模板"""
+    series = str(series or "").strip()
+    # 2-2501系列使用果岭合同模板
+    if series.startswith("2-2501") or series == "2-2501":
+        if TEMPLATE_GOLING_PATH.exists():
+            return TEMPLATE_GOLING_PATH
+        # fallback: 如果果岭模板不存在，使用默认模板
+        return TEMPLATE_PATH
+    # 其他系列使用默认模板
+    return TEMPLATE_PATH
 
 
 @router.get("/generate-contract/{lease_record_id}", response_class=HTMLResponse)
@@ -79,11 +93,13 @@ async def generate_lease_contract(
         broadband_fee = float(room.broadband_fee) if room.broadband_fee else 0
         broadband_note = ""  # 宽带费为0时不显示备注
 
-        # 读取HTML模板
-        if not TEMPLATE_PATH.exists():
-            raise HTTPException(status_code=500, detail="合同模板文件不存在")
+        # 根据房间系列选择模板
+        series = room.series or ""
+        template_path = get_contract_template(series)
+        if not template_path.exists():
+            raise HTTPException(status_code=500, detail=f"合同模板文件不存在: {template_path}")
 
-        with open(TEMPLATE_PATH, 'r', encoding='utf-8') as f:
+        with open(template_path, 'r', encoding='utf-8') as f:
             template = f.read()
 
         # 解析房间号（使用楼栋+房间号）
