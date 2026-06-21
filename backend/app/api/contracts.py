@@ -2,11 +2,15 @@
 房屋租赁合同生成API
 """
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, Response
 from pathlib import Path
 from typing import Optional
 from datetime import date, datetime
 import os
+import io
+import tempfile
+
+from weasyprint import HTML
 
 router = APIRouter()
 
@@ -180,6 +184,65 @@ async def generate_lease_contract(
         return template
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"生成合同失败: {str(e)}")
+        import traceback
+        error_detail = f"生成合同失败: {str(e)}\n{traceback.format_exc()}"
+        print(error_detail)
+        raise HTTPException(status_code=500, detail=error_detail)
     finally:
         db.close()
+
+
+@router.get("/generate-contract-pdf/{lease_record_id}")
+async def generate_lease_contract_pdf(
+    lease_record_id: int,
+    keys_count: Optional[int] = 2
+):
+    """
+    生成房屋租赁合同 PDF 文件下载
+
+    - 先生成 HTML 合同
+    - 再用 weasyprint 转为 PDF
+    - 返回 PDF 文件下载
+    """
+    # 先生成 HTML 合同
+    html_content = await generate_lease_contract(lease_record_id, keys_count)
+
+    if isinstance(html_content, HTMLResponse):
+        html_str = html_content.body.decode('utf-8')
+    else:
+        html_str = str(html_content)
+
+    try:
+        # 将 HTML 转为 PDF
+        html_bytes = html_str.encode('utf-8')
+        pdf_file = io.BytesIO()
+        HTML(string=html_str, base_url=str(BASE_DIR), encoding='utf-8').write_pdf(pdf_file)
+        pdf_file.seek(0)
+
+        # 获取租客姓名用于文件名
+        from app.models import LeaseRecord
+        from app.database import SessionLocal
+        db = SessionLocal()
+        try:
+            lease_record = db.query(LeaseRecord).filter(LeaseRecord.id == lease_record_id).first()
+            tenant_name = lease_record.tenant.name if lease_record and lease_record.tenant else "租客"
+            room_num = lease_record.room.room_number if lease_record and lease_record.room else "房间"
+        finally:
+            db.close()
+
+        from urllib.parse import quote
+        filename = f"房屋租赁合同_{room_num}_{tenant_name}.pdf"
+        encoded_filename = quote(filename)
+
+        return Response(
+            content=pdf_file.getvalue(),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
+            }
+        )
+    except Exception as e:
+        import traceback
+        error_detail = f"生成PDF失败: {str(e)}\n{traceback.format_exc()}"
+        print(error_detail)
+        raise HTTPException(status_code=500, detail=error_detail)

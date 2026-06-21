@@ -154,6 +154,12 @@ const handle生成合同 = (record: LeaseRecord) => {
   window.open(apiUrl, '_blank')
 }
 
+// 下载PDF合同
+const handle下载PDF = (record: LeaseRecord) => {
+  const pdfUrl = `/api/v1/generate-contract-pdf/${record.id}`
+  window.open(pdfUrl, '_blank')
+}
+
 // 结束租赁（退租）
 const handleEndLease = async (record: LeaseRecord) => {
   try {
@@ -427,6 +433,13 @@ onMounted(() => {
                 @click="handle生成合同(row)"
               >
                 生成合同
+              </el-button>
+              <el-button
+                type="success"
+                size="small"
+                @click="handle下载PDF(row)"
+              >
+                PDF下载
               </el-button>
               <el-button
                 v-if="row.status_display === 'active' || row.status_display === 'pending'"
