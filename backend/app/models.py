@@ -224,6 +224,23 @@ class LeaseRecord(Base):
 
     def __repr__(self):
         return f"<LeaseRecord(id={self.id}, tenant_id={self.tenant_id}, room_id={self.room_id}, lease_start={self.lease_start})>"
+    
+    @property
+    def computed_status(self) -> str:
+        """
+        根据租期时间计算当前状态：
+        - pending: 待生效（还未开始）
+        - active: 生效中（当前日期在租期内）
+        - expired: 已结束（租期已过）
+        """
+        from datetime import date
+        today = date.today()
+        if self.lease_start > today:
+            return "pending"
+        elif self.lease_end < today:
+            return "expired"
+        else:
+            return "active"
 
 
 class UtilityReading(Base):

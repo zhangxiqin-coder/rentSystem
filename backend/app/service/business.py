@@ -333,13 +333,14 @@ def get_expiring_leases(
     Returns:
         即将到期的租约列表
     """
-    threshold_date = date.today() + timedelta(days=days_threshold)
+    today = date.today()
+    threshold_date = today + timedelta(days=days_threshold)
     
     query = db.query(LeaseRecord).filter(
         and_(
-            LeaseRecord.lease_end.isnot(None),
+            LeaseRecord.lease_start <= today,     # 已开始
+            LeaseRecord.lease_end >= today,       # 还未到期
             LeaseRecord.lease_end <= threshold_date,
-            LeaseRecord.is_active == True
         )
     )
     

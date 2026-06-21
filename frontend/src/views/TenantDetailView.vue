@@ -55,8 +55,8 @@ const renewForm = ref({
   notes: ''
 })
 
-// 判断是否有活跃租约
-const hasActiveLease = computed(() => leaseRecords.value.some(r => r.is_active))
+// 判断是否有活跃租约（根据时间：status_display为active）
+const hasActiveLease = computed(() => leaseRecords.value.some(r => r.status_display === 'active'))
 
 // 获取租客详情
 const fetchTenantDetail = async () => {
@@ -395,11 +395,11 @@ onMounted(() => {
               {{ row.deposit_amount ? `¥${row.deposit_amount}` : '-' }}
             </template>
           </el-table-column>
-          <el-table-column prop="is_active" label="状态" width="100">
+          <el-table-column label="状态" width="110">
             <template #default="{ row }">
-              <el-tag :type="row.is_active ? 'success' : 'info'">
-                {{ row.is_active ? '生效中' : '已结束' }}
-              </el-tag>
+              <el-tag v-if="row.status_display === 'active'" type="success">已生效</el-tag>
+              <el-tag v-else-if="row.status_display === 'pending'" type="warning">待生效</el-tag>
+              <el-tag v-else type="info">已结束</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="初始水电" width="160">
@@ -429,7 +429,7 @@ onMounted(() => {
                 生成合同
               </el-button>
               <el-button
-                v-if="row.is_active"
+                v-if="row.status_display === 'active' || row.status_display === 'pending'"
                 type="warning"
                 size="small"
                 @click="handleEndLease(row)"

@@ -29,7 +29,19 @@ def list_lease_records(
     if room_id:
         query = query.filter(LeaseRecord.room_id == room_id)
     if is_active is not None:
-        query = query.filter(LeaseRecord.is_active == is_active)
+        from datetime import date
+        today = date.today()
+        if is_active:
+            # 按时间判断"生效中"的租约
+            query = query.filter(
+                LeaseRecord.lease_start <= today,
+                LeaseRecord.lease_end >= today
+            )
+        else:
+            # 按时间判断"已结束"或"待生效"的租约
+            query = query.filter(
+                (LeaseRecord.lease_start > today) | (LeaseRecord.lease_end < today)
+            )
 
     records = query.order_by(desc(LeaseRecord.created_at)).all()
     return records

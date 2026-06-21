@@ -570,10 +570,11 @@ def renew_lease(
         room.description = current_description + renew_note
     
     # ===== 同步更新 LeaseRecord =====
-    # 找到该房间当前活跃的租约
+    # 找到该房间当前活跃的租约（按时间判断）
     active_lease = db.query(LeaseRecord).filter(
         LeaseRecord.room_id == room_id,
-        LeaseRecord.is_active == True
+        LeaseRecord.lease_start <= date.today(),
+        LeaseRecord.lease_end >= date.today()
     ).order_by(LeaseRecord.lease_start.desc()).first()
     
     if active_lease:

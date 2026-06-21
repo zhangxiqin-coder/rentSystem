@@ -292,6 +292,7 @@ export interface LeaseRecord {
   monthly_rent: number
   deposit_amount?: number
   is_active: boolean
+  status_display?: string  // 按时间自动计算：pending/active/expired
   notes?: string
   owner_id: number
   created_at: string

@@ -639,8 +639,22 @@ class LeaseRecordResponse(LeaseRecordBase):
     updated_at: datetime
     tenant: TenantResponse = Field(description="租客信息")
     room: Optional['RoomResponse'] = Field(None, description="房间信息")
+    status_display: Optional[str] = Field(None, description="根据租期计算的状态: pending/active/expired")
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def set_status_display(self):
+        """根据租期时间自动计算状态"""
+        if self.lease_start and self.lease_end:
+            today = date.today()
+            if self.lease_start > today:
+                self.status_display = "pending"
+            elif self.lease_end < today:
+                self.status_display = "expired"
+            else:
+                self.status_display = "active"
+        return self
 
 
 class LeaseRecordWithRoom(LeaseRecordResponse):

@@ -29,17 +29,19 @@ def list_tenants(
     
     # 状态筛选：未入住(unassigned)/入住(active)/搬离(inactive)
     if status == 'unassigned':
-        # 未入住：active但没有活跃租约
+        # 未入住：active但没有活跃租约（根据时间判断）
         active_subquery = db.query(LeaseRecord.id).filter(
             LeaseRecord.tenant_id == Tenant.id,
-            LeaseRecord.is_active == True
+            LeaseRecord.lease_start <= date.today(),
+            LeaseRecord.lease_end >= date.today()
         )
         query = query.filter(Tenant.status == 'active', ~active_subquery.exists())
     elif status == 'active':
-        # 入住：active且有活跃租约
+        # 入住：active且有活跃租约（根据时间判断）
         active_subquery = db.query(LeaseRecord.id).filter(
             LeaseRecord.tenant_id == Tenant.id,
-            LeaseRecord.is_active == True
+            LeaseRecord.lease_start <= date.today(),
+            LeaseRecord.lease_end >= date.today()
         )
         query = query.filter(Tenant.status == 'active', active_subquery.exists())
     elif status == 'inactive':
@@ -161,10 +163,11 @@ def delete_tenant(
     if not tenant:
         raise HTTPException(status_code=404, detail="租客不存在")
     
-    # 检查是否有活跃的租赁记录
+    # 检查是否有活跃的租赁记录（根据时间判断）
     active_leases = db.query(LeaseRecord).filter(
         LeaseRecord.tenant_id == tenant_id,
-        LeaseRecord.is_active == True
+        LeaseRecord.lease_start <= date.today(),
+        LeaseRecord.lease_end >= date.today()
     ).count()
     
     if active_leases > 0:
@@ -202,10 +205,11 @@ def renew_tenant_lease(
     if not tenant:
         raise HTTPException(status_code=404, detail="租客不存在")
     
-    # 找到当前活跃租约
+    # 找到当前活跃租约（按时间判断）
     active_lease = db.query(LeaseRecord).filter(
         LeaseRecord.tenant_id == tenant_id,
-        LeaseRecord.is_active == True
+        LeaseRecord.lease_start <= date.today(),
+        LeaseRecord.lease_end >= date.today()
     ).order_by(LeaseRecord.lease_start.desc()).first()
     
     if not active_lease:
@@ -216,7 +220,7 @@ def renew_tenant_lease(
     if not room:
         raise HTTPException(status_code=404, detail="关联房间不存在")
     
-    # 1. 旧租约失效
+    # 1. 旧租约失效（标记is_active，但前端显示按时间计算）
     active_lease.is_active = False
     
     # 2. 计算新租期
