@@ -531,9 +531,10 @@ def renew_lease(
     续租房间
     
     操作：
-    1. 在当前租期结束日期基础上增加指定月数
-    2. 可选择更新月租金
-    3. 保存续租备注
+    1. 将当前活跃租约 is_active 设为 False
+    2. 创建新的租赁记录（在原租期结束基础上增加月数）
+    3. 可选择更新月租金
+    4. 保存续租备注
     """
     room = db.query(Room).filter(Room.id == room_id).first()
     if not room:
@@ -567,6 +568,34 @@ def renew_lease(
         if renew_data.notes:
             renew_note += f"。备注：{renew_data.notes}"
         room.description = current_description + renew_note
+    
+    # ===== 同步更新 LeaseRecord =====
+    # 找到该房间当前活跃的租约
+    active_lease = db.query(LeaseRecord).filter(
+        LeaseRecord.room_id == room_id,
+        LeaseRecord.is_active == True
+    ).order_by(LeaseRecord.lease_start.desc()).first()
+    
+    if active_lease:
+        # 旧租约失效
+        active_lease.is_active = False
+        
+        # 创建新租赁记录（紧接旧租约结束的下一天开始）
+        new_lease_start = old_lease_end + relativedelta(days=1)
+        new_monthly_rent = renew_data.monthly_rent if renew_data.monthly_rent is not None else active_lease.monthly_rent
+        
+        new_lease = LeaseRecord(
+            tenant_id=active_lease.tenant_id,
+            room_id=room_id,
+            lease_start=new_lease_start,
+            lease_end=new_lease_end,
+            monthly_rent=new_monthly_rent,
+            deposit_amount=active_lease.deposit_amount,
+            is_active=True,
+            notes=renew_data.notes or f"续租{renew_data.months}个月",
+            owner_id=current_user.id
+        )
+        db.add(new_lease)
     
     db.commit()
     db.refresh(room)
