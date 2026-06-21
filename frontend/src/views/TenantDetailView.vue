@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Edit, Delete, Plus, House, Document, Refresh } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowDown, Edit, Delete, Plus, House, Document, Refresh, CircleClose } from '@element-plus/icons-vue'
 import { tenantsApi } from '@/api/tenants'
 import { leaseRecordsApi } from '@/api/leaseRecords'
 import { roomApi } from '@/api/room'
@@ -145,13 +145,6 @@ const handleCheckIn = async () => {
     ElMessage.error(error.response?.data?.message || '入住失败')
     console.error(error)
   }
-}
-
-// 生成合同
-const handle生成合同 = (record: LeaseRecord) => {
-  // 打开新窗口生成合同
-  const apiUrl = `/api/v1/generate-contract/${record.id}`
-  window.open(apiUrl, '_blank')
 }
 
 // 下载PDF合同
@@ -417,55 +410,42 @@ onMounted(() => {
             </template>
           </el-table-column>
           <el-table-column prop="notes" label="备注" show-overflow-tooltip />
-          <el-table-column label="操作" width="280" fixed="right">
+          <el-table-column label="操作" width="90" fixed="right">
             <template #default="{ row }">
-              <el-button
-                type="default"
-                size="small"
-                :icon="Edit"
-                @click="openEditDialog(row)"
-              >
-                编辑
-              </el-button>
-              <el-button
-                type="primary"
-                size="small"
-                @click="handle生成合同(row)"
-              >
-                生成合同
-              </el-button>
-              <el-button
-                type="success"
-                size="small"
-                @click="handle下载PDF(row)"
-              >
-                PDF下载
-              </el-button>
-              <el-button
-                v-if="row.status_display === 'active' || row.status_display === 'pending'"
-                type="warning"
-                size="small"
-                @click="handleEndLease(row)"
-              >
-                退租
-              </el-button>
-              <el-button
-                v-else
-                type="success"
-                size="small"
-                @click="handleRestore(row)"
-              >
-                恢复
-              </el-button>
-              <el-button
-                v-if="authStore.isSuperAdmin"
-                type="danger"
-                :icon="Delete"
-                size="small"
-                @click="handleDeleteRecord(row)"
-              >
-                删除
-              </el-button>
+              <el-dropdown trigger="click">
+                <el-button size="small" type="primary">
+                  操作<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item @click.native="openEditDialog(row)">
+                      <el-icon><Edit /></el-icon>编辑
+                    </el-dropdown-item>
+                    <el-dropdown-item @click.native="handle下载PDF(row)">
+                      <el-icon><Document /></el-icon>下载合同
+                    </el-dropdown-item>
+                    <el-dropdown-item
+                      v-if="row.status_display === 'active' || row.status_display === 'pending'"
+                      @click.native="handleEndLease(row)"
+                    >
+                      <el-icon><CircleClose /></el-icon>退租
+                    </el-dropdown-item>
+                    <el-dropdown-item
+                      v-else
+                      @click.native="handleRestore(row)"
+                    >
+                      <el-icon><Refresh /></el-icon>恢复
+                    </el-dropdown-item>
+                    <el-dropdown-item
+                      v-if="authStore.isSuperAdmin"
+                      @click.native="handleDeleteRecord(row)"
+                      divided
+                    >
+                      <el-icon><Delete /></el-icon>删除
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </template>
           </el-table-column>
         </el-table>
