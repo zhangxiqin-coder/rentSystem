@@ -7,7 +7,7 @@ import type { ApiResponse, LeaseRecord, LeaseRecordCreate, LeaseRecordUpdate } f
 export const leaseRecordsApi = {
   // 获取租赁记录列表
   list: async (params?: { tenant_id?: number; room_id?: number; is_active?: boolean; skip?: number; limit?: number }) => {
-    const response = await request.get<LeaseRecord[]>('/api/v1/lease-records/', { params })
+    const response = await request.get<LeaseRecord[]>('/api/v1/lease-records', { params })
     return response.data
   },
 
@@ -19,7 +19,7 @@ export const leaseRecordsApi = {
 
   // 创建租赁记录（入住操作）
   create: async (data: LeaseRecordCreate) => {
-    const response = await request.post<ApiResponse<LeaseRecord>>('/api/v1/lease-records/', data)
+    const response = await request.post<ApiResponse<LeaseRecord>>('/api/v1/lease-records', data)
     return response.data.data
   },
 
