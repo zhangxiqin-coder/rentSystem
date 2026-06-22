@@ -1,25 +1,69 @@
 import axios from 'axios'
 import type { AssetPlatform, AssetRecord, AssetSummary } from '@/types'
 
+// 手动创建带认证的请求
+async function authRequest<T>(config: {
+  method: 'get' | 'post' | 'put' | 'delete'
+  url: string
+  data?: any
+  params?: any
+}): Promise<T> {
+  const token = (() => {
+    try {
+      const encrypted = localStorage.getItem('access_token')
+      if (!encrypted) return null
+      const decoded = atob(encrypted)
+      const key = import.meta.env.VITE_ENCRYPTION_KEY || 'dev-only-rent-system-encryption-key-2026'
+      let result = ''
+      for (let i = 0; i < decoded.length; i++) {
+        result += String.fromCharCode(decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length))
+      }
+      const parts = result.split('|')
+      return parts.length === 4 ? parts[3] : null
+    } catch {
+      return null
+    }
+  })()
+
+  const headers: Record<string, string> = {}
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
+  // 加CSRF token（非GET请求）
+  if (config.method !== 'get') {
+    const csrfToken = sessionStorage.getItem('csrf_token')
+    if (csrfToken) {
+      headers['X-CSRF-Token'] = csrfToken
+    }
+  }
+
+  const res = await axios({
+    method: config.method,
+    url: config.url,
+    data: config.data,
+    params: config.params,
+    headers
+  })
+  return res.data
+}
+
 export const assetApi = {
   // 平台管理
   async listPlatforms(): Promise<AssetPlatform[]> {
-    const res = await axios.get('/api/v1/assets/platforms')
-    return res.data
+    return authRequest({ method: 'get', url: '/api/v1/assets/platforms' })
   },
 
   async createPlatform(data: { name: string; current_balance?: number; total_earnings?: number }): Promise<AssetPlatform> {
-    const res = await axios.post('/api/v1/assets/platforms', data)
-    return res.data
+    return authRequest({ method: 'post', url: '/api/v1/assets/platforms', data })
   },
 
   async updatePlatform(id: number, data: Partial<AssetPlatform>): Promise<AssetPlatform> {
-    const res = await axios.put(`/api/v1/assets/platforms/${id}`, data)
-    return res.data
+    return authRequest({ method: 'put', url: `/api/v1/assets/platforms/${id}`, data })
   },
 
   async deletePlatform(id: number): Promise<void> {
-    await axios.delete(`/api/v1/assets/platforms/${id}`)
+    await authRequest({ method: 'delete', url: `/api/v1/assets/platforms/${id}` })
   },
 
   // 变动记录
@@ -31,21 +75,18 @@ export const assetApi = {
     amount?: number | null
     notes?: string | null
   }): Promise<AssetRecord> {
-    const res = await axios.post('/api/v1/assets/records', data)
-    return res.data
+    return authRequest({ method: 'post', url: '/api/v1/assets/records', data })
   },
 
   async listRecords(platform_id?: number, limit?: number): Promise<AssetRecord[]> {
     const params: any = {}
     if (platform_id) params.platform_id = platform_id
     if (limit) params.limit = limit
-    const res = await axios.get('/api/v1/assets/records', { params })
-    return res.data
+    return authRequest({ method: 'get', url: '/api/v1/assets/records', params })
   },
 
   // 总览
   async getSummary(): Promise<AssetSummary> {
-    const res = await axios.get('/api/v1/assets/summary')
-    return res.data
+    return authRequest({ method: 'get', url: '/api/v1/assets/summary' })
   }
 }
