@@ -277,7 +277,7 @@ onMounted(() => {
             />
           </el-select>
         </div>
-        <div class="card-value earnings-value">
+        <div :class="['card-value', 'earnings-value', displayEarnings < 0 ? 'negative' : '']">
           ¥{{ summary ? formatAmount(displayEarnings) : '-' }}
         </div>
       </el-card>
@@ -296,7 +296,7 @@ onMounted(() => {
             <div class="platform-balance">
               余额：<strong>¥{{ formatAmount(platform.current_balance) }}</strong>
             </div>
-            <div class="platform-earnings">
+            <div :class="['platform-earnings', platform.total_earnings < 0 ? 'negative' : '']">
               {{ platform.current_year }}年收益：<strong>¥{{ formatAmount(platform.total_earnings) }}</strong>
             </div>
           </div>
@@ -325,7 +325,7 @@ onMounted(() => {
             <div class="record-right">
               <template v-if="record.record_type === 'balance'">
                 <span class="record-balance">余额：¥{{ formatAmount(record.reported_balance || 0) }}</span>
-                <span class="record-earnings">收益：¥{{ formatAmount(record.reported_earnings || 0) }}</span>
+                <span :class="['record-earnings', (record.reported_earnings || 0) < 0 ? 'negative' : '']">收益：¥{{ formatAmount(record.reported_earnings || 0) }}</span>
                 <span v-if="record.calculated_transfer && record.calculated_transfer !== 0"
                   :class="['record-transfer', record.calculated_transfer > 0 ? 'transfer-in' : 'transfer-out']">
                   {{ record.calculated_transfer > 0 ? '转入' : '转出' }} ¥{{ formatAmount(Math.abs(record.calculated_transfer)) }}
@@ -391,7 +391,7 @@ onMounted(() => {
           <el-form-item label="当前收益">
             <el-input-number
               v-model="reportForm.reported_earnings"
-              :min="0"
+              :min="-99999999"
               :precision="2"
               style="width:100%"
             />
@@ -452,7 +452,7 @@ onMounted(() => {
           <el-form-item label="收益">
             <el-input-number
               v-model="editForm.reported_earnings"
-              :min="0"
+              :min="-99999999"
               :precision="2"
               style="width:100%"
             />
@@ -551,6 +551,12 @@ onMounted(() => {
 
 .earnings-value {
   color: #67c23a;
+}
+
+.earnings-value.negative,
+.platform-earnings.negative,
+.record-earnings.negative {
+  color: #f56c6c;
 }
 
 .platform-card {
