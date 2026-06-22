@@ -661,3 +661,78 @@ class LeaseRecordWithRoom(LeaseRecordResponse):
     """带房间完整信息的租赁记录"""
     room: 'RoomResponse' = Field(description="房间信息")
     total_profit: float = Field(description="总收益")
+
+
+# ==================== 个人资产 ====================
+
+class AssetPlatformCreate(BaseModel):
+    """创建资产平台"""
+    name: str = Field(..., description="平台名称")
+    current_balance: Decimal = Field(Decimal('0'), description="当前余额")
+    total_earnings: Decimal = Field(Decimal('0'), description="累计收益")
+    sort_order: int = Field(0, description="排序")
+
+
+class AssetPlatformUpdate(BaseModel):
+    """更新资产平台"""
+    name: Optional[str] = Field(None, description="平台名称")
+    current_balance: Optional[Decimal] = Field(None, description="当前余额")
+    total_earnings: Optional[Decimal] = Field(None, description="累计收益")
+    sort_order: Optional[int] = Field(None, description="排序")
+    is_active: Optional[bool] = Field(None, description="是否启用")
+
+
+class AssetPlatformResponse(BaseModel):
+    """资产平台响应"""
+    id: int
+    name: str
+    current_balance: Decimal
+    total_earnings: Decimal
+    sort_order: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AssetRecordCreate(BaseModel):
+    """创建资产变动记录"""
+    platform_id: int = Field(..., description="平台ID")
+    record_type: str = Field(..., description="类型：balance/transfer_in/transfer_out")
+    reported_balance: Optional[Decimal] = Field(None, description="上报余额（余额上报时必填）")
+    reported_earnings: Optional[Decimal] = Field(None, description="上报累计收益（余额上报时必填）")
+    amount: Optional[Decimal] = Field(None, description="转入/转出金额（transfer类型时必填）")
+    notes: Optional[str] = Field(None, description="备注")
+
+
+class AssetRecordResponse(BaseModel):
+    """资产变动记录响应"""
+    id: int
+    platform_id: int
+    record_type: str
+    reported_balance: Optional[Decimal] = None
+    reported_earnings: Optional[Decimal] = None
+    amount: Optional[Decimal] = None
+    calculated_transfer: Optional[Decimal] = None
+    balance_before: Optional[Decimal] = None
+    balance_after: Optional[Decimal] = None
+    earnings_before: Optional[Decimal] = None
+    earnings_after: Optional[Decimal] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    platform_name: Optional[str] = Field(None, description="平台名称")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AssetPlatformDetailResponse(AssetPlatformResponse):
+    """资产平台详情（含记录）"""
+    records: list[AssetRecordResponse] = Field(default_factory=list, description="变动记录")
+
+
+class AssetSummaryResponse(BaseModel):
+    """资产总览"""
+    total_balance: Decimal = Field(Decimal('0'), description="总资产")
+    total_earnings: Decimal = Field(Decimal('0'), description="累计总收益")
+    platforms: list[AssetPlatformDetailResponse] = Field(default_factory=list, description="各平台详情")

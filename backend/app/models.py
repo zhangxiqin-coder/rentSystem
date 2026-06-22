@@ -317,3 +317,56 @@ class UtilityBill(Base):
     def __repr__(self):
         type_name = "水费" if self.utility_type == "water" else "电费"
         return f"<UtilityBill(id={self.id}, series={self.series}, {self.year}-{self.month:02d}, {type_name}={self.cost})>"
+
+
+class AssetPlatform(Base):
+    """个人资产平台模型"""
+    __tablename__ = "asset_platforms"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String(50), nullable=False, comment="平台名称（支付宝、网商银行等）")
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    current_balance = Column(DECIMAL(12, 2), default=0, comment="当前余额")
+    total_earnings = Column(DECIMAL(12, 2), default=0, comment="累计收益")
+    sort_order = Column(Integer, default=0, comment="排序")
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    owner = relationship("User")
+
+    def __repr__(self):
+        return f"<AssetPlatform(id={self.id}, name='{self.name}', balance={self.current_balance})>"
+
+
+class AssetRecord(Base):
+    """资产变动记录模型"""
+    __tablename__ = "asset_records"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    platform_id = Column(Integer, ForeignKey("asset_platforms.id"), nullable=False, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    
+    # 变动类型
+    record_type = Column(String(10), nullable=False, comment="类型：balance(余额上报) / transfer_in(转入) / transfer_out(转出)")
+    
+    # 上报数据
+    reported_balance = Column(DECIMAL(12, 2), nullable=True, comment="上报时的余额（余额上报时使用）")
+    reported_earnings = Column(DECIMAL(12, 2), nullable=True, comment="上报时的累计收益（余额上报时使用）")
+    amount = Column(DECIMAL(12, 2), nullable=True, comment="转入/转出金额（transfer类型时使用）")
+    
+    # 系统自动计算的结果
+    calculated_transfer = Column(DECIMAL(12, 2), nullable=True, comment="系统算出的转入/转出净额（余额上报时记录）")
+    balance_before = Column(DECIMAL(12, 2), nullable=True, comment="操作前余额")
+    balance_after = Column(DECIMAL(12, 2), nullable=True, comment="操作后余额")
+    earnings_before = Column(DECIMAL(12, 2), nullable=True, comment="操作前累计收益")
+    earnings_after = Column(DECIMAL(12, 2), nullable=True, comment="操作后累计收益")
+    
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    platform = relationship("AssetPlatform")
+    owner = relationship("User")
+
+    def __repr__(self):
+        return f"<AssetRecord(id={self.id}, platform={self.platform_id}, type='{self.record_type}')>"

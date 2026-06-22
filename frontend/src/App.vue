@@ -19,6 +19,7 @@ const activeTab = computed(() => {
   if (route.path.startsWith('/tenants')) return 'tenants'
   if (route.path.startsWith('/payments')) return 'payments'
   if (route.path.startsWith('/utility')) return 'utility'
+  if (route.path.startsWith('/assets')) return 'assets'
   return 'rooms'
 })
 
@@ -27,6 +28,7 @@ const handleTabChange = (name: string | number) => {
   if (name === 'tenants') router.push('/tenants')
   if (name === 'payments') router.push('/payments')
   if (name === 'utility') router.push('/utility')
+  if (name === 'assets') router.push('/assets')
 }
 
 const handleLogout = async () => {
@@ -81,6 +83,7 @@ onMounted(() => {
         <el-tab-pane label="租客管理" name="tenants" />
         <el-tab-pane label="交租记录" name="payments" />
         <el-tab-pane label="水电管理" name="utility" />
+        <el-tab-pane label="资产" name="assets" />
       </el-tabs>
       <div class="actions">
         <el-button type="info" plain size="small" @click="toggleHideAmounts">
@@ -131,6 +134,14 @@ onMounted(() => {
       >
         <span class="icon">⚡</span>
         <span class="label">水电</span>
+      </div>
+      <div
+        class="nav-item"
+        :class="{ active: activeTab === 'assets' }"
+        @click="handleTabChange('assets')"
+      >
+        <span class="icon">💳</span>
+        <span class="label">资产</span>
       </div>
     </nav>
   </div>

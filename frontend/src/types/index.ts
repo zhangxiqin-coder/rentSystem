@@ -324,3 +324,43 @@ export interface LeaseRecordUpdate {
   initial_electricity_reading?: number
   initial_water_reading?: number
 }
+
+// ==================== 个人资产类型 ====================
+
+export interface AssetPlatform {
+  id: number
+  name: string
+  current_balance: number
+  total_earnings: number
+  sort_order: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface AssetRecord {
+  id: number
+  platform_id: number
+  record_type: 'balance' | 'transfer_in' | 'transfer_out'
+  reported_balance?: number | null
+  reported_earnings?: number | null
+  amount?: number | null
+  calculated_transfer?: number | null
+  balance_before?: number | null
+  balance_after?: number | null
+  earnings_before?: number | null
+  earnings_after?: number | null
+  notes?: string | null
+  created_at: string
+  platform_name?: string | null
+}
+
+export interface AssetPlatformDetail extends AssetPlatform {
+  records: AssetRecord[]
+}
+
+export interface AssetSummary {
+  total_balance: number
+  total_earnings: number
+  platforms: AssetPlatformDetail[]
+}
