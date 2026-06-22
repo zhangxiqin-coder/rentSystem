@@ -36,6 +36,7 @@ const ALL_PLATFORMS = [
   { key: '雪球', label: '雪球' },
   { key: '京东金融', label: '京东金融' },
   { key: '平安证券', label: '平安证券' },
+  { key: '其他', label: '其他' },
 ]
 
 // 已启用的平台（存localStorage）

@@ -16,7 +16,7 @@ const summary = ref<AssetSummary | null>(null)
 // 预设平台列表
 const ALL_PLATFORMS = [
   '支付宝', '且慢', '网商银行', '腾讯理财通',
-  '雪球', '京东金融', '平安证券',
+  '雪球', '京东金融', '平安证券', '其他',
 ]
 
 // 已启用的平台
