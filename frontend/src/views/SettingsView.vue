@@ -27,6 +27,32 @@ const tempLookbackMonths = ref(lookbackMonths.value)
 const tempLeaseExpiryWarningDays = ref(leaseExpiryWarningDays.value)
 const tempSuperAdminMode = ref(authStore.superAdminMode)
 
+// 预设平台列表
+const ALL_PLATFORMS = [
+  { key: '支付宝', label: '支付宝' },
+  { key: '且慢', label: '且慢' },
+  { key: '网商银行', label: '网商银行' },
+  { key: '腾讯理财通', label: '腾讯理财通' },
+  { key: '雪球', label: '雪球' },
+  { key: '京东金融', label: '京东金融' },
+  { key: '平安证券', label: '平安证券' },
+]
+
+// 已启用的平台（存localStorage）
+const enabledPlatforms = ref<string[]>(() => {
+  try {
+    const saved = localStorage.getItem('asset_enabled_platforms')
+    return saved ? JSON.parse(saved) : ALL_PLATFORMS.map(p => p.key)
+  } catch {
+    return ALL_PLATFORMS.map(p => p.key)
+  }
+})
+
+const saveEnabledPlatforms = () => {
+  localStorage.setItem('asset_enabled_platforms', JSON.stringify(enabledPlatforms.value))
+  ElMessage.success('资产平台配置已保存')
+}
+
 const tempDisplayName = ref(authStore.user?.full_name || '')
 const savingName = ref(false)
 
@@ -363,6 +389,26 @@ const handleToggleSuperAdmin = async () => {
       </template>
     </el-dialog>
 
+    <!-- 资产平台配置 -->
+    <el-card style="margin-top: 20px;">
+      <template #header>
+        <span class="card-title">资产平台配置</span>
+      </template>
+      <div class="setting-desc" style="margin-bottom: 16px;">
+        勾选你在使用的资产平台，个人资产页面只会显示已启用的平台
+      </div>
+      <div class="platform-grid">
+        <el-checkbox-group v-model="enabledPlatforms">
+          <el-checkbox v-for="p in ALL_PLATFORMS" :key="p.key" :label="p.key">
+            {{ p.label }}
+          </el-checkbox>
+        </el-checkbox-group>
+      </div>
+      <el-button type="primary" size="small" style="margin-top: 12px;" @click="saveEnabledPlatforms">
+        保存配置
+      </el-button>
+    </el-card>
+
     <el-card style="margin-top: 20px;">
       <template #header>
         <span class="card-title">超级管理员权限</span>
@@ -465,5 +511,15 @@ const handleToggleSuperAdmin = async () => {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.platform-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.platform-checkbox {
+  min-width: 120px;
 }
 </style>

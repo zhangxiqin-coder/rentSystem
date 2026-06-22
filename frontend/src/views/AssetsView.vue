@@ -11,18 +11,41 @@ const { hideAmounts, formatAmount } = useAmountVisibility()
 const loading = ref(false)
 const summary = ref<AssetSummary | null>(null)
 
-// 对话框
-const showPlatformDialog = ref(false)
-const platformForm = ref({ name: '', current_balance: 0, total_earnings: 0 })
-const platformFormLoading = ref(false)
-const isEditingPlatform = ref(false)
-const editingPlatformId = ref<number | null>(null)
+// 预设平台列表
+const ALL_PLATFORMS = [
+  '支付宝', '且慢', '网商银行', '腾讯理财通',
+  '雪球', '京东金融', '平安证券',
+]
+
+// 已启用的平台
+const getEnabledPlatforms = (): string[] => {
+  try {
+    const saved = localStorage.getItem('asset_enabled_platforms')
+    return saved ? JSON.parse(saved) : ALL_PLATFORMS
+  } catch {
+    return ALL_PLATFORMS
+  }
+}
+const enabledPlatforms = ref<string[]>(getEnabledPlatforms())
+
+// 获取平台上上次的余额和收益
+const getPlatformData = (name: string): { balance: number; earnings: number } => {
+  if (!summary.value) return { balance: 0, earnings: 0 }
+  const p = summary.value.platforms.find(x => x.name === name)
+  return p ? { balance: p.current_balance, earnings: p.total_earnings } : { balance: 0, earnings: 0 }
+}
 
 // 上报对话框
 const showReportDialog = ref(false)
-const reportForm = ref({ platform_id: 0, record_type: 'balance', reported_balance: 0, reported_earnings: 0, amount: 0, notes: '' })
+const reportForm = ref({
+  platform_name: '',
+  record_type: 'balance' as 'balance' | 'transfer_in' | 'transfer_out',
+  reported_balance: 0,
+  reported_earnings: 0,
+  amount: 0,
+  notes: ''
+})
 const reportLoading = ref(false)
-const selectedPlatform = ref<AssetPlatformDetail | null>(null)
 
 // 展开记录
 const expandedPlatformIds = ref<Set<number>>(new Set())
@@ -39,72 +62,14 @@ const loadSummary = async () => {
   }
 }
 
-// 添加平台
-const openAddPlatform = () => {
-  isEditingPlatform.value = false
-  editingPlatformId.value = null
-  platformForm.value = { name: '', current_balance: 0, total_earnings: 0 }
-  showPlatformDialog.value = true
-}
-
-const openEditPlatform = (p: AssetPlatformDetail) => {
-  isEditingPlatform.value = true
-  editingPlatformId.value = p.id
-  platformForm.value = { name: p.name, current_balance: p.current_balance, total_earnings: p.total_earnings }
-  showPlatformDialog.value = true
-}
-
-const submitPlatform = async () => {
-  if (!platformForm.value.name.trim()) {
-    ElMessage.warning('请输入平台名称')
-    return
-  }
-  platformFormLoading.value = true
-  try {
-    if (isEditingPlatform.value && editingPlatformId.value) {
-      await assetApi.updatePlatform(editingPlatformId.value, platformForm.value)
-      ElMessage.success('平台已更新')
-    } else {
-      await assetApi.createPlatform(platformForm.value)
-      ElMessage.success('平台已创建')
-    }
-    showPlatformDialog.value = false
-    await loadSummary()
-  } catch (error) {
-    ElMessage.error('操作失败')
-    console.error(error)
-  } finally {
-    platformFormLoading.value = false
-  }
-}
-
-// 删除平台
-const handleDeletePlatform = async (p: AssetPlatformDetail) => {
-  try {
-    await ElMessageBox.confirm(`确定删除平台"${p.name}"吗？所有记录将一并删除。`, '删除确认', {
-      confirmButtonText: '确定删除',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-    await assetApi.deletePlatform(p.id)
-    ElMessage.success('平台已删除')
-    await loadSummary()
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('删除失败')
-      console.error(error)
-    }
-  }
-}
-
-// 上报
-const openReport = (platform: AssetPlatformDetail) => {
-  selectedPlatform.value = platform
+// 打开上报对话框
+const openReport = (platformName?: string) => {
+  const data = platformName ? getPlatformData(platformName) : { balance: 0, earnings: 0 }
   reportForm.value = {
-    platform_id: platform.id,
+    platform_name: platformName || '',
     record_type: 'balance',
-    reported_balance: platform.current_balance,
-    reported_earnings: platform.total_earnings,
+    reported_balance: data.balance,
+    reported_earnings: data.earnings,
     amount: 0,
     notes: ''
   }
@@ -112,11 +77,29 @@ const openReport = (platform: AssetPlatformDetail) => {
 }
 
 const submitReport = async () => {
-  if (!reportForm.value.platform_id) return
+  if (!reportForm.value.platform_name) {
+    ElMessage.warning('请选择平台')
+    return
+  }
   reportLoading.value = true
   try {
+    // 先找到或创建平台
+    const platforms = await assetApi.listPlatforms()
+    let platform = platforms.find(p => p.name === reportForm.value.platform_name)
+
+    if (!platform) {
+      // 平台不存在，自动创建
+      const data = getPlatformData(reportForm.value.platform_name)
+      platform = await assetApi.createPlatform({
+        name: reportForm.value.platform_name,
+        current_balance: data.balance,
+        total_earnings: data.earnings
+      })
+    }
+
+    // 创建记录
     const data: any = {
-      platform_id: reportForm.value.platform_id,
+      platform_id: platform.id,
       record_type: reportForm.value.record_type,
       notes: reportForm.value.notes || undefined
     }
@@ -140,7 +123,14 @@ const submitReport = async () => {
   }
 }
 
-// 切换展开记录
+// 选择平台时自动填充当前数据
+const onPlatformChange = (name: string) => {
+  const data = getPlatformData(name)
+  reportForm.value.reported_balance = data.balance
+  reportForm.value.reported_earnings = data.earnings
+}
+
+// 展开/收起记录
 const toggleRecords = (platformId: number) => {
   const s = new Set(expandedPlatformIds.value)
   if (s.has(platformId)) {
@@ -186,7 +176,12 @@ onMounted(() => {
         <el-icon :size="24"><Wallet /></el-icon>
         个人资产
       </h2>
-      <el-button type="primary" :icon="Plus" @click="openAddPlatform">添加平台</el-button>
+      <div class="header-actions">
+        <el-button type="success" :icon="Plus" @click="openReport()">上报</el-button>
+        <el-button type="default" @click="loadSummary">
+          刷新
+        </el-button>
+      </div>
     </div>
 
     <!-- 总资产卡片 -->
@@ -203,7 +198,7 @@ onMounted(() => {
 
     <!-- 各平台卡片 -->
     <div v-if="summary && summary.platforms.length === 0" class="empty-tip">
-      <el-empty description="暂无资产平台，点击上方按钮添加" />
+      <el-empty description="暂无资产数据，点击上方「上报」按钮开始记录" />
     </div>
 
     <div v-for="platform in summary?.platforms || []" :key="platform.id" class="platform-card">
@@ -219,22 +214,7 @@ onMounted(() => {
             </div>
           </div>
           <div class="platform-actions">
-            <el-button type="primary" size="small" @click="openReport(platform)">上报</el-button>
-            <el-dropdown trigger="click">
-              <el-button size="small">
-                操作<el-icon class="el-icon--right"><ArrowDown /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item @click.native="openEditPlatform(platform)">
-                    <el-icon><Edit /></el-icon>编辑
-                  </el-dropdown-item>
-                  <el-dropdown-item @click.native="handleDeletePlatform(platform)" divided>
-                    <el-icon><Delete /></el-icon>删除
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+            <el-button type="primary" size="small" @click="openReport(platform.name)">上报</el-button>
             <el-button
               size="small"
               :type="expandedPlatformIds.has(platform.id) ? 'default' : 'info'"
@@ -276,28 +256,25 @@ onMounted(() => {
       </el-card>
     </div>
 
-    <!-- 添加/编辑平台对话框 -->
-    <el-dialog v-model="showPlatformDialog" :title="isEditingPlatform ? '编辑平台' : '添加平台'" width="420px">
-      <el-form :model="platformForm" label-width="100px">
-        <el-form-item label="平台名称">
-          <el-input v-model="platformForm.name" placeholder="支付宝、网商银行..." />
-        </el-form-item>
-        <el-form-item label="当前余额">
-          <el-input-number v-model="platformForm.current_balance" :min="0" :precision="2" style="width:100%" />
-        </el-form-item>
-        <el-form-item label="累计收益">
-          <el-input-number v-model="platformForm.total_earnings" :min="0" :precision="2" style="width:100%" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showPlatformDialog = false">取消</el-button>
-        <el-button type="primary" :loading="platformFormLoading" @click="submitPlatform">确定</el-button>
-      </template>
-    </el-dialog>
-
     <!-- 上报对话框 -->
-    <el-dialog v-model="showReportDialog" :title="`上报 - ${selectedPlatform?.name || ''}`" width="480px">
+    <el-dialog v-model="showReportDialog" title="上报资产" width="480px">
       <el-form :model="reportForm" label-width="100px">
+        <el-form-item label="平台">
+          <el-select
+            v-model="reportForm.platform_name"
+            placeholder="选择平台"
+            style="width:100%"
+            @change="onPlatformChange"
+          >
+            <el-option
+              v-for="name in enabledPlatforms"
+              :key="name"
+              :label="name"
+              :value="name"
+            />
+          </el-select>
+        </el-form-item>
+
         <el-form-item label="上报类型">
           <el-radio-group v-model="reportForm.record_type">
             <el-radio value="balance">余额上报</el-radio>
@@ -360,6 +337,11 @@ onMounted(() => {
   margin: 0;
   font-size: 20px;
   color: #303133;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .summary-cards {
