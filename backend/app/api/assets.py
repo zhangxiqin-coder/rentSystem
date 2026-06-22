@@ -3,7 +3,10 @@
 支持两种上报方式：
 1. 余额上报：平台名 + 当前余额 + 累计收益 → 自动算出转入/转出净额
 2. 转入/转出：平台名 + 金额 → 自动更新当前余额
+
+收益按年份管理：每年首次上报时自动归档上年收益，页面显示当年收益。
 """
+import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from decimal import Decimal
@@ -15,6 +18,7 @@ from app.models import AssetPlatform, AssetRecord, User
 from app.schemas import (
     AssetPlatformCreate, AssetPlatformUpdate, AssetPlatformResponse,
     AssetPlatformDetailResponse, AssetRecordResponse, AssetRecordCreate,
+    AssetRecordUpdate,
     AssetSummaryResponse
 )
 from app.core.deps import get_current_user
@@ -31,6 +35,37 @@ def _get_platform_or_404(db: Session, platform_id: int, user_id: int) -> AssetPl
     if not platform:
         raise HTTPException(status_code=404, detail="平台不存在")
     return platform
+
+
+def _parse_yearly_earnings(platform: AssetPlatform) -> dict:
+    """解析yearly_earnings JSON字段"""
+    if not platform.yearly_earnings:
+        return {}
+    try:
+        return json.loads(platform.yearly_earnings)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+def _save_yearly_earnings(platform: AssetPlatform, data: dict):
+    """保存yearly_earnings JSON字段"""
+    platform.yearly_earnings = json.dumps(data, ensure_ascii=False)
+
+
+def _check_year_rollover(platform: AssetPlatform, db: Session):
+    """检查是否需要跨年归档，如果是则归档上年收益"""
+    current_year = datetime.now().year
+    if current_year > (platform.current_year or 2026):
+        # 跨年了！归档当前收益
+        yearly = _parse_yearly_earnings(platform)
+        year_key = str(platform.current_year)
+        yearly[year_key] = str(platform.total_earnings or Decimal('0'))
+        _save_yearly_earnings(platform, yearly)
+        
+        # 重置当前年份收益
+        platform.total_earnings = Decimal('0')
+        platform.current_year = current_year
+        db.flush()
 
 
 # ==================== 平台管理 ====================
@@ -54,10 +89,13 @@ async def create_platform(
     current_user: User = Depends(get_current_user)
 ):
     """创建资产平台"""
+    current_year = datetime.now().year
     platform = AssetPlatform(
         name=data.name,
         current_balance=data.current_balance,
-        total_earnings=data.total_earnings,
+        total_earnings=Decimal('0'),
+        current_year=current_year,
+        yearly_earnings='{}',
         sort_order=data.sort_order,
         owner_id=current_user.id
     )
@@ -93,7 +131,6 @@ async def delete_platform(
 ):
     """删除资产平台（同时删除所有关联记录）"""
     platform = _get_platform_or_404(db, platform_id, current_user.id)
-    # 删除关联记录
     db.query(AssetRecord).filter(AssetRecord.platform_id == platform_id).delete()
     db.delete(platform)
     db.commit()
@@ -110,6 +147,9 @@ async def create_asset_record(
 ):
     """创建资产变动记录（包含余额上报和转入/转出两种模式）"""
     platform = _get_platform_or_404(db, data.platform_id, current_user.id)
+
+    # 检查是否需要跨年归档
+    _check_year_rollover(platform, db)
 
     record = AssetRecord(
         platform_id=data.platform_id,
@@ -133,12 +173,11 @@ async def create_asset_record(
         earnings_diff = data.reported_earnings - platform.total_earnings
         record.calculated_transfer = balance_diff - earnings_diff
 
-        # 更新平台数据
+        # 更新平台数据（total_earnings存当年收益）
         platform.current_balance = data.reported_balance
         platform.total_earnings = data.reported_earnings
 
     elif data.record_type == "transfer_in":
-        # 转入模式
         if data.amount is None or data.amount <= 0:
             raise HTTPException(status_code=400, detail="转入金额必须大于0")
         record.amount = data.amount
@@ -146,7 +185,6 @@ async def create_asset_record(
         platform.current_balance += data.amount
 
     elif data.record_type == "transfer_out":
-        # 转出模式
         if data.amount is None or data.amount <= 0:
             raise HTTPException(status_code=400, detail="转出金额必须大于0")
         if data.amount > platform.current_balance:
@@ -168,6 +206,35 @@ async def create_asset_record(
     return record
 
 
+@router.put("/assets/records/{record_id}", response_model=AssetRecordResponse)
+async def update_asset_record(
+    record_id: int,
+    data: AssetRecordUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """编辑资产变动记录（仅编辑备注和数值，不重新计算平台余额）"""
+    record = db.query(AssetRecord).filter(
+        AssetRecord.id == record_id,
+        AssetRecord.owner_id == current_user.id
+    ).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="记录不存在")
+
+    update_data = data.model_dump(exclude_unset=True, exclude_none=True)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="没有需要更新的字段")
+
+    for key, value in update_data.items():
+        setattr(record, key, value)
+
+    db.commit()
+    db.refresh(record)
+    if record.platform:
+        record.platform_name = record.platform.name
+    return record
+
+
 @router.get("/assets/records", response_model=list[AssetRecordResponse])
 async def list_asset_records(
     platform_id: Optional[int] = None,
@@ -181,7 +248,6 @@ async def list_asset_records(
         query = query.filter(AssetRecord.platform_id == platform_id)
     records = query.order_by(AssetRecord.created_at.desc()).limit(limit).all()
 
-    # 补充 platform_name
     result = []
     for r in records:
         resp = AssetRecordResponse.model_validate(r)
@@ -198,19 +264,31 @@ async def get_asset_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取资产总览（含各平台详情和记录）"""
+    """获取资产总览（含各平台详情和记录）
+    
+    total_earnings 返回当前年份的收益（不是累计）
+    yearly_earnings 返回历年收益归档
+    """
     platforms = db.query(AssetPlatform).filter(
         AssetPlatform.owner_id == current_user.id,
         AssetPlatform.is_active == True
     ).order_by(AssetPlatform.sort_order, AssetPlatform.id).all()
 
     total_balance = Decimal('0')
-    total_earnings = Decimal('0')
+    total_current_year_earnings = Decimal('0')
+    all_yearly: dict[str, Decimal] = {}
+    current_year = datetime.now().year
+
     platform_details = []
 
     for p in platforms:
         total_balance += (p.current_balance or Decimal('0'))
-        total_earnings += (p.total_earnings or Decimal('0'))
+        total_current_year_earnings += (p.total_earnings or Decimal('0'))
+
+        # 合并历年收益
+        yearly = _parse_yearly_earnings(p)
+        for yk, yv in yearly.items():
+            all_yearly[yk] = all_yearly.get(yk, Decimal('0')) + Decimal(str(yv))
 
         # 获取最近20条记录
         records = db.query(AssetRecord).filter(
@@ -228,6 +306,8 @@ async def get_asset_summary(
             name=p.name,
             current_balance=p.current_balance or Decimal('0'),
             total_earnings=p.total_earnings or Decimal('0'),
+            current_year=p.current_year or current_year,
+            yearly_earnings=yearly,
             sort_order=p.sort_order,
             is_active=p.is_active,
             created_at=p.created_at,
@@ -236,8 +316,16 @@ async def get_asset_summary(
         )
         platform_details.append(detail)
 
+    # 当前年份的收益也加入历年总和中
+    if str(current_year) not in all_yearly:
+        all_yearly[str(current_year)] = total_current_year_earnings
+    else:
+        all_yearly[str(current_year)] = total_current_year_earnings
+
     return AssetSummaryResponse(
         total_balance=total_balance,
-        total_earnings=total_earnings,
+        total_earnings=total_current_year_earnings,
+        yearly_earnings=all_yearly,
+        current_year=current_year,
         platforms=platform_details
     )

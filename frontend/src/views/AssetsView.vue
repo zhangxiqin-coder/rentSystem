@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete, ArrowDown, Wallet } from '@element-plus/icons-vue'
+import { Plus, Wallet, Edit } from '@element-plus/icons-vue'
 import { assetApi } from '@/api/assets'
 import { useAmountVisibility } from '@/composables/useAmountVisibility'
+import { useAuthStore } from '@/stores/auth'
 import type { AssetSummary, AssetPlatformDetail, AssetRecord } from '@/types'
 
+const authStore = useAuthStore()
 const { hideAmounts, formatAmount } = useAmountVisibility()
 
 const loading = ref(false)
@@ -27,6 +29,21 @@ const getEnabledPlatforms = (): string[] => {
   }
 }
 const enabledPlatforms = ref<string[]>(getEnabledPlatforms())
+
+// 选取的年份
+const selectedYear = ref<string>('')
+const availableYears = computed(() => {
+  if (!summary.value) return []
+  const years = Object.keys(summary.value.yearly_earnings).sort().reverse()
+  return years
+})
+
+// 当前显示的收益（根据选取的年份）
+const displayEarnings = computed(() => {
+  if (!summary.value) return 0
+  if (!selectedYear.value) return summary.value.total_earnings
+  return summary.value.yearly_earnings[selectedYear.value] || 0
+})
 
 // 获取平台上上次的余额和收益
 const getPlatformData = (name: string): { balance: number; earnings: number } => {
@@ -54,6 +71,11 @@ const loadSummary = async () => {
   loading.value = true
   try {
     summary.value = await assetApi.getSummary()
+    // 默认选取最新年份
+    const years = Object.keys(summary.value.yearly_earnings).sort()
+    if (years.length > 0 && !selectedYear.value) {
+      selectedYear.value = years[years.length - 1]
+    }
   } catch (error) {
     ElMessage.error('加载资产数据失败')
     console.error(error)
@@ -88,12 +110,10 @@ const submitReport = async () => {
     let platform = platforms.find(p => p.name === reportForm.value.platform_name)
 
     if (!platform) {
-      // 平台不存在，自动创建
       const data = getPlatformData(reportForm.value.platform_name)
       platform = await assetApi.createPlatform({
         name: reportForm.value.platform_name,
         current_balance: data.balance,
-        total_earnings: data.earnings
       })
     }
 
@@ -164,6 +184,54 @@ const recordTypeTag = (type: string) => {
   }
 }
 
+// 编辑对话框
+const showEditDialog = ref(false)
+const editingRecord = ref<AssetRecord | null>(null)
+const editForm = ref({
+  reported_balance: 0,
+  reported_earnings: 0,
+  amount: 0,
+  notes: ''
+})
+const editLoading = ref(false)
+
+const openEdit = (record: AssetRecord) => {
+  editingRecord.value = record
+  editForm.value = {
+    reported_balance: record.reported_balance || 0,
+    reported_earnings: record.reported_earnings || 0,
+    amount: record.amount || 0,
+    notes: record.notes || ''
+  }
+  showEditDialog.value = true
+}
+
+const submitEdit = async () => {
+  if (!editingRecord.value) return
+  editLoading.value = true
+  try {
+    const data: any = {}
+    if (editingRecord.value.record_type === 'balance') {
+      data.reported_balance = Number(editForm.value.reported_balance) || 0
+      data.reported_earnings = Number(editForm.value.reported_earnings) || 0
+    } else {
+      data.amount = Number(editForm.value.amount) || 0
+    }
+    if (editForm.value.notes) {
+      data.notes = editForm.value.notes
+    }
+    await assetApi.updateRecord(editingRecord.value.id, data)
+    ElMessage.success('编辑成功')
+    showEditDialog.value = false
+    await loadSummary()
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '编辑失败')
+    console.error(error)
+  } finally {
+    editLoading.value = false
+  }
+}
+
 onMounted(() => {
   loadSummary()
 })
@@ -178,9 +246,7 @@ onMounted(() => {
       </h2>
       <div class="header-actions">
         <el-button type="success" :icon="Plus" @click="openReport()">上报</el-button>
-        <el-button type="default" @click="loadSummary">
-          刷新
-        </el-button>
+        <el-button type="default" @click="loadSummary">刷新</el-button>
       </div>
     </div>
 
@@ -191,8 +257,29 @@ onMounted(() => {
         <div class="card-value">¥{{ summary ? formatAmount(summary.total_balance) : '-' }}</div>
       </el-card>
       <el-card class="summary-card total-earnings">
-        <div class="card-label">累计总收益</div>
-        <div class="card-value">¥{{ summary ? formatAmount(summary.total_earnings) : '-' }}</div>
+        <div class="card-label-row">
+          <div class="card-label">
+            <template v-if="selectedYear">{{ selectedYear }}年收益</template>
+            <template v-else>当年收益</template>
+          </div>
+          <el-select
+            v-if="availableYears.length > 1"
+            v-model="selectedYear"
+            size="small"
+            style="width: 100px;"
+            @change="() => {}"
+          >
+            <el-option
+              v-for="year in availableYears"
+              :key="year"
+              :label="year + '年'"
+              :value="year"
+            />
+          </el-select>
+        </div>
+        <div class="card-value earnings-value">
+          ¥{{ summary ? formatAmount(displayEarnings) : '-' }}
+        </div>
       </el-card>
     </div>
 
@@ -210,7 +297,7 @@ onMounted(() => {
               余额：<strong>¥{{ formatAmount(platform.current_balance) }}</strong>
             </div>
             <div class="platform-earnings">
-              收益：<strong>¥{{ formatAmount(platform.total_earnings) }}</strong>
+              {{ platform.current_year }}年收益：<strong>¥{{ formatAmount(platform.total_earnings) }}</strong>
             </div>
           </div>
           <div class="platform-actions">
@@ -250,6 +337,15 @@ onMounted(() => {
                 </span>
               </template>
               <span class="record-time">{{ formatDate(record.created_at) }}</span>
+              <el-button
+                v-if="authStore.isSuperAdmin"
+                text
+                size="small"
+                type="primary"
+                :icon="Edit"
+                @click="openEdit(record)"
+                class="edit-btn"
+              />
             </div>
           </div>
         </div>
@@ -277,7 +373,7 @@ onMounted(() => {
 
         <el-form-item label="上报类型">
           <el-radio-group v-model="reportForm.record_type">
-            <el-radio value="balance">余额上报</el-radio>
+            <el-radio value="balance">余额+收益</el-radio>
             <el-radio value="transfer_in">转入</el-radio>
             <el-radio value="transfer_out">转出</el-radio>
           </el-radio-group>
@@ -285,32 +381,109 @@ onMounted(() => {
 
         <template v-if="reportForm.record_type === 'balance'">
           <el-form-item label="当前余额">
-            <el-input-number v-model="reportForm.reported_balance" :min="0" :precision="2" style="width:100%" />
+            <el-input-number
+              v-model="reportForm.reported_balance"
+              :min="0"
+              :precision="2"
+              style="width:100%"
+            />
           </el-form-item>
-          <el-form-item label="累计收益">
-            <el-input-number v-model="reportForm.reported_earnings" :min="0" :precision="2" style="width:100%" />
+          <el-form-item label="当前收益">
+            <el-input-number
+              v-model="reportForm.reported_earnings"
+              :min="0"
+              :precision="2"
+              style="width:100%"
+            />
           </el-form-item>
-          <div class="form-hint">
-            系统将自动计算转入/转出净额
-          </div>
         </template>
 
         <template v-else>
           <el-form-item label="金额">
-            <el-input-number v-model="reportForm.amount" :min="0.01" :precision="2" style="width:100%" />
+            <el-input-number
+              v-model="reportForm.amount"
+              :min="0.01"
+              :precision="2"
+              style="width:100%"
+              :placeholder="reportForm.record_type === 'transfer_in' ? '转入金额' : '转出金额'"
+            />
           </el-form-item>
-          <div class="form-hint">
-            系统将自动更新当前余额
-          </div>
         </template>
 
         <el-form-item label="备注">
-          <el-input v-model="reportForm.notes" placeholder="可选：房租转账、零花钱等" />
+          <el-input
+            v-model="reportForm.notes"
+            type="textarea"
+            :rows="2"
+            placeholder="可选备注"
+          />
         </el-form-item>
       </el-form>
+
       <template #footer>
         <el-button @click="showReportDialog = false">取消</el-button>
-        <el-button type="primary" :loading="reportLoading" @click="submitReport">提交</el-button>
+        <el-button type="primary" :loading="reportLoading" @click="submitReport">
+          提交
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑记录对话框（超级管理员） -->
+    <el-dialog v-model="showEditDialog" title="编辑资产记录" width="480px">
+      <el-form :model="editForm" label-width="100px">
+        <el-form-item label="平台">
+          <el-input :value="editingRecord?.platform_name" disabled />
+        </el-form-item>
+        <el-form-item label="类型">
+          <el-tag v-if="editingRecord" :type="recordTypeTag(editingRecord.record_type)" size="small">
+            {{ recordTypeLabel(editingRecord.record_type) }}
+          </el-tag>
+        </el-form-item>
+
+        <template v-if="editingRecord?.record_type === 'balance'">
+          <el-form-item label="余额">
+            <el-input-number
+              v-model="editForm.reported_balance"
+              :min="0"
+              :precision="2"
+              style="width:100%"
+            />
+          </el-form-item>
+          <el-form-item label="收益">
+            <el-input-number
+              v-model="editForm.reported_earnings"
+              :min="0"
+              :precision="2"
+              style="width:100%"
+            />
+          </el-form-item>
+        </template>
+        <template v-else>
+          <el-form-item label="金额">
+            <el-input-number
+              v-model="editForm.amount"
+              :min="0.01"
+              :precision="2"
+              style="width:100%"
+            />
+          </el-form-item>
+        </template>
+
+        <el-form-item label="备注">
+          <el-input
+            v-model="editForm.notes"
+            type="textarea"
+            :rows="2"
+            placeholder="可选备注"
+          />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="showEditDialog = false">取消</el-button>
+        <el-button type="primary" :loading="editLoading" @click="submitEdit">
+          保存
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -318,25 +491,24 @@ onMounted(() => {
 
 <style scoped>
 .assets-page {
+  padding: 20px;
   max-width: 900px;
   margin: 0 auto;
-  padding: 20px;
 }
 
 .page-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  align-items: center;
   margin-bottom: 20px;
 }
 
 .page-header h2 {
+  margin: 0;
+  font-size: 22px;
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0;
-  font-size: 20px;
-  color: #303133;
 }
 
 .header-actions {
@@ -345,23 +517,30 @@ onMounted(() => {
 }
 
 .summary-cards {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .summary-card {
-  flex: 1;
   text-align: center;
 }
 
-.summary-card .card-label {
+.card-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.card-label {
   font-size: 14px;
   color: #909399;
   margin-bottom: 8px;
 }
 
-.summary-card .card-value {
+.card-value {
   font-size: 28px;
   font-weight: 700;
 }
@@ -370,33 +549,24 @@ onMounted(() => {
   color: #409eff;
 }
 
-.total-earnings .card-value {
+.earnings-value {
   color: #67c23a;
 }
 
 .platform-card {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .platform-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
-}
-
-.platform-info {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  flex-wrap: wrap;
 }
 
 .platform-name {
   font-size: 18px;
   font-weight: 600;
-  color: #303133;
-  min-width: 100px;
+  margin-bottom: 4px;
 }
 
 .platform-balance {
@@ -404,26 +574,16 @@ onMounted(() => {
   color: #606266;
 }
 
-.platform-balance strong {
-  color: #409eff;
-  font-size: 16px;
-}
-
 .platform-earnings {
   font-size: 14px;
-  color: #606266;
-}
-
-.platform-earnings strong {
   color: #67c23a;
-  font-size: 16px;
+  margin-top: 2px;
 }
 
 .platform-actions {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
-  align-items: center;
 }
 
 .record-list {
@@ -445,18 +605,12 @@ onMounted(() => {
   align-items: center;
   padding: 8px 0;
   border-bottom: 1px solid #f2f2f2;
-  gap: 12px;
-}
-
-.record-item:last-child {
-  border-bottom: none;
 }
 
 .record-left {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1;
 }
 
 .record-note {
@@ -468,19 +622,15 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  font-size: 13px;
 }
 
 .record-balance,
 .record-earnings {
-  font-size: 13px;
   color: #606266;
 }
 
 .record-transfer {
-  font-size: 13px;
   font-weight: 500;
 }
 
@@ -489,59 +639,20 @@ onMounted(() => {
 }
 
 .transfer-out {
-  color: #e6a23c;
+  color: #f56c6c;
 }
 
 .record-time {
-  font-size: 12px;
   color: #c0c4cc;
-  white-space: nowrap;
-}
-
-.form-hint {
   font-size: 12px;
-  color: #909399;
-  margin: -8px 0 8px 100px;
 }
 
 .empty-tip {
-  margin-top: 40px;
+  padding: 40px;
 }
 
-/* 移动端适配 */
-@media (max-width: 768px) {
-  .assets-page {
-    padding: 12px;
-  }
-
-  .summary-cards {
-    flex-direction: column;
-  }
-
-  .platform-header {
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .platform-info {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .platform-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .record-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-  }
-
-  .record-right {
-    width: 100%;
-    justify-content: flex-start;
-  }
+.edit-btn {
+  margin-left: 4px;
+  flex-shrink: 0;
 }
 </style>

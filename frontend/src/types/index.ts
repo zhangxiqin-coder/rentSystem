@@ -332,6 +332,8 @@ export interface AssetPlatform {
   name: string
   current_balance: number
   total_earnings: number
+  current_year: number
+  yearly_earnings: Record<string, number>
   sort_order: number
   is_active: boolean
   created_at: string
@@ -362,5 +364,7 @@ export interface AssetPlatformDetail extends AssetPlatform {
 export interface AssetSummary {
   total_balance: number
   total_earnings: number
+  yearly_earnings: Record<string, number>
+  current_year: number
   platforms: AssetPlatformDetail[]
 }

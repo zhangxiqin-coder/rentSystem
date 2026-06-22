@@ -328,6 +328,8 @@ class AssetPlatform(Base):
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     current_balance = Column(DECIMAL(12, 2), default=0, comment="当前余额")
     total_earnings = Column(DECIMAL(12, 2), default=0, comment="累计收益")
+    current_year = Column(Integer, default=2026, comment="当前收益年份")
+    yearly_earnings = Column(Text, default="{}", comment="历年收益归 JSON {2025: 123.45, 2026: 678.90}")
     sort_order = Column(Integer, default=0, comment="排序")
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

@@ -88,5 +88,15 @@ export const assetApi = {
   // 总览
   async getSummary(): Promise<AssetSummary> {
     return authRequest({ method: 'get', url: '/api/v1/assets/summary' })
+  },
+
+  // 编辑记录（超级管理员）
+  async updateRecord(id: number, data: {
+    reported_balance?: number | null
+    reported_earnings?: number | null
+    amount?: number | null
+    notes?: string | null
+  }): Promise<AssetRecord> {
+    return authRequest({ method: 'put', url: `/api/v1/assets/records/${id}`, data })
   }
 }

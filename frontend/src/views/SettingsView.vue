@@ -39,14 +39,15 @@ const ALL_PLATFORMS = [
 ]
 
 // 已启用的平台（存localStorage）
-const enabledPlatforms = ref<string[]>(() => {
+const loadEnabledPlatforms = (): string[] => {
   try {
     const saved = localStorage.getItem('asset_enabled_platforms')
     return saved ? JSON.parse(saved) : ALL_PLATFORMS.map(p => p.key)
   } catch {
     return ALL_PLATFORMS.map(p => p.key)
   }
-})
+}
+const enabledPlatforms = ref<string[]>(loadEnabledPlatforms())
 
 const saveEnabledPlatforms = () => {
   localStorage.setItem('asset_enabled_platforms', JSON.stringify(enabledPlatforms.value))

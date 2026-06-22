@@ -4,7 +4,7 @@ Pydantic schemas 定义（统一数据模型）
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional, TypeVar, Generic
-from pydantic import BaseModel, ConfigDict, Field, EmailStr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, EmailStr, model_validator, field_validator
 from enum import Enum
 
 
@@ -688,10 +688,24 @@ class AssetPlatformResponse(BaseModel):
     name: str
     current_balance: Decimal
     total_earnings: Decimal
+    current_year: int = Field(2026, description="当前收益年份")
+    yearly_earnings: dict[str, Decimal] = Field(default_factory=dict, description="历年收益")
     sort_order: int
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+    @field_validator('yearly_earnings', mode='before')
+    @classmethod
+    def parse_yearly_earnings(cls, v):
+        if isinstance(v, str):
+            import json
+            try:
+                data = json.loads(v)
+                return {k: Decimal(str(v)) for k, v in data.items()}
+            except (json.JSONDecodeError, ValueError):
+                return {}
+        return v or {}
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -703,6 +717,14 @@ class AssetRecordCreate(BaseModel):
     reported_balance: Optional[Decimal] = Field(None, description="上报余额（余额上报时必填）")
     reported_earnings: Optional[Decimal] = Field(None, description="上报累计收益（余额上报时必填）")
     amount: Optional[Decimal] = Field(None, description="转入/转出金额（transfer类型时必填）")
+    notes: Optional[str] = Field(None, description="备注")
+
+
+class AssetRecordUpdate(BaseModel):
+    """编辑资产变动记录（仅超级管理员）"""
+    reported_balance: Optional[Decimal] = Field(None, description="上报余额")
+    reported_earnings: Optional[Decimal] = Field(None, description="上报累计收益")
+    amount: Optional[Decimal] = Field(None, description="转入/转出金额")
     notes: Optional[str] = Field(None, description="备注")
 
 
@@ -734,5 +756,7 @@ class AssetPlatformDetailResponse(AssetPlatformResponse):
 class AssetSummaryResponse(BaseModel):
     """资产总览"""
     total_balance: Decimal = Field(Decimal('0'), description="总资产")
-    total_earnings: Decimal = Field(Decimal('0'), description="累计总收益")
+    total_earnings: Decimal = Field(Decimal('0'), description="当前年份总收益")
+    yearly_earnings: dict[str, Decimal] = Field(default_factory=dict, description="历年总收益 {2025: 1234.56, 2026: 5678.90}")
+    current_year: int = Field(2026, description="当前收益年份")
     platforms: list[AssetPlatformDetailResponse] = Field(default_factory=list, description="各平台详情")
