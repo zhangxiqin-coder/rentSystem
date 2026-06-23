@@ -121,5 +121,15 @@ export const assetApi = {
   // 趋势
   async getTrend(): Promise<AssetTrend> {
     return authRequest({ method: 'get', url: '/api/v1/assets/trend' })
+  },
+
+  // 赵平飞年度统计
+  async getZhaopingfeiSummary(): Promise<{
+    years: Array<{ year: string; transfer_in: number; transfer_out: number; net: number }>
+    total_in: number
+    total_out: number
+    total_net: number
+  }> {
+    return authRequest({ method: 'get', url: '/api/v1/assets/zhaopingfei-summary' })
   }
 }

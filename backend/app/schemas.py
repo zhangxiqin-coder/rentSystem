@@ -785,3 +785,19 @@ class AssetTrendResponse(BaseModel):
     """资产趋势响应"""
     points: list[AssetTrendPoint] = Field(default_factory=list, description="趋势数据点")
     platforms: list[PlatformTrendPoint] = Field(default_factory=list, description="各平台趋势")
+
+
+class ZhaopingfeiYearSummary(BaseModel):
+    """赵平飞年度统计"""
+    year: str = Field(..., description="年份")
+    transfer_in: Decimal = Field(Decimal('0'), description="转入合计")
+    transfer_out: Decimal = Field(Decimal('0'), description="转出合计")
+    net: Decimal = Field(Decimal('0'), description="净转入")
+
+
+class ZhaopingfeiSummaryResponse(BaseModel):
+    """赵平飞统计响应"""
+    years: list[ZhaopingfeiYearSummary] = Field(default_factory=list, description="各年统计")
+    total_in: Decimal = Field(Decimal('0'), description="总转入")
+    total_out: Decimal = Field(Decimal('0'), description="总转出")
+    total_net: Decimal = Field(Decimal('0'), description="总净转入")

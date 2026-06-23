@@ -20,7 +20,8 @@ from app.schemas import (
     AssetPlatformDetailResponse, AssetRecordResponse, AssetRecordCreate,
     AssetRecordUpdate,
     AssetSummaryResponse,
-    AssetTrendResponse, AssetTrendPoint, PlatformTrendPoint
+    AssetTrendResponse, AssetTrendPoint, PlatformTrendPoint,
+    ZhaopingfeiYearSummary, ZhaopingfeiSummaryResponse
 )
 from app.core.deps import get_current_user
 
@@ -478,4 +479,54 @@ async def get_asset_trend(
     return AssetTrendResponse(
         points=points,
         platforms=platform_points
+    )
+
+
+@router.get("/assets/zhaopingfei-summary", response_model=ZhaopingfeiSummaryResponse)
+async def get_zhaopingfei_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取赵平飞转账年度统计"""
+    platform = db.query(AssetPlatform).filter(
+        AssetPlatform.owner_id == current_user.id,
+        AssetPlatform.name == "赵平飞"
+    ).first()
+
+    if not platform:
+        return ZhaopingfeiSummaryResponse(years=[], total_in=Decimal('0'), total_out=Decimal('0'), total_net=Decimal('0'))
+
+    records = db.query(AssetRecord).filter(
+        AssetRecord.platform_id == platform.id
+    ).order_by(AssetRecord.created_at.asc()).all()
+
+    from collections import defaultdict
+    yearly: dict[str, dict] = defaultdict(lambda: {'in': Decimal('0'), 'out': Decimal('0')})
+    total_in = Decimal('0')
+    total_out = Decimal('0')
+
+    for r in records:
+        year_key = r.created_at.strftime('%Y')
+        if r.record_type == 'transfer_in':
+            yearly[year_key]['in'] += (r.amount or Decimal('0'))
+            total_in += (r.amount or Decimal('0'))
+        elif r.record_type == 'transfer_out':
+            yearly[year_key]['out'] += (r.amount or Decimal('0'))
+            total_out += (r.amount or Decimal('0'))
+
+    years = []
+    for y in sorted(yearly.keys()):
+        d = yearly[y]
+        years.append(ZhaopingfeiYearSummary(
+            year=y,
+            transfer_in=d['in'],
+            transfer_out=d['out'],
+            net=d['in'] - d['out']
+        ))
+
+    return ZhaopingfeiSummaryResponse(
+        years=years,
+        total_in=total_in,
+        total_out=total_out,
+        total_net=total_in - total_out
     )

@@ -347,13 +347,30 @@ const onPlatformChange = (name: string) => {
   reportForm.value.reported_earnings = data.earnings
 }
 
+// 赵平飞年度统计数据
+const zhaopingfeiSummary = ref<{
+  years: Array<{ year: string; transfer_in: number; transfer_out: number; net: number }>
+  total_in: number
+  total_out: number
+  total_net: number
+} | null>(null)
+
 // 展开/收起记录
-const toggleRecords = (platformId: number) => {
+const toggleRecords = async (platformId: number) => {
   const s = new Set(expandedPlatformIds.value)
   if (s.has(platformId)) {
     s.delete(platformId)
   } else {
     s.add(platformId)
+    // 如果是赵平飞，加载年度统计
+    const p = summary.value?.platforms.find(x => x.id === platformId)
+    if (p && p.name === '赵平飞') {
+      try {
+        zhaopingfeiSummary.value = await assetApi.getZhaopingfeiSummary()
+      } catch (e) {
+        console.error('加载赵平飞统计失败', e)
+      }
+    }
   }
   expandedPlatformIds.value = s
 }
@@ -562,6 +579,36 @@ onUnmounted(() => {
 
         <!-- 变动记录列表 -->
         <div v-if="expandedPlatformIds.has(platform.id)" class="record-list">
+          <!-- 赵平飞：年度统计表 -->
+          <template v-if="platform.name === '赵平飞' && zhaopingfeiSummary">
+            <div class="zpf-summary-header">年度转账统计</div>
+            <el-table :data="zhaopingfeiSummary.years" size="small" stripe class="zpf-table">
+              <el-table-column prop="year" label="年份" width="80" />
+              <el-table-column prop="transfer_in" label="转入" width="120">
+                <template #default="{ row }">
+                  <span class="transfer-in">{{ formatAmount(row.transfer_in) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="transfer_out" label="转出" width="120">
+                <template #default="{ row }">
+                  <span v-if="row.transfer_out > 0" class="transfer-out">{{ formatAmount(row.transfer_out) }}</span>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="net" label="净转入" width="120">
+                <template #default="{ row }">
+                  <span :class="row.net >= 0 ? 'transfer-in' : 'transfer-out'">{{ formatAmount(row.net) }}</span>
+                </template>
+              </el-table-column>
+            </el-table>
+            <div class="zpf-total">
+              <span>合计：转入 {{ formatAmount(zhaopingfeiSummary.total_in) }}</span>
+              <span v-if="zhaopingfeiSummary.total_out > 0"> / 转出 {{ formatAmount(zhaopingfeiSummary.total_out) }}</span>
+              <span> / 净转入 <strong>{{ formatAmount(zhaopingfeiSummary.total_net) }}</strong></span>
+            </div>
+          </template>
+          <!-- 其他平台：逐条记录 -->
+          <template v-else>
           <div v-if="platform.records.length === 0" class="no-records">暂无变动记录</div>
           <div v-for="record in platform.records" :key="record.id" class="record-item">
             <div class="record-left">
@@ -599,6 +646,7 @@ onUnmounted(() => {
               />
             </div>
           </div>
+          </template>
         </div>
       </el-card>
     </div>
@@ -1019,5 +1067,37 @@ onUnmounted(() => {
     font-size: 12px;
     padding: 6px 10px;
   }
+}
+
+/* 赵平飞年度统计表 */
+.zpf-summary-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 8px;
+  padding: 8px 0 4px;
+}
+.zpf-table {
+  width: 100%;
+}
+.zpf-table .transfer-in {
+  color: #67c23a;
+  font-weight: 500;
+}
+.zpf-table .transfer-out {
+  color: #f56c6c;
+  font-weight: 500;
+}
+.zpf-total {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #606266;
+}
+.zpf-total strong {
+  color: #303133;
+  font-size: 14px;
 }
 </style>
