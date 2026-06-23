@@ -314,10 +314,10 @@ async def get_asset_summary(
         for yk, yv in yearly.items():
             all_yearly[yk] = all_yearly.get(yk, Decimal('0')) + Decimal(str(yv))
 
-        # 获取最近20条记录
+        # 获取所有记录（降序排列，前端展示最近的在上）
         records = db.query(AssetRecord).filter(
             AssetRecord.platform_id == p.id
-        ).order_by(AssetRecord.created_at.desc()).limit(20).all()
+        ).order_by(AssetRecord.created_at.desc()).all()
 
         record_responses = []
         for r in records:
