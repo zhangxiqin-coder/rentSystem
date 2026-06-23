@@ -296,18 +296,22 @@ ${electricLine}`
     return d
   }
 
-  const hasRecentRentPayment = (roomId: number) => {
-    const today = toStartOfDay(new Date())
-    return payments.value.some(payment => {
-      if (payment.room_id !== roomId) return false
-      if (!payment.payment_date) return false
-      if (payment.status === 'cancelled') return false
-      if (payment.payment_type === 'refund') return false
-
-      const paymentDate = toStartOfDay(new Date(payment.payment_date))
-      const diffDays = Math.floor((today.getTime() - paymentDate.getTime()) / (1000 * 60 * 60 * 24))
-      return diffDays >= 0 && diffDays <= recentPaymentDays.value
-    })
+ const hasRecentRentPayment = (roomId: number) => {
+   const today = toStartOfDay(new Date())
+   return payments.value.some(payment => {
+     if (payment.room_id !== roomId) return false
+     if (!payment.payment_date) return false
+     if (payment.status === 'cancelled') return false
+     if (payment.payment_type !== 'rent') return false
+     if (payment.payment_type === 'refund') return false
+     const paymentDate = toStartOfDay(new Date(payment.payment_date))
+     const diffDays = Math.floor((today.getTime() - paymentDate.getTime()) / (1000 * 60 * 60 * 24))
+      // 阈值根据付款周期动态计算：月付=25天，季付=85天
+      const room = allRooms.value.find(r => r.id === roomId)
+      const cycleMonths = Math.max(1, Number(room?.payment_cycle || 1))
+      const thresholdDays = cycleMonths * 30 - 5
+      return diffDays >= 0 && diffDays <= thresholdDays
+   })
   }
 
   const hasRentPaymentAfter = (roomId: number, afterDate: Date) => {
@@ -341,6 +345,7 @@ ${electricLine}`
       if (payment.room_id !== room.id) return false
       if (!payment.payment_date) return false
       if (payment.status === 'cancelled') return false
+      if (payment.payment_type !== 'rent') return false
       if (payment.payment_type === 'refund') return false
       const paymentDate = toStartOfDay(new Date(payment.payment_date))
       return isSameMonth(paymentDate, today)
@@ -410,11 +415,11 @@ ${electricLine}`
     const lastPaid = room.last_payment_date ? toStartOfDay(new Date(room.last_payment_date)) : null
     const billingCycleStart = prevPrevDue ? toStartOfDay(prevPrevDue) : currentCycleDueStart
     const paidByRentRecord = prevPrevDue
-      ? hasRentPaymentAfter(room.id, toStartOfDay(prevPrevDue))
+      ? hasRentPaymentAfter(room.id, new Date(currentCycleDueStart.getTime() - 14 * 86400000))
       : hasAnyRentPayment(room.id)
     const paidCurrentCycle =
       hasRecentRentPayment(room.id) ||
-      !!(lastPaid && lastPaid > billingCycleStart) ||
+      !!(lastPaid && Math.abs((lastPaid.getTime() - currentCycleDueStart.getTime()) / (1000 * 60 * 60 * 24)) <= 14) ||
       paidByRentRecord ||
       (room.room_number !== '502-2' && currentCycleDueStart.getTime() < cutoffTs)
 
