@@ -579,10 +579,10 @@ onUnmounted(() => {
 
         <!-- 变动记录列表 -->
         <div v-if="expandedPlatformIds.has(platform.id)" class="record-list">
-          <!-- 赵平飞：年度统计表 -->
-          <template v-if="platform.name === '赵平飞' && zhaopingfeiSummary">
+          <!-- 赵平飞：年度统计表 + 逐条明细 -->
+          <template v-if="platform.name === '赵平飞'">
             <div class="zpf-summary-header">年度转账统计</div>
-            <el-table :data="zhaopingfeiSummary.years" size="small" stripe class="zpf-table">
+            <el-table v-if="zhaopingfeiSummary" :data="zhaopingfeiSummary.years" size="small" stripe class="zpf-table">
               <el-table-column prop="year" label="年份" width="80" />
               <el-table-column prop="transfer_in" label="转入" width="120">
                 <template #default="{ row }">
@@ -601,10 +601,48 @@ onUnmounted(() => {
                 </template>
               </el-table-column>
             </el-table>
-            <div class="zpf-total">
+            <div v-if="zhaopingfeiSummary" class="zpf-total">
               <span>合计：转入 {{ formatAmount(zhaopingfeiSummary.total_in) }}</span>
               <span v-if="zhaopingfeiSummary.total_out > 0"> / 转出 {{ formatAmount(zhaopingfeiSummary.total_out) }}</span>
               <span> / 净转入 <strong>{{ formatAmount(zhaopingfeiSummary.total_net) }}</strong></span>
+            </div>
+            <div class="zpf-records-divider">逐条明细</div>
+            <div v-if="platform.records.length === 0" class="no-records">暂无变动记录</div>
+            <div v-for="record in platform.records" :key="record.id" class="record-item">
+              <div class="record-left">
+                <el-tag :type="recordTypeTag(record.record_type)" size="small">
+                  {{ recordTypeLabel(record.record_type) }}
+                </el-tag>
+                <span class="record-note" v-if="record.notes">{{ record.notes }}</span>
+              </div>
+              <div class="record-right">
+                <template v-if="record.record_type === 'balance'">
+                  <span class="record-balance">余额：{{ formatAmount(record.reported_balance || 0) }}</span>
+                  <span :class="['record-earnings', (record.reported_earnings || 0) < 0 ? 'negative' : '']">收益：{{ formatAmount(record.reported_earnings || 0) }}</span>
+                  <span v-if="record.calculated_transfer && record.calculated_transfer !== 0"
+                    :class="['record-transfer', record.calculated_transfer > 0 ? 'transfer-in' : 'transfer-out']">
+                    {{ record.calculated_transfer > 0 ? '转入' : '转出' }} {{ formatAmount(Math.abs(record.calculated_transfer)) }}
+                  </span>
+                </template>
+                <template v-else-if="record.record_type === 'balance_only'">
+                  <span class="record-balance">余额：{{ formatAmount(record.reported_balance || 0) }}</span>
+                </template>
+              <template v-else>
+                  <span :class="record.record_type === 'transfer_in' ? 'transfer-in' : 'transfer-out'">
+                    {{ formatAmount(record.amount || 0) }}
+                  </span>
+                </template>
+                <span class="record-time">{{ formatDate(record.created_at) }}</span>
+                <el-button
+                  v-if="authStore.isSuperAdmin"
+                  text
+                  size="small"
+                  type="primary"
+                  :icon="Edit"
+                  @click="openEdit(record)"
+                  class="edit-btn"
+                />
+              </div>
             </div>
           </template>
           <!-- 其他平台：逐条记录 -->
@@ -1099,5 +1137,13 @@ onUnmounted(() => {
 .zpf-total strong {
   color: #303133;
   font-size: 14px;
+}
+.zpf-records-divider {
+  margin: 16px 0 12px;
+  padding: 4px 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #909399;
+  border-bottom: 1px solid #ebeef5;
 }
 </style>
