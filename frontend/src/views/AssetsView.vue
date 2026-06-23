@@ -238,7 +238,7 @@ const getPlatformData = (name: string): { balance: number; earnings: number } =>
 const showReportDialog = ref(false)
 const reportForm = ref({
   platform_name: '',
-  record_type: 'balance' as 'balance' | 'earnings' | 'balance_only' | 'transfer_in' | 'transfer_out',
+  record_type: 'earnings' as 'balance' | 'earnings' | 'balance_only' | 'transfer_in' | 'transfer_out',
   reported_balance: 0,
   reported_earnings: 0,
   amount: 0,
@@ -282,7 +282,7 @@ const openReport = (platformName?: string) => {
   const data = platformName ? getPlatformData(platformName) : { balance: 0, earnings: 0 }
   reportForm.value = {
     platform_name: platformName || '',
-    record_type: 'balance',
+    record_type: 'earnings',
     reported_balance: data.balance,
     reported_earnings: data.earnings,
     amount: 0,
@@ -624,8 +624,8 @@ onUnmounted(() => {
 
         <el-form-item label="上报类型">
           <el-radio-group v-model="reportForm.record_type" class="report-type-group">
-            <el-radio-button value="balance">余额+收益</el-radio-button>
             <el-radio-button value="earnings">仅收益</el-radio-button>
+            <el-radio-button value="balance">余额+收益</el-radio-button>
             <el-radio-button value="balance_only">仅余额</el-radio-button>
             <el-radio-button value="transfer_in">转入</el-radio-button>
             <el-radio-button value="transfer_out">转出</el-radio-button>
