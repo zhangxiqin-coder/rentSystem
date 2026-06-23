@@ -583,19 +583,19 @@ onUnmounted(() => {
           <template v-if="platform.name === '赵平飞'">
             <div class="zpf-summary-header">年度转账统计</div>
             <el-table v-if="zhaopingfeiSummary" :data="zhaopingfeiSummary.years" size="small" stripe class="zpf-table">
-              <el-table-column prop="year" label="年份" width="80" />
-              <el-table-column prop="transfer_in" label="转入" width="120">
+              <el-table-column prop="year" label="年份" min-width="60" />
+              <el-table-column prop="transfer_in" label="转入" min-width="100">
                 <template #default="{ row }">
                   <span class="transfer-in">{{ formatAmount(row.transfer_in) }}</span>
                 </template>
               </el-table-column>
-              <el-table-column prop="transfer_out" label="转出" width="120">
+              <el-table-column prop="transfer_out" label="转出" min-width="100">
                 <template #default="{ row }">
                   <span v-if="row.transfer_out > 0" class="transfer-out">{{ formatAmount(row.transfer_out) }}</span>
                   <span v-else>-</span>
                 </template>
               </el-table-column>
-              <el-table-column prop="net" label="净转入" width="120">
+              <el-table-column prop="net" label="净转入" min-width="100">
                 <template #default="{ row }">
                   <span :class="row.net >= 0 ? 'transfer-in' : 'transfer-out'">{{ formatAmount(row.net) }}</span>
                 </template>
