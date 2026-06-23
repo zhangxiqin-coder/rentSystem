@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { AssetPlatform, AssetRecord, AssetSummary } from '@/types'
+import type { AssetPlatform, AssetRecord, AssetSummary, AssetTrend } from '@/types'
 
 // 手动创建带认证的请求
 async function authRequest<T>(config: {
@@ -32,7 +32,25 @@ async function authRequest<T>(config: {
 
   // 加CSRF token（非GET请求）
   if (config.method !== 'get') {
-    const csrfToken = sessionStorage.getItem('csrf_token')
+    let csrfToken = sessionStorage.getItem('csrf_token')
+
+    // 如果没有CSRF token，主动获取
+    if (!csrfToken && token) {
+      try {
+        const csrfRes = await axios({
+          method: 'get',
+          url: '/api/v1/auth/csrf-token',
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        csrfToken = csrfRes.headers['x-csrf-token'] as string
+        if (csrfToken) {
+          sessionStorage.setItem('csrf_token', csrfToken)
+        }
+      } catch {
+        console.warn('⚠️ [Assets API] Failed to fetch CSRF token')
+      }
+    }
+
     if (csrfToken) {
       headers['X-CSRF-Token'] = csrfToken
     }
@@ -98,5 +116,10 @@ export const assetApi = {
     notes?: string | null
   }): Promise<AssetRecord> {
     return authRequest({ method: 'put', url: `/api/v1/assets/records/${id}`, data })
+  },
+
+  // 趋势
+  async getTrend(): Promise<AssetTrend> {
+    return authRequest({ method: 'get', url: '/api/v1/assets/trend' })
   }
 }

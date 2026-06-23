@@ -751,6 +751,7 @@ class AssetRecordResponse(BaseModel):
 class AssetPlatformDetailResponse(AssetPlatformResponse):
     """资产平台详情（含记录）"""
     records: list[AssetRecordResponse] = Field(default_factory=list, description="变动记录")
+    annualized_return: Optional[Decimal] = Field(None, description="年化收益率（当年收益/当前余额*100%）")
 
 
 class AssetSummaryResponse(BaseModel):
@@ -760,3 +761,25 @@ class AssetSummaryResponse(BaseModel):
     yearly_earnings: dict[str, Decimal] = Field(default_factory=dict, description="历年总收益 {2025: 1234.56, 2026: 5678.90}")
     current_year: int = Field(2026, description="当前收益年份")
     platforms: list[AssetPlatformDetailResponse] = Field(default_factory=list, description="各平台详情")
+
+
+class AssetTrendPoint(BaseModel):
+    """趋势数据点"""
+    date: str = Field(..., description="日期 YYYY-MM-DD")
+    total_balance: Decimal = Field(Decimal('0'), description="当日总资产")
+    total_earnings: Decimal = Field(Decimal('0'), description="当日总收益")
+    earnings_delta: Decimal = Field(Decimal('0'), description="当日收益变化")
+
+
+class PlatformTrendPoint(BaseModel):
+    """单个平台趋势点"""
+    date: str
+    name: str
+    balance: Decimal
+    earnings: Decimal
+
+
+class AssetTrendResponse(BaseModel):
+    """资产趋势响应"""
+    points: list[AssetTrendPoint] = Field(default_factory=list, description="趋势数据点")
+    platforms: list[PlatformTrendPoint] = Field(default_factory=list, description="各平台趋势")

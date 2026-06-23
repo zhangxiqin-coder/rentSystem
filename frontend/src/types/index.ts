@@ -359,6 +359,7 @@ export interface AssetRecord {
 
 export interface AssetPlatformDetail extends AssetPlatform {
   records: AssetRecord[]
+  annualized_return: number | null
 }
 
 export interface AssetSummary {
@@ -367,4 +368,23 @@ export interface AssetSummary {
   yearly_earnings: Record<string, number>
   current_year: number
   platforms: AssetPlatformDetail[]
+}
+
+export interface AssetTrendPoint {
+  date: string
+  total_balance: number
+  total_earnings: number
+  earnings_delta: number
+}
+
+export interface PlatformTrendPoint {
+  date: string
+  name: string
+  balance: number
+  earnings: number
+}
+
+export interface AssetTrend {
+  points: AssetTrendPoint[]
+  platforms: PlatformTrendPoint[]
 }
