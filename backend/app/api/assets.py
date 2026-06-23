@@ -304,10 +304,11 @@ async def get_asset_summary(
     platform_details = []
 
     for p in platforms:
-        total_balance += (p.current_balance or Decimal('0'))
-        total_current_year_earnings += (p.total_earnings or Decimal('0'))
+        if p.is_asset:
+            total_balance += (p.current_balance or Decimal('0'))
+            total_current_year_earnings += (p.total_earnings or Decimal('0'))
 
-        # 合并历年收益
+        # 合并历年收益（所有平台都参与）
         yearly = _parse_yearly_earnings(p)
         for yk, yv in yearly.items():
             all_yearly[yk] = all_yearly.get(yk, Decimal('0')) + Decimal(str(yv))
@@ -337,6 +338,7 @@ async def get_asset_summary(
             yearly_earnings=yearly,
             sort_order=p.sort_order,
             is_active=p.is_active,
+            is_asset=p.is_asset,
             created_at=p.created_at,
             updated_at=p.updated_at,
             records=record_responses,

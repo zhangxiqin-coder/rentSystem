@@ -671,6 +671,7 @@ class AssetPlatformCreate(BaseModel):
     current_balance: Decimal = Field(Decimal('0'), description="当前余额")
     total_earnings: Decimal = Field(Decimal('0'), description="累计收益")
     sort_order: int = Field(0, description="排序")
+    is_asset: bool = Field(True, description="是否计入总资产")
 
 
 class AssetPlatformUpdate(BaseModel):
@@ -692,6 +693,7 @@ class AssetPlatformResponse(BaseModel):
     yearly_earnings: dict[str, Decimal] = Field(default_factory=dict, description="历年收益")
     sort_order: int
     is_active: bool
+    is_asset: bool = Field(True, description="是否计入总资产")
     created_at: datetime
     updated_at: datetime
 

@@ -332,6 +332,7 @@ class AssetPlatform(Base):
     yearly_earnings = Column(Text, default="{}", comment="历年收益归 JSON {2025: 123.45, 2026: 678.90}")
     sort_order = Column(Integer, default=0, comment="排序")
     is_active = Column(Boolean, default=True, nullable=False)
+    is_asset = Column(Boolean, default=True, nullable=False, comment="是否计入总资产")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
