@@ -26,6 +26,7 @@ const tempRecentReadingDays = ref(recentReadingDays.value)
 const tempLookbackMonths = ref(lookbackMonths.value)
 const tempLeaseExpiryWarningDays = ref(leaseExpiryWarningDays.value)
 const tempSuperAdminMode = ref(authStore.superAdminMode)
+const tempShowAssets = ref(authStore.showAssetsPage)
 
 // 预设平台列表
 const ALL_PLATFORMS = [
@@ -212,6 +213,11 @@ const handleToggleSuperAdmin = async () => {
     tempSuperAdminMode.value = false
   }
 }
+
+const handleToggleAssets = () => {
+  authStore.toggleShowAssets(tempShowAssets.value)
+  ElMessage.success(tempShowAssets.value ? '资产页面已开启' : '资产页面已关闭')
+}
 </script>
 
 <template>
@@ -390,6 +396,25 @@ const handleToggleSuperAdmin = async () => {
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 资产页面开关 -->
+    <el-card style="margin-top: 20px;">
+      <template #header>
+        <span class="card-title">资产页面</span>
+      </template>
+      <div class="setting-item">
+        <div class="setting-info">
+          <div class="setting-label">显示资产页面</div>
+          <div class="setting-desc">开启后导航栏显示"资产"入口，可查看和管理个人资产</div>
+        </div>
+        <el-switch
+          v-model="tempShowAssets"
+          active-text="已开启"
+          inactive-text="已关闭"
+          @change="handleToggleAssets"
+        />
+      </div>
+    </el-card>
 
     <!-- 资产平台配置 -->
     <el-card style="margin-top: 20px;">

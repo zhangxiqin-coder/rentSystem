@@ -89,7 +89,7 @@ const routes: RouteRecordRaw[] = [
     path: '/assets',
     name: 'Assets',
     component: () => import('@/views/AssetsView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, requiresShowAssets: true },
   },
   {
     path: '/settings',
@@ -123,6 +123,9 @@ router.beforeEach((to, _from, next) => {
   if (requiresAuth && !authStore.isAuthenticated) {
     // Redirect to login if trying to access protected route
     next({ name: 'Login', query: { redirect: to.fullPath } })
+  } else if (to.meta.requiresShowAssets && !authStore.showAssetsPage) {
+    // 资产页面未开启时重定向
+    next({ name: 'Utility' })
   } else if (to.name === 'Login' && authStore.isAuthenticated) {
     // Redirect to utility page if already logged in
     next({ name: 'Utility' })

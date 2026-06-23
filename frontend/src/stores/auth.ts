@@ -12,6 +12,7 @@ export const useAuthStore = defineStore('auth', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
   const superAdminMode = ref<boolean>(false)
+  const showAssets = ref<boolean>(false)
 
   // Getters
   const isAuthenticated = computed(() => !!token.value && !!user.value)
@@ -24,6 +25,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isLandlord = computed(() => user.value?.role === 'landlord')
   const isTenant = computed(() => user.value?.role === 'tenant')
   const isSuperAdmin = computed(() => superAdminMode.value)
+  const showAssetsPage = computed(() => showAssets.value)
 
   // Actions
   const login = async (credentials: LoginRequest) => {
@@ -143,11 +145,22 @@ export const useAuthStore = defineStore('auth', () => {
     if (storedSuperAdminMode === 'true') {
       superAdminMode.value = true
     }
+
+    // Load show assets setting from localStorage
+    const storedShowAssets = localStorage.getItem('show_assets')
+    if (storedShowAssets === 'true') {
+      showAssets.value = true
+    }
   }
 
   const toggleSuperAdminMode = (enabled: boolean) => {
     superAdminMode.value = enabled
     localStorage.setItem('super_admin_mode', String(enabled))
+  }
+
+  const toggleShowAssets = (enabled: boolean) => {
+    showAssets.value = enabled
+    localStorage.setItem('show_assets', String(enabled))
   }
 
   const clearError = () => {
@@ -161,6 +174,7 @@ export const useAuthStore = defineStore('auth', () => {
     loading,
     error,
     superAdminMode,
+    showAssets,
     // Getters
     isAuthenticated,
     userRole,
@@ -169,6 +183,7 @@ export const useAuthStore = defineStore('auth', () => {
     isLandlord,
     isTenant,
     isSuperAdmin,
+    showAssetsPage,
     // Actions
     login,
     register,
@@ -177,5 +192,6 @@ export const useAuthStore = defineStore('auth', () => {
     initializeAuth,
     clearError,
     toggleSuperAdminMode,
+    toggleShowAssets,
   }
 })

@@ -83,7 +83,7 @@ onMounted(() => {
         <el-tab-pane label="租客管理" name="tenants" />
         <el-tab-pane label="交租记录" name="payments" />
         <el-tab-pane label="水电管理" name="utility" />
-        <el-tab-pane label="资产" name="assets" />
+        <el-tab-pane v-if="authStore.showAssetsPage" label="资产" name="assets" />
       </el-tabs>
       <div class="actions">
         <el-button type="info" plain size="small" @click="toggleHideAmounts">
@@ -136,6 +136,7 @@ onMounted(() => {
         <span class="label">水电</span>
       </div>
       <div
+        v-if="authStore.showAssetsPage"
         class="nav-item"
         :class="{ active: activeTab === 'assets' }"
         @click="handleTabChange('assets')"
