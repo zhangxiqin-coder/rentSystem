@@ -371,7 +371,8 @@ async def get_asset_trend(
     """获取资产趋势（按天汇总balance记录的总资产和总收益）"""
     platforms = db.query(AssetPlatform).filter(
         AssetPlatform.owner_id == current_user.id,
-        AssetPlatform.is_active == True
+        AssetPlatform.is_active == True,
+        AssetPlatform.is_asset == True
     ).all()
 
     if not platforms:
