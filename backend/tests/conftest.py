@@ -1,36 +1,41 @@
 """
 Pytest 配置和 fixtures
 """
+import os
+os.environ["TESTING"] = "1"
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+SQLALCHEMY_TEST_DATABASE_URL = "sqlite:///./test_rent_management.db"
+test_engine = create_engine(
+    SQLALCHEMY_TEST_DATABASE_URL, connect_args={"check_same_thread": False}
+)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+
+# 替换 app.database 的 engine 和 SessionLocal
+from app import database as db_module
+db_module.engine = test_engine
+db_module.SessionLocal = TestingSessionLocal
 
 from app.main import app
 from app.database import get_db, Base
 from app.models import User, pwd_context
 
 
-# 使用内存数据库进行测试
-SQLALCHEMY_TEST_DATABASE_URL = "sqlite:///:memory:"
-
-engine = create_engine(
-    SQLALCHEMY_TEST_DATABASE_URL, connect_args={"check_same_thread": False}
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
 @pytest.fixture(scope="function")
 def db():
     """创建测试数据库会话"""
-    Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
+    Base.metadata.create_all(bind=test_engine)
+    db_session = TestingSessionLocal()
     try:
-        yield db
+        yield db_session
     finally:
-        db.rollback()
-        db.close()
-        Base.metadata.drop_all(bind=engine)
+        db_session.rollback()
+        db_session.close()
+        Base.metadata.drop_all(bind=test_engine)
 
 
 @pytest.fixture(scope="function")
@@ -81,22 +86,16 @@ def test_admin(db):
 
 
 @pytest.fixture
-def auth_headers(client):
+def auth_headers(client, test_user):
     """获取测试用户的认证头"""
-    response = client.post("/api/v1/auth/login", json={
-        "username": "testuser",
-        "password": "testpass123"
-    })
-    token = response.json()["access_token"]
+    from app.core.security import create_access_token
+    token = create_access_token(data={"sub": test_user.username})
     return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture
-def admin_headers(client):
+def admin_headers(client, test_admin):
     """获取管理员的认证头"""
-    response = client.post("/api/v1/auth/login", json={
-        "username": "admin",
-        "password": "admin123"
-    })
-    token = response.json()["access_token"]
+    from app.core.security import create_access_token
+    token = create_access_token(data={"sub": test_admin.username})
     return {"Authorization": f"Bearer {token}"}

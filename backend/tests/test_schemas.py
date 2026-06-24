@@ -23,22 +23,24 @@ class TestUserSchemas:
         """测试 UserCreate schema"""
         user_data = {
             "username": "testuser",
-            "password": "password123",
+            "password": "StrongP@ss1",
             "email": "test@example.com"
         }
         user = UserCreate(**user_data)
         assert user.username == "testuser"
-        assert user.password == "password123"
+        assert user.password == "StrongP@ss1"
         assert user.email == "test@example.com"
     
     def test_user_response_orm_mode(self):
         """测试 UserResponse ORM 模式"""
-        # 模拟 ORM 对象
         class MockUser:
             id = 1
             username = "testuser"
             email = "test@example.com"
+            role = "landlord"
+            is_active = True
             created_at = datetime(2024, 1, 1, 12, 0, 0)
+            updated_at = datetime(2024, 1, 1, 12, 0, 0)
         
         mock_user = MockUser()
         user_response = UserResponse.model_validate(mock_user)
@@ -49,7 +51,7 @@ class TestUserSchemas:
     def test_user_create_invalid_email(self):
         """测试 UserCreate schema 无效邮箱"""
         with pytest.raises(ValidationError):
-            UserCreate(username="testuser", password="password123", email="invalid-email")
+            UserCreate(username="testuser", password="StrongP@ss1", email="invalid-email")
     
     def test_user_create_short_password(self):
         """测试 UserCreate schema 密码过短"""
@@ -63,7 +65,7 @@ class TestRoomSchemas:
     def test_room_create_valid(self):
         """测试 RoomCreate schema"""
         room_data = {
-            "name": "101",
+            "room_number": "101",
             "monthly_rent": "1000.00",
             "tenant_name": "张三",
             "tenant_phone": "13800138000",
@@ -72,7 +74,7 @@ class TestRoomSchemas:
             "payment_cycle": 1
         }
         room = RoomCreate(**room_data)
-        assert room.name == "101"
+        assert room.room_number == "101"
         assert room.monthly_rent == Decimal("1000.00")
         assert room.tenant_name == "张三"
         assert room.payment_cycle == 1
@@ -81,27 +83,43 @@ class TestRoomSchemas:
         """测试 RoomResponse ORM 模式"""
         class MockRoom:
             id = 1
-            name = "101"
+            room_number = "101"
+            building = None
+            floor = None
+            area = None
             monthly_rent = Decimal("1000.00")
+            deposit_amount = None
+            payment_cycle = 1
+            water_rate = Decimal("5.00")
+            electricity_rate = Decimal("1.00")
+            status = "occupied"
             tenant_name = "张三"
             tenant_phone = None
+            tenant_id_card = None
+            tenant_id = None
+            initial_electricity_reading = None
+            initial_water_reading = None
+            broadband_fee = None
             lease_start = None
             lease_end = None
-            payment_cycle = 1
             last_payment_date = None
+            description = None
+            owner_id = None
+            series = None
             created_at = datetime(2024, 1, 1, 12, 0, 0)
+            updated_at = datetime(2024, 1, 1, 12, 0, 0)
         
         mock_room = MockRoom()
         room_response = RoomResponse.model_validate(mock_room)
         assert room_response.id == 1
-        assert room_response.name == "101"
+        assert room_response.room_number == "101"
         assert room_response.tenant_name == "张三"
     
     def test_room_create_invalid_phone(self):
         """测试 RoomCreate schema 无效手机号"""
         with pytest.raises(ValidationError):
             RoomCreate(
-                name="101",
+                room_number="101",
                 monthly_rent="1000.00",
                 tenant_phone="12345678901"
             )
@@ -110,7 +128,7 @@ class TestRoomSchemas:
         """测试 RoomCreate schema 租约日期无效"""
         with pytest.raises(ValidationError):
             RoomCreate(
-                name="101",
+                room_number="101",
                 monthly_rent="1000.00",
                 lease_start=date(2024, 12, 31),
                 lease_end=date(2024, 1, 1)
@@ -120,7 +138,7 @@ class TestRoomSchemas:
         """测试 RoomCreate schema 租金为负数"""
         with pytest.raises(ValidationError):
             RoomCreate(
-                name="101",
+                room_number="101",
                 monthly_rent="-1000.00"
             )
     
@@ -128,7 +146,7 @@ class TestRoomSchemas:
         """测试 RoomCreate schema 支付周期为0"""
         with pytest.raises(ValidationError):
             RoomCreate(
-                name="101",
+                room_number="101",
                 monthly_rent="1000.00",
                 payment_cycle=0
             )
@@ -143,8 +161,9 @@ class TestPaymentSchemas:
             "room_id": 1,
             "amount": "1000.00",
             "payment_date": "2024-01-15",
+            "payment_type": "rent",
             "payment_method": "支付宝",
-            "note": "1月房租"
+            "description": "1月房租"
         }
         payment = PaymentCreate(**payment_data)
         assert payment.room_id == 1
@@ -157,11 +176,18 @@ class TestPaymentSchemas:
             id = 1
             room_id = 1
             amount = Decimal("1000.00")
+            payment_type = "rent"
             payment_date = date(2024, 1, 15)
-            payment_method = PaymentMethod.ALIPAY
-            note = "1月房租"
+            due_date = None
+            period_start = None
+            period_end = None
+            status = "completed"
+            payment_method = "支付宝"
+            description = "1月房租"
             receipt_image = None
+            owner_id = None
             created_at = datetime(2024, 1, 15, 12, 0, 0)
+            updated_at = datetime(2024, 1, 15, 12, 0, 0)
         
         mock_payment = MockPayment()
         payment_response = PaymentResponse.model_validate(mock_payment)
@@ -174,7 +200,8 @@ class TestPaymentSchemas:
             PaymentCreate(
                 room_id=1,
                 amount="-1000.00",
-                payment_date=date(2024, 1, 15)
+                payment_date=date(2024, 1, 15),
+                payment_type="rent"
             )
     
     def test_payment_create_invalid_room_id(self):
@@ -183,7 +210,8 @@ class TestPaymentSchemas:
             PaymentCreate(
                 room_id=0,
                 amount="1000.00",
-                payment_date=date(2024, 1, 15)
+                payment_date=date(2024, 1, 15),
+                payment_type="rent"
             )
     
     def test_payment_create_invalid_payment_method(self):
@@ -193,6 +221,7 @@ class TestPaymentSchemas:
                 room_id=1,
                 amount="1000.00",
                 payment_date=date(2024, 1, 15),
+                payment_type="rent",
                 payment_method="invalid_method"
             )
 
@@ -204,14 +233,14 @@ class TestUtilityReadingSchemas:
         """测试 UtilityReadingCreate schema"""
         reading_data = {
             "room_id": 1,
-            "utility_type": "electric",
+            "utility_type": "electricity",
             "reading": "100.50",
             "reading_date": "2024-01-01",
-            "note": "1月电表读数"
+            "notes": "1月电表读数"
         }
         reading = UtilityReadingCreate(**reading_data)
         assert reading.room_id == 1
-        assert reading.utility_type == "electric"
+        assert reading.utility_type == "electricity"
         assert reading.reading == Decimal("100.50")
     
     def test_utility_reading_response_orm_mode(self):
@@ -219,23 +248,30 @@ class TestUtilityReadingSchemas:
         class MockReading:
             id = 1
             room_id = 1
-            utility_type = "electric"
+            utility_type = "electricity"
             reading = Decimal("100.50")
+            previous_reading = None
+            usage = None
+            amount = None
+            rate_used = None
             reading_date = date(2024, 1, 1)
-            note = "1月电表读数"
+            notes = "1月电表读数"
+            recorded_by = None
+            owner_id = None
             created_at = datetime(2024, 1, 1, 12, 0, 0)
+            updated_at = datetime(2024, 1, 1, 12, 0, 0)
         
         mock_reading = MockReading()
         reading_response = UtilityReadingResponse.model_validate(mock_reading)
         assert reading_response.id == 1
-        assert reading_response.utility_type == "electric"
+        assert reading_response.utility_type == "electricity"
     
     def test_utility_reading_create_invalid_type(self):
         """测试 UtilityReadingCreate schema 无效类型"""
         with pytest.raises(ValidationError):
             UtilityReadingCreate(
                 room_id=1,
-                utility_type="gas",
+                utility_type="invalid_type",  # 不再是"gas"（gas现在是合法的）
                 reading="100.50",
                 reading_date=date(2024, 1, 1)
             )
@@ -245,7 +281,7 @@ class TestUtilityReadingSchemas:
         with pytest.raises(ValidationError):
             UtilityReadingCreate(
                 room_id=1,
-                utility_type="electric",
+                utility_type="electricity",
                 reading="-100.50",
                 reading_date=date(2024, 1, 1)
             )
@@ -255,7 +291,7 @@ class TestUtilityReadingSchemas:
         with pytest.raises(ValidationError):
             UtilityReadingCreate(
                 room_id=0,
-                utility_type="electric",
+                utility_type="electricity",
                 reading="100.50",
                 reading_date=date(2024, 1, 1)
             )
@@ -267,35 +303,37 @@ class TestUtilityRateSchemas:
     def test_utility_rate_create_valid(self):
         """测试 UtilityRateCreate schema"""
         rate_data = {
-            "utility_type": "electric",
-            "unit_price": "0.56",
+            "utility_type": "electricity",
+            "rate_per_unit": "0.56",
             "effective_date": "2024-01-01"
         }
         rate = UtilityRateCreate(**rate_data)
-        assert rate.utility_type == "electric"
-        assert rate.unit_price == Decimal("0.56")
+        assert rate.utility_type == "electricity"
+        assert rate.rate_per_unit == Decimal("0.56")
     
     def test_utility_rate_response_orm_mode(self):
         """测试 UtilityRateResponse ORM 模式"""
         class MockRate:
             id = 1
-            utility_type = "electric"
-            unit_price = Decimal("0.56")
+            utility_type = "electricity"
+            rate_per_unit = Decimal("0.56")
             effective_date = date(2024, 1, 1)
+            is_active = True
             created_at = datetime(2024, 1, 1, 12, 0, 0)
+            updated_at = datetime(2024, 1, 1, 12, 0, 0)
         
         mock_rate = MockRate()
         rate_response = UtilityRateResponse.model_validate(mock_rate)
         assert rate_response.id == 1
-        assert rate_response.utility_type == "electric"
-        assert rate_response.unit_price == Decimal("0.56")
+        assert rate_response.utility_type == "electricity"
+        assert rate_response.rate_per_unit == Decimal("0.56")
     
     def test_utility_rate_create_invalid_type(self):
         """测试 UtilityRateCreate schema 无效类型"""
         with pytest.raises(ValidationError):
             UtilityRateCreate(
-                utility_type="gas",
-                unit_price="0.56",
+                utility_type="invalid_type",  # gas现在是合法的
+                rate_per_unit="0.56",
                 effective_date=date(2024, 1, 1)
             )
     
@@ -303,8 +341,8 @@ class TestUtilityRateSchemas:
         """测试 UtilityRateCreate schema 单价为负数"""
         with pytest.raises(ValidationError):
             UtilityRateCreate(
-                utility_type="electric",
-                unit_price="-0.56",
+                utility_type="electricity",
+                rate_per_unit="-0.56",
                 effective_date=date(2024, 1, 1)
             )
     
@@ -312,7 +350,7 @@ class TestUtilityRateSchemas:
         """测试 UtilityRateCreate schema 单价为0"""
         with pytest.raises(ValidationError):
             UtilityRateCreate(
-                utility_type="electric",
-                unit_price="0.00",
+                utility_type="electricity",
+                rate_per_unit="0.00",
                 effective_date=date(2024, 1, 1)
             )

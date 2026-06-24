@@ -211,26 +211,80 @@ class TestBusinessLogic:
     def test_get_expiring_leases(self, db):
         """测试获取即将到期租约"""
         today = date.today()
-        
+
+        from app.models import Tenant, LeaseRecord
+
+        # 创建一个用户作为 owner
+        user = db.query(User).first()
+        if not user:
+            user = User(
+                username="test_owner",
+                password_hash="test",
+                role="landlord"
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        # 创建租客
+        tenant = Tenant(
+            name="张三",
+            phone="13800138000",
+            id_card="110101199001011234",
+            owner_id=user.id
+        )
+        db.add(tenant)
+        db.commit()
+
+        tenant2 = Tenant(
+            name="李四",
+            phone="13800138001",
+            id_card="110101199001011235",
+            owner_id=user.id
+        )
+        db.add(tenant2)
+        db.commit()
+
+        # 创建房间
         room1 = Room(
             room_number="108",
             monthly_rent=Decimal("1000"),
             payment_cycle=1,
-            tenant_name="张三",
-            lease_end=today + timedelta(days=10),
-            status="occupied"
+            status="occupied",
+            owner_id=user.id
         )
         room2 = Room(
             room_number="109",
             monthly_rent=Decimal("1000"),
             payment_cycle=1,
-            tenant_name="李四",
-            lease_end=today + timedelta(days=40),
-            status="occupied"
+            status="occupied",
+            owner_id=user.id
         )
         db.add_all([room1, room2])
         db.commit()
-        
+
+        # 创建租赁记录（使用 LeaseRecord）
+        lease1 = LeaseRecord(
+            tenant_id=tenant.id,
+            room_id=room1.id,
+            lease_start=today - timedelta(days=30),
+            lease_end=today + timedelta(days=10),
+            monthly_rent=Decimal("1000"),
+            is_active=True,
+            owner_id=user.id
+        )
+        lease2 = LeaseRecord(
+            tenant_id=tenant2.id,
+            room_id=room2.id,
+            lease_start=today - timedelta(days=30),
+            lease_end=today + timedelta(days=40),
+            monthly_rent=Decimal("1000"),
+            is_active=True,
+            owner_id=user.id
+        )
+        db.add_all([lease1, lease2])
+        db.commit()
+
         expiring = get_expiring_leases(db, days_threshold=30)
         assert len(expiring) == 1
         assert expiring[0]['room_number'] == "108"

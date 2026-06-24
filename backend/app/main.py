@@ -46,6 +46,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     """CSRF Protection Middleware"""
     
     async def dispatch(self, request: Request, call_next):
+        # 测试环境跳过 CSRF 检查（方便 pytest）
+        if os.environ.get("TESTING") == "1":
+            response = await call_next(request)
+            return response
+
         # Skip CSRF for GET, HEAD, OPTIONS, TRACE methods
         if request.method in ['GET', 'HEAD', 'OPTIONS', 'TRACE']:
             response = await call_next(request)

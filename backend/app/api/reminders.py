@@ -142,7 +142,8 @@ async def get_upcoming_reminders(
     return ReminderResponse(
         total=len(reminders),
         reminders=reminders,
-        as_of_date=today
+        as_of_date=today,
+        pages=1
     )
 
 
