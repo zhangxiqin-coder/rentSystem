@@ -1,0 +1,38 @@
+{
+  "name": "gitai",
+  "displayName": "GitAI",
+  "description": "GitAI integration for rent management system",
+  "version": "1.0.0",
+  "author": "rent-system",
+  "enabled": true,
+  "config": {
+    "schemas": {
+      "user": {
+        "type": "object",
+        "properties": {
+          "gitai.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable GitAI features"
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  "settings": {
+    "gitai.enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable GitAI features"
+    }
+  },
+  "triggers": {
+    "onRegister": {
+      "handler": "register"
+    }
+  },
+  "capabilities": [
+    "configuration"
+  ]
+}
