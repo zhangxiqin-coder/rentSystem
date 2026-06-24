@@ -32,4 +32,12 @@ export const statisticsApi = {
   // Get dashboard summary
   getDashboardSummary: () =>
     request.get<ApiResponse<any>>('/api/v1/statistics/dashboard'),
+
+  // Get rent payment status (overdue + expiring) - 后端计算
+  getRentPaymentStatus: (params?: {
+    overdue_cutoff_date?: string
+    advance_rent_days?: number
+    expiring_days?: number
+  }) =>
+    request.get('/api/v1/stats/rent-payment-status', { params }),
 }

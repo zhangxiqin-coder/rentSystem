@@ -1,6 +1,7 @@
-import { computed, type Ref } from 'vue'
+import { computed, ref, watch, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { utilityApi } from '@/api/utility'
+import { statisticsApi } from '@/api/statistics'
 import { mergeReadings, type MergedReading } from '@/composables/useMergedReadings'
 import { useOverdueConfig } from '@/composables/useOverdueConfig'
 import type { UtilityReading, Room, Payment as RentPayment } from '@/types'
@@ -28,6 +29,82 @@ export function useOverdueManagement(deps: {
 
   const { overdueCutoffDate, advanceRentDays, expiringDays, recentPaymentDays, recentReadingDays } = useOverdueConfig()
 
+  // 后端逾期/到期数据（取代前端本地计算）
+  const overdueRoomsFromBackend = ref<Array<{
+    room_id: number
+    room_number: string
+    tenant_name: string | null
+    overdue_days: number
+    overdue_amount: number
+    last_payment_date: string | null
+    next_payment_date: string | null
+    monthly_rent: number
+    payment_cycle: number
+  }>>([])
+
+  const expiringRoomsFromBackend = ref<Array<{
+    room_id: number
+    room_number: string
+    tenant_name: string | null
+    days_until_payment: number
+    monthly_rent: number
+    payment_cycle: number
+  }>>([])
+
+  const backendLoading = ref(false)
+
+  // 从后端API获取逾期/到期数据
+  const fetchPaymentStatus = async () => {
+    backendLoading.value = true
+    try {
+      const res = await statisticsApi.getRentPaymentStatus({
+        overdue_cutoff_date: overdueCutoffDate.value,
+        advance_rent_days: advanceRentDays.value,
+        expiring_days: expiringDays.value,
+      })
+      // axios res.data 直接是后端返回的数据
+      const data = res.data as any
+      overdueRoomsFromBackend.value = data.overdue_rooms || []
+      expiringRoomsFromBackend.value = data.expiring_rooms || []
+    } catch (err) {
+      console.error('[useOverdueManagement] 后端API获取失败，使用本地计算:', err)
+      // 失败时触发本地计算
+      loadFromLocal()
+    } finally {
+      backendLoading.value = false
+    }
+  }
+
+  // 本地计算（回退方案）
+  const loadFromLocal = () => {
+    const localOverdue = computeLocalOverdue()
+    const localExpiring = computeLocalExpiring()
+    overdueRoomsFromBackend.value = localOverdue.map(item => ({
+      room_id: item.room.id,
+      room_number: item.room.room_number,
+      tenant_name: item.room.tenant_name || null,
+      overdue_days: item.overdueDays,
+      overdue_amount: item.overdueAmount,
+      last_payment_date: item.lastPaymentDate,
+      next_payment_date: item.nextPaymentDate,
+      monthly_rent: Number(item.room.monthly_rent || 0),
+      payment_cycle: item.room.payment_cycle || 1,
+    }))
+    expiringRoomsFromBackend.value = localExpiring.map(room => ({
+      room_id: room.id,
+      room_number: room.room_number,
+      tenant_name: room.tenant_name || null,
+      days_until_payment: getNextPaymentDays(room),
+      monthly_rent: Number(room.monthly_rent || 0),
+      payment_cycle: room.payment_cycle || 1,
+    }))
+  }
+
+  // 当配置变化时重新获取
+  watch([overdueCutoffDate, advanceRentDays, expiringDays, payments, allRooms], () => {
+    fetchPaymentStatus()
+  }, { deep: true })
+
   // 性能优化：缓存合并结果，避免重复计算
   const mergedAllReadings = computed(() =>
     mergeReadings(allReadings.value, roomOptions.value)
@@ -50,7 +127,33 @@ export function useOverdueManagement(deps: {
     return roomAmountMap
   })
 
-  const overdueRooms = computed(() => {
+  // 对外暴露的逾期/到期数据（以后端为主）
+  const overdueItems = computed(() => {
+    return overdueRoomsFromBackend.value.map(item => {
+      const room = allRooms.value.find(r => r.id === item.room_id)
+      return {
+        room: room || { id: item.room_id, room_number: item.room_number } as Room,
+        overdueDays: item.overdue_days,
+        overdueAmount: item.overdue_amount,
+        lastPaymentDate: item.last_payment_date || '',
+        nextPaymentDate: item.next_payment_date || '',
+      }
+    })
+  })
+
+  const expiringItems = computed(() => {
+    return expiringRoomsFromBackend.value.map(item => {
+      const room = allRooms.value.find(r => r.id === item.room_id)
+      return room || { id: item.room_id, room_number: item.room_number } as Room
+    })
+  })
+
+  // 保留兼容原接口
+  const overdueRooms = overdueItems
+  const expiringRooms = expiringItems
+
+  // ---- 本地计算逻辑（回退用，仅保留关键方法） ----
+  const computeLocalOverdue = () => {
     const overdue: Array<{
       room: Room
       overdueDays: number
@@ -63,20 +166,13 @@ export function useOverdueManagement(deps: {
       if (room.status !== 'occupied') return
       if (hasPaidThisMonth(room)) return
       if (hasRecentRentPayment(room.id)) return
-      // 租期未开始的不纳入逾期
       if (room.lease_start && toStartOfDay(new Date(room.lease_start)) > toStartOfDay(new Date())) return
 
-      const { targetDue } = getPaymentDueContext(room)
-
-      const nextPaymentDate = getNextPaymentDate(room)
       const nextPaymentDays = getNextPaymentDays(room)
 
-      // 如果距离应交日 <= 提前收租天数，计入欠租管理
       if (nextPaymentDays <= advanceRentDays.value) {
         const overdueDays = Math.max(0, -nextPaymentDays)
         const lastPaymentDate = room.last_payment_date || room.lease_start
-
-        // 计算欠费总额（房租 + 最近未结清水电）
         const utilityAmount = latestUnpaidUtilityAmountByRoom.value.get(room.id) || 0
         const cycle = Math.max(1, Number(room.payment_cycle || 1))
         const overdueAmount = Number(room.monthly_rent || 0) * cycle + utilityAmount
@@ -86,17 +182,15 @@ export function useOverdueManagement(deps: {
           overdueDays,
           overdueAmount,
           lastPaymentDate: formatDate(lastPaymentDate!),
-          nextPaymentDate: formatDate(nextPaymentDate)
+          nextPaymentDate: getNextPaymentDate(room)
         })
       }
     })
 
-    // 按欠租天数排序（天数越多越靠前）
     return overdue.sort((a, b) => b.overdueDays - a.overdueDays)
-  })
+  }
 
-  // 即将到期房间
-  const expiringRooms = computed(() => {
+  const computeLocalExpiring = () => {
     const today = toStartOfDay(new Date())
     return allRooms.value
       .filter(room => room.status === 'occupied')
@@ -108,7 +202,7 @@ export function useOverdueManagement(deps: {
         return days > advanceRentDays.value && days <= expiringDays.value
       })
       .sort((a, b) => getNextPaymentDays(a) - getNextPaymentDays(b))
-  })
+  }
 
   const getRecentUnpaidReadingForRoom = (roomId: number): MergedReading | undefined => {
     const today = new Date()
@@ -135,17 +229,13 @@ export function useOverdueManagement(deps: {
         const readingDate = new Date(item.reading_date)
         readingDate.setHours(0, 0, 0, 0)
         const diffDays = Math.floor((today.getTime() - readingDate.getTime()) / (1000 * 60 * 60 * 24))
-        // 限制在最近15天内，只查找本月的水电记录
         return diffDays >= 0 && diffDays <= 15
       })
       .sort((a, b) => new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime())[0]
   }
 
   const canMarkExpiringRoomPaid = (room: Room) => {
-    // 判断房间是否有最近45天内**未支付**的水电记录
     const recentReading = getRecentReadingForRoom(room.id)
-    // 只有找到未支付的记录时才显示"标记已收"
-    // 如果记录已支付(is_paid=true)或没有记录，显示"录入水电"
     return !!(recentReading && !recentReading.is_paid)
   }
 
@@ -158,7 +248,6 @@ export function useOverdueManagement(deps: {
     showPaymentDialog(row)
   }
 
-  // 计算距离到期天数
   const getDaysDiff = (leaseEnd: string) => {
     const today = new Date()
     const endDate = new Date(leaseEnd)
@@ -166,7 +255,6 @@ export function useOverdueManagement(deps: {
     return Math.max(0, diff)
   }
 
-  // 格式化日期
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('zh-CN', {
       year: 'numeric',
@@ -175,7 +263,6 @@ export function useOverdueManagement(deps: {
     })
   }
 
-  // 获取最近一次收租明细文本（用于催租消息）
   const getLatestCollectionDetailText = async (room: Room) => {
     try {
       const res = await utilityApi.getReadingsByRoom(room.id, { page: 1, size: 50 })
@@ -239,19 +326,16 @@ ${electricLine}`
     }
   }
 
-  // 复制文本到剪贴板的辅助函数（兼容性处理）
   const copyToClipboard = async (text: string): Promise<boolean> => {
-    // 方法1: 尝试使用 Clipboard API
     if (navigator.clipboard && window.isSecureContext) {
       try {
         await navigator.clipboard.writeText(text)
         return true
       } catch {
-        // Fall through to method 2
+        // Fall through
       }
     }
 
-    // 方法2: 使用传统的 execCommand 方法
     const textArea = document.createElement('textarea')
     textArea.value = text
     textArea.style.position = 'fixed'
@@ -271,12 +355,10 @@ ${electricLine}`
     }
   }
 
-  // 一键催租
   const sendReminder = async (room: Room, type: 'overdue' | 'upcoming') => {
     try {
       const message = await getLatestCollectionDetailText(room)
 
-      // 复制到剪贴板
       const success = await copyToClipboard(message)
       if (success) {
         ElMessage.success('✅ 催租消息已复制，可直接粘贴发送')
@@ -306,7 +388,6 @@ ${electricLine}`
      if (payment.payment_type === 'refund') return false
      const paymentDate = toStartOfDay(new Date(payment.payment_date))
      const diffDays = Math.floor((today.getTime() - paymentDate.getTime()) / (1000 * 60 * 60 * 24))
-      // 阈值根据付款周期动态计算：月付=25天，季付=85天
       const room = allRooms.value.find(r => r.id === roomId)
       const cycleMonths = Math.max(1, Number(room?.payment_cycle || 1))
       const thresholdDays = cycleMonths * 30 - 5
@@ -340,7 +421,6 @@ ${electricLine}`
   const hasPaidThisMonth = (room: Room) => {
     const today = toStartOfDay(new Date())
 
-    // 检查是否有本月收租记录（通过 payments 表）
     const hasPaymentThisMonth = payments.value.some(payment => {
       if (payment.room_id !== room.id) return false
       if (!payment.payment_date) return false
@@ -352,16 +432,13 @@ ${electricLine}`
     })
 
     if (hasPaymentThisMonth) {
-      // 如果有本月支付记录，检查下月是否即将到期
       const daysToNext = getNextPaymentDays(room)
-      // 如果下月即将到期（<= expiringDays），不算"本月已收"
       if (daysToNext <= expiringDays.value) {
-        return false // 让它出现在即将到期列表
+        return false
       }
       return true
     }
 
-    // 历史导入场景：没有 payment 记录，但 last_payment_date 已更新
     if (room.last_payment_date) {
       const lastPaid = toStartOfDay(new Date(room.last_payment_date))
       if (isSameMonth(lastPaid, today)) {
@@ -429,7 +506,6 @@ ${electricLine}`
     return { targetDue, nextDue, currentCycleDue: currentCycleDueStart, paidCurrentCycle, daysToDue }
   }
 
-  // 计算收租目标日期（当前周期未收则显示当前应交日；已收则显示下一次应交日）
   const getNextPaymentDate = (room: Room) => {
     const { targetDue } = getPaymentDueContext(room)
     return targetDue.toLocaleDateString('zh-CN', {
@@ -439,7 +515,6 @@ ${electricLine}`
     })
   }
 
-  // 计算距离收租目标日期的天数（正数=未到期，0=当天，负数=已逾期）
   const getNextPaymentDays = (room: Room) => {
     return getPaymentDueContext(room).daysToDue
   }
@@ -449,6 +524,7 @@ ${electricLine}`
     latestUnpaidUtilityAmountByRoom,
     overdueRooms,
     expiringRooms,
+    backendLoading,
     recentReadingDays,
     getRecentUnpaidReadingForRoom,
     canMarkExpiringRoomPaid,

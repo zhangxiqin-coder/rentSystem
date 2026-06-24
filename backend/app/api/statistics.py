@@ -13,7 +13,8 @@ from app.schemas import (
     RoomStatsResponse, RevenueStatsResponse, OverdueInfoResponse, ExpiringLeaseResponse
 )
 from app.service.business import (
-    get_room_statistics, get_revenue_statistics, get_overdue_payments, get_expiring_leases
+    get_room_statistics, get_revenue_statistics, get_overdue_payments, 
+    get_expiring_leases, get_rent_payment_status
 )
 
 router = APIRouter(prefix="/stats", tags=["statistics"])
@@ -296,3 +297,43 @@ def get_dashboard_statistics(
         'overdue_recent': overdue_list[:5],
         'expiring_recent': expiring_leases[:5]
     }
+
+
+@router.get("/rent-payment-status")
+def get_status_rent_payment_status(
+    overdue_cutoff_date: str = Query('2026-04-22', description='逾期截止日期'),
+    advance_rent_days: int = Query(0, ge=0, le=30, description='提前收租天数'),
+    expiring_days: int = Query(7, ge=1, le=30, description='即将到期天数阈值'),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    获取收租状态（逾期房间 + 即将到期房间）
+    
+    完全对齐前端 useOverdueManagement 逻辑，将计算移到后端。
+    
+    参数：
+    - overdue_cutoff_date: 逾期截止日期（默认 2026-04-22）
+    - advance_rent_days: 提前收租天数（默认 0）
+    - expiring_days: 即将到期天数阈值（默认 7）
+    
+    返回：
+    - overdue_rooms: 逾期房间列表
+    - expiring_rooms: 即将到期房间列表
+    """
+    check_stats_permission(current_user)
+    
+    # 确定owner_id过滤
+    owner_id = None
+    if current_user.role in ("landlord",):
+        owner_id = current_user.id
+    
+    result = get_rent_payment_status(
+        db=db,
+        owner_id=owner_id,
+        overdue_cutoff_date_str=overdue_cutoff_date,
+        advance_rent_days=advance_rent_days,
+        expiring_days=expiring_days,
+    )
+    
+    return result

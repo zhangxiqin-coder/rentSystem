@@ -470,3 +470,383 @@ def get_overdue_payments(db: Session) -> List[dict]:
         })
     
     return result
+
+
+# ==================== 收租状态（逾期/即将到期）- 前端逻辑迁移 ====================
+
+def _to_start_of_day(d: date) -> date:
+    """对齐前端 toStartOfDay"""
+    return d
+
+
+def _build_due_date(year: int, month: int, day: int) -> date:
+    """对齐前端 buildDueDate（处理月末溢出）"""
+    import calendar
+    max_day = calendar.monthrange(year, month)[1]
+    return date(year, month, min(day, max_day))
+
+
+def _add_months_by_due_day(base: date, months: int, due_day: int) -> date:
+    """对齐前端 addMonthsByDueDay"""
+    d = date(base.year, base.month, 1)
+    # 月份偏移
+    new_month = d.month + months
+    new_year = d.year + (new_month - 1) // 12
+    new_month = ((new_month - 1) % 12) + 1
+    return _build_due_date(new_year, new_month, due_day)
+
+
+def _has_recent_rent_payment(room_id: int, payments: List[Payment], cycle_months: int) -> bool:
+    """
+    对齐前端 hasRecentRentPayment
+    检查最近 cycleMonths*30-5 天内是否有 rent 类型的支付记录
+    """
+    today = date.today()
+    threshold_days = cycle_months * 30 - 5
+    for p in payments:
+        if p.room_id != room_id:
+            continue
+        if not p.payment_date:
+            continue
+        if p.status == 'cancelled':
+            continue
+        if p.payment_type != 'rent':
+            continue
+        diff_days = (today - p.payment_date).days
+        if 0 <= diff_days <= threshold_days:
+            return True
+    return False
+
+
+def _has_any_rent_payment(room_id: int, payments: List[Payment]) -> bool:
+    """对齐前端 hasAnyRentPayment"""
+    for p in payments:
+        if p.room_id != room_id:
+            continue
+        if p.status == 'cancelled':
+            continue
+        if p.payment_type != 'rent':
+            continue
+        return True
+    return False
+
+
+def _has_rent_payment_after(room_id: int, payments: List[Payment], after_date: date) -> bool:
+    """对齐前端 hasRentPaymentAfter"""
+    for p in payments:
+        if p.room_id != room_id:
+            continue
+        if not p.payment_date:
+            continue
+        if p.status == 'cancelled':
+            continue
+        if p.payment_type != 'rent':
+            continue
+        if p.payment_date > after_date:
+            return True
+    return False
+
+
+def _has_paid_this_month(
+    room: Room,
+    payments: List[Payment],
+    get_next_payment_days_func,
+    expiring_days: int
+) -> bool:
+    """
+    对齐前端 hasPaidThisMonth
+    """
+    today = date.today()
+
+    # 检查本月是否有 payment 记录
+    for p in payments:
+        if p.room_id != room.id:
+            continue
+        if not p.payment_date:
+            continue
+        if p.status == 'cancelled':
+            continue
+        if p.payment_type != 'rent':
+            continue
+        if p.payment_date.year == today.year and p.payment_date.month == today.month:
+            # 如果有本月支付记录，检查下月是否即将到期
+            days_to_next = get_next_payment_days_func(room, payments)
+            if days_to_next <= expiring_days:
+                return False  # 让它出现在即将到期列表
+            return True
+
+    # 历史导入场景：没有 payment 记录，但 last_payment_date 已更新
+    if room.last_payment_date:
+        if room.last_payment_date.year == today.year and room.last_payment_date.month == today.month:
+            days_to_next = get_next_payment_days_func(room, payments)
+            if days_to_next <= expiring_days:
+                return False
+            return True
+
+    return False
+
+
+def _get_payment_due_context(
+    room: Room,
+    payments: List[Payment],
+    overdue_cutoff_date: date,
+    expiring_days: int
+) -> dict:
+    """
+    对齐前端 getPaymentDueContext
+    计算目标到期日、是否已付当前周期
+    """
+    today = date.today()
+    cycle_months = max(1, room.payment_cycle or 1)
+
+    # anchorSource: lease_start || last_payment_date || today
+    anchor_source = room.lease_start or room.last_payment_date or today
+    anchor_date = anchor_source  # date already 0:0:0
+    due_day = anchor_date.day
+
+    cursor = _build_due_date(anchor_date.year, anchor_date.month, due_day)
+    previous_due = None
+    prev_prev_due = None
+
+    while cursor <= today:
+        prev_prev_due = previous_due
+        previous_due = cursor
+        cursor = _add_months_by_due_day(cursor, cycle_months, due_day)
+
+    next_due = cursor
+    current_cycle_due = previous_due or _build_due_date(today.year, today.month, due_day)
+
+    last_paid = room.last_payment_date
+
+    # paidByRentRecord
+    if prev_prev_due:
+        paid_by_rent = _has_rent_payment_after(
+            room.id, payments,
+            date.fromordinal(current_cycle_due.toordinal() - 14)
+        )
+    else:
+        paid_by_rent = _has_any_rent_payment(room.id, payments)
+
+    # paidCurrentCycle
+    paid_current_cycle = (
+        _has_recent_rent_payment(room.id, payments, cycle_months)
+        or (
+            last_paid is not None
+            and previous_due is not None
+            and abs((last_paid - previous_due).days) <= 14
+        )
+        or paid_by_rent
+        or (
+            room.room_number != '502-2'
+            and current_cycle_due.toordinal() < overdue_cutoff_date.toordinal()
+        )
+    )
+
+    target_due = next_due if paid_current_cycle else current_cycle_due
+    days_to_due = (target_due - today).days
+
+    return {
+        'target_due': target_due,
+        'next_due': next_due,
+        'current_cycle_due': current_cycle_due,
+        'paid_current_cycle': paid_current_cycle,
+        'days_to_due': days_to_due,
+    }
+
+
+def _get_next_payment_days(room: Room, payments: List[Payment], cutoff: Optional[date] = None, expiring: int = 7) -> int:
+    """对齐前端 getNextPaymentDays"""
+    if cutoff is None:
+        cutoff = date(2026, 4, 22)
+    ctx = _get_payment_due_context(room, payments, cutoff, expiring)
+    return ctx['days_to_due']
+
+
+def get_rent_payment_status(
+    db: Session,
+    owner_id: int = None,
+    overdue_cutoff_date_str: str = '2026-04-22',
+    advance_rent_days: int = 0,
+    expiring_days: int = 7,
+    recent_reading_days: int = 45,
+) -> dict:
+    """
+    获取收租状态（逾期房间 + 即将到期房间）
+    完全对齐前端 useOverdueManagement 的逻辑
+
+    Args:
+        db: 数据库会话
+        owner_id: 用户ID过滤
+        overdue_cutoff_date_str: 逾期截止日期字符串（默认 2026-04-22）
+        advance_rent_days: 提前收租天数（默认 0）
+        expiring_days: 即将到期天数阈值（默认 7）
+        recent_reading_days: 最近水电录天数（默认 45）
+
+    Returns:
+        {
+            'overdue_rooms': [...],
+            'expiring_rooms': [...],
+        }
+    """
+    today = date.today()
+    cutoff = datetime.strptime(overdue_cutoff_date_str, '%Y-%m-%d').date()
+
+    # 查询房间
+    query = db.query(Room).filter(Room.status == 'occupied')
+    if owner_id:
+        from sqlalchemy import or_
+        query = query.filter(or_(Room.owner_id == owner_id, Room.owner_id.is_(None)))
+    rooms = query.all()
+
+    # 查询所有相关支付记录
+    room_ids = [r.id for r in rooms]
+    payments = []
+    if room_ids:
+        payments = db.query(Payment).filter(
+            Payment.room_id.in_(room_ids),
+            Payment.status != 'cancelled'
+        ).all()
+
+    # 查询水电记录（近45天未支付）
+    recent_readings_raw = []
+    if room_ids:
+        reading_start = today - timedelta(days=recent_reading_days)
+        recent_readings_raw = db.query(UtilityReading).filter(
+            UtilityReading.room_id.in_(room_ids),
+            UtilityReading.reading_date >= reading_start,
+            UtilityReading.reading_date <= today,
+        ).all()
+
+    # 构建每个房间最近未付水电金额
+    # 前端逻辑：取每个房间最近45天内最新的water和electricity记录，
+    # 如果合并记录(is_paid=False)则累加金额
+    latest_unpaid_utility = {}
+    # 按reading_date倒序排序，保证取到最新的
+    recent_readings_raw.sort(key=lambda r: (r.reading_date or date.min, r.id or 0), reverse=True)
+
+    # 用字典记录每个房间已处理的合并对：water_id + electricity_id = 合并记录
+    # 前端是用 mergeReadings 实现的，后端需要模拟
+    # 简单方案：将water和electricity按(date, room_id)配对
+    room_paired = {}  # room_id -> set of reading_date
+    for room_id in room_ids:
+        water_list = [r for r in recent_readings_raw if r.room_id == room_id and r.utility_type == 'water']
+        electric_list = [r for r in recent_readings_raw if r.room_id == room_id and r.utility_type == 'electricity']
+
+        # 按reading_date配对（同一天的水电通常是一起录入的）
+        water_by_date = {}
+        for w in water_list:
+            wd = str(w.reading_date)
+            if wd not in water_by_date or w.id > (water_by_date[wd].id or 0):
+                water_by_date[wd] = w
+
+        electric_by_date = {}
+        for e in electric_list:
+            ed = str(e.reading_date)
+            if ed not in electric_by_date or e.id > (electric_by_date[ed].id or 0):
+                electric_by_date[ed] = e
+
+        # 合并所有日期的水电记录
+        all_dates = set(list(water_by_date.keys()) + list(electric_by_date.keys()))
+        paired_utility = {}
+
+        for d in sorted(all_dates, reverse=True):
+            wt = water_by_date.get(d)
+            et = electric_by_date.get(d)
+            key = d
+            amount = Decimal('0')
+            if wt:
+                amount += wt.amount or Decimal('0')
+            if et:
+                amount += et.amount or Decimal('0')
+            if amount > 0:
+                paired_utility[key] = {
+                    'amount': amount,
+                    'water_id': wt.id if wt else None,
+                    'electric_id': et.id if et else None,
+                    'date': d,
+                }
+
+        if paired_utility:
+            # 检查是否已经有相关的utility payment
+            has_utility_payment = any(
+                p.payment_type == 'utility' and p.room_id == room_id
+                for p in payments
+            )
+            if not has_utility_payment:
+                # 取最近的日期
+                latest_date = sorted(paired_utility.keys(), reverse=True)[0]
+                latest_unpaid_utility[room_id] = paired_utility[latest_date]['amount']
+
+    # 创建一个携带当前配置的 getNextPaymentDays 副本
+    def _get_next_payment_days_with_config(room: Room, payments_list: List[Payment]) -> int:
+        return _get_next_payment_days(room, payments_list, cutoff, expiring_days)
+
+    # 计算逾期房间
+    overdue_rooms = []
+    for room in rooms:
+        if room.status != 'occupied':
+            continue
+        if _has_paid_this_month(room, payments, _get_next_payment_days_with_config, expiring_days):
+            continue
+        if _has_recent_rent_payment(room.id, payments, max(1, room.payment_cycle or 1)):
+            continue
+        # 租期未开始的不纳入逾期
+        if room.lease_start and room.lease_start > today:
+            continue
+
+        ctx = _get_payment_due_context(room, payments, cutoff, expiring_days)
+        days_to_due = ctx['days_to_due']
+        target_due = ctx['target_due']
+
+        if days_to_due <= advance_rent_days:
+            overdue_days = max(0, -days_to_due)
+            last_payment_date = room.last_payment_date or room.lease_start
+            cycle = max(1, room.payment_cycle or 1)
+            utility_amount = float(latest_unpaid_utility.get(room.id, Decimal('0')))
+            overdue_amount = float(room.monthly_rent or 0) * cycle + utility_amount
+
+            overdue_rooms.append({
+                'room_id': room.id,
+                'room_number': room.room_number,
+                'tenant_name': room.tenant_name,
+                'overdue_days': overdue_days,
+                'overdue_amount': overdue_amount,
+                'last_payment_date': str(last_payment_date) if last_payment_date else None,
+                'next_payment_date': str(target_due) if target_due else None,
+                'monthly_rent': float(room.monthly_rent or 0),
+                'payment_cycle': room.payment_cycle or 1,
+            })
+
+    # 按欠租天数排序
+    overdue_rooms.sort(key=lambda r: r['overdue_days'], reverse=True)
+
+    # 计算即将到期房间
+    expiring_rooms = []
+    for room in rooms:
+        if room.status != 'occupied':
+            continue
+        if _has_paid_this_month(room, payments, _get_next_payment_days_with_config, expiring_days):
+            continue
+        if _has_recent_rent_payment(room.id, payments, max(1, room.payment_cycle or 1)):
+            continue
+        if room.lease_start and room.lease_start > today:
+            continue
+
+        days = _get_next_payment_days_with_config(room, payments)
+        if days > advance_rent_days and days <= expiring_days:
+            expiring_rooms.append({
+                'room_id': room.id,
+                'room_number': room.room_number,
+                'tenant_name': room.tenant_name,
+                'days_until_payment': days,
+                'monthly_rent': float(room.monthly_rent or 0),
+                'payment_cycle': room.payment_cycle or 1,
+            })
+
+    # 按到期天数排序
+    expiring_rooms.sort(key=lambda r: r['days_until_payment'])
+
+    return {
+        'overdue_rooms': overdue_rooms,
+        'expiring_rooms': expiring_rooms,
+    }
