@@ -635,10 +635,12 @@ async def export_assets(
     wb.save(output)
     output.seek(0)
 
+    from urllib.parse import quote
     filename = f"资产记录_{date.today().strftime('%Y%m%d')}.xlsx"
+    encoded_filename = quote(filename)
 
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename*=utf-8''{filename}"}
+        headers={"Content-Disposition": f"attachment; filename*=utf-8''{encoded_filename}"}
     )
