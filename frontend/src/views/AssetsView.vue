@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Wallet, Edit, TrendCharts } from '@element-plus/icons-vue'
+import { Plus, Wallet, Edit, TrendCharts, Download } from '@element-plus/icons-vue'
 import { assetApi } from '@/api/assets'
 import { useAmountVisibility } from '@/composables/useAmountVisibility'
 import { useAuthStore } from '@/stores/auth'
@@ -9,7 +9,7 @@ import type { AssetSummary, AssetPlatformDetail, AssetRecord, AssetTrend } from 
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart } from 'echarts/charts'
+import { LineChart, PieChart, BarChart } from 'echarts/charts'
 import {
   TitleComponent,
   TooltipComponent,
@@ -20,6 +20,8 @@ import {
 use([
   CanvasRenderer,
   LineChart,
+  PieChart,
+  BarChart,
   TitleComponent,
   TooltipComponent,
   LegendComponent,
@@ -31,6 +33,11 @@ const { hideAmounts, formatAmount } = useAmountVisibility()
 
 const loading = ref(false)
 const summary = ref<AssetSummary | null>(null)
+
+// 图表相关
+const activeChartTab = ref('trend')
+const expandedTrendCharts = ref('balance')
+const expandedAssetCharts = ref('distribution')
 
 // 趋势数据
 const trendData = ref<AssetTrend | null>(null)
@@ -195,6 +202,134 @@ const earningsTrendOption = computed(() => {
   }
 })
 
+// 资产分布饼图
+const distributionOption = computed(() => {
+  if (!summary.value || summary.value.platforms.length === 0) return null
+  const data = summary.value.platforms
+    .filter(p => p.current_balance > 0)
+    .map(p => ({
+      name: p.name,
+      value: Number(p.current_balance)
+    }))
+    .sort((a, b) => b.value - a.value)
+  if (data.length === 0) return null
+  return {
+    tooltip: {
+      trigger: 'item',
+      formatter: '{b}: ¥{c} ({d}%)'
+    },
+    legend: {
+      orient: 'vertical',
+      right: 10,
+      top: 20,
+      textStyle: { fontSize: 12 }
+    },
+    series: [{
+      name: '资产分布',
+      type: 'pie',
+      radius: ['40%', '70%'],
+      center: ['35%', '50%'],
+      avoidLabelOverlap: true,
+      itemStyle: {
+        borderRadius: 10,
+        borderColor: '#fff',
+        borderWidth: 2
+      },
+      label: {
+        show: true,
+        formatter: '{b}: {d}%',
+        fontSize: 12
+      },
+      emphasis: {
+        label: {
+          show: true,
+          fontSize: 14,
+          fontWeight: 'bold'
+        }
+      },
+      data: data
+    }]
+  }
+})
+
+// 平台收益对比柱状图
+const platformCompareOption = computed(() => {
+  if (!summary.value || summary.value.platforms.length === 0) return null
+  const platforms = summary.value.platforms
+    .map(p => ({
+      name: p.name,
+      earnings: Number(p.total_earnings),
+      returnRate: p.annualized_return !== null ? Number(p.annualized_return) : null
+    }))
+    .filter(p => p.earnings !== 0)
+  if (platforms.length === 0) return null
+  return {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: (params: any[]) => {
+        const platform = params[0].name
+        const p = platforms.find(x => x.name === platform)
+        let html = `<strong>${platform}</strong><br/>`
+        for (const item of params) {
+          if (item.seriesName === '当年收益') {
+            html += `${item.marker} ${item.seriesName}: ¥${item.value.toLocaleString()}<br/>`
+          } else if (item.seriesName === '年化收益率' && p?.returnRate !== null) {
+            html += `${item.marker} ${item.seriesName}: ${item.value}%<br/>`
+          }
+        }
+        return html
+      }
+    },
+    legend: { data: ['当年收益', '年化收益率'], top: 0, right: 20, textStyle: { fontSize: 12 } },
+    grid: { left: 80, right: 60, top: 30, bottom: 40 },
+    xAxis: { type: 'value', axisLabel: { formatter: (v: number) => v >= 10000 ? (v / 10000).toFixed(0) + '万' : v.toFixed(0) } },
+    yAxis: { type: 'category', data: platforms.map(p => p.name), inverse: false },
+    series: [
+      {
+        name: '当年收益',
+        type: 'bar',
+        data: platforms.map(p => p.earnings),
+        itemStyle: {
+          color: (params: any) => {
+            const val = params.value
+            return val >= 0 ? '#67C23A' : '#F56C6C'
+          }
+        },
+        label: {
+          show: true,
+          position: 'right',
+          formatter: (params: any) => {
+            const val = params.value
+            return val >= 0 ? `+${(val / 10000).toFixed(2)}万` : `${(val / 10000).toFixed(2)}万`
+          }
+        }
+      },
+      {
+        name: '年化收益率',
+        type: 'bar',
+        data: platforms.map(p => p.returnRate),
+        itemStyle: {
+          color: (params: any) => {
+            const val = params.value
+            if (val === null) return '#909399'
+            return val >= 0 ? '#409EFF' : '#F56C6C'
+          }
+        },
+        label: {
+          show: true,
+          position: 'right',
+          formatter: (params: any) => {
+            const val = params.value
+            if (val === null) return '-'
+            return val >= 0 ? `+${val}%` : `${val}%`
+          }
+        }
+      }
+    ]
+  }
+})
+
 // 预设平台列表
 const ALL_PLATFORMS = [
   '支付宝', '且慢', '网商银行', '腾讯理财通',
@@ -238,7 +373,7 @@ const getPlatformData = (name: string): { balance: number; earnings: number } =>
 const showReportDialog = ref(false)
 const reportForm = ref({
   platform_name: '',
-  record_type: 'earnings' as 'balance' | 'earnings' | 'balance_only' | 'transfer_in' | 'transfer_out',
+  record_type: 'balance' as 'balance' | 'earnings' | 'balance_only' | 'transfer_in' | 'transfer_out',
   reported_balance: 0,
   reported_earnings: 0,
   amount: 0,
@@ -282,7 +417,7 @@ const openReport = (platformName?: string) => {
   const data = platformName ? getPlatformData(platformName) : { balance: 0, earnings: 0 }
   reportForm.value = {
     platform_name: platformName || '',
-    record_type: 'earnings',
+    record_type: 'balance',
     reported_balance: data.balance,
     reported_earnings: data.earnings,
     amount: 0,
@@ -438,7 +573,7 @@ const submitEdit = async () => {
       if (editForm.value.reported_balance !== null && editForm.value.reported_balance !== undefined && editForm.value.reported_balance !== '') {
         data.reported_balance = Number(editForm.value.reported_balance)
       }
-    } else {
+    } else if (editingRecord.value.record_type === 'transfer_in' || editingRecord.value.record_type === 'transfer_out') {
       data.amount = Number(editForm.value.amount) || 0
     }
     if (editForm.value.notes) {
@@ -453,6 +588,48 @@ const submitEdit = async () => {
     console.error(error)
   } finally {
     editLoading.value = false
+  }
+}
+
+// 导出资产数据
+const exportAssets = async () => {
+  try {
+    ElMessage.info('正在导出，请稍候...')
+    const response = await fetch('/api/assets/export', {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error('导出失败')
+    }
+
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+
+    // 从响应头获取文件名
+    const contentDisposition = response.headers.get('Content-Disposition')
+    let filename = '资产记录.xlsx'
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename\*?=['"]?(?:UTF-\d['"]*)?([^;'"()\s]*)['"]?;?/)
+      if (match) {
+        filename = decodeURIComponent(match[1])
+      }
+    }
+
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(url)
+    document.body.removeChild(a)
+
+    ElMessage.success('导出成功')
+  } catch (error: any) {
+    console.error(error)
+    ElMessage.error('导出失败: ' + (error.message || '未知错误'))
   }
 }
 
@@ -480,6 +657,7 @@ onUnmounted(() => {
       </h2>
       <div class="header-actions">
         <el-button type="success" :icon="Plus" @click="openReport()">上报</el-button>
+        <el-button type="default" :icon="Download" @click="exportAssets">导出Excel</el-button>
         <el-button type="default" @click="loadSummary">刷新</el-button>
       </div>
     </div>
@@ -517,32 +695,57 @@ onUnmounted(() => {
       </el-card>
     </div>
 
-    <!-- 总资产趋势图 -->
-    <el-card class="trend-card" v-loading="trendLoading">
-      <div class="trend-header">
-        <el-icon :size="18"><TrendCharts /></el-icon>
-        <span>总资产趋势</span>
-      </div>
-      <div v-if="balanceTrendOption" class="trend-chart">
-        <VChart :option="balanceTrendOption" autoresize style="width:100%;height:320px" />
-      </div>
-      <div v-else class="trend-empty">
-        <el-empty description="暂无趋势数据，上报余额后自动生成" :image-size="80" />
-      </div>
-    </el-card>
+    <!-- 图表分析 -->
+    <el-card class="trend-card">
+      <el-tabs v-model="activeChartTab">
+        <!-- 趋势分析 -->
+        <el-tab-pane label="趋势分析" name="trend">
+          <el-collapse v-model="expandedTrendCharts" accordion>
+            <!-- 总资产趋势图 -->
+            <el-collapse-item title="总资产趋势" name="balance">
+              <div v-if="balanceTrendOption" class="trend-chart">
+                <VChart :option="balanceTrendOption" autoresize style="width:100%;height:320px" />
+              </div>
+              <div v-else class="trend-empty">
+                <el-empty description="暂无趋势数据，上报余额后自动生成" :image-size="80" />
+              </div>
+            </el-collapse-item>
+            <!-- 2026年趋势图 -->
+            <el-collapse-item title="2026年趋势" name="earnings">
+              <div v-if="earningsTrendOption" class="trend-chart">
+                <VChart :option="earningsTrendOption" autoresize style="width:100%;height:260px" />
+              </div>
+              <div v-else class="trend-empty">
+                <el-empty description="暂无当年收益数据" :image-size="80" />
+              </div>
+            </el-collapse-item>
+          </el-collapse>
+        </el-tab-pane>
 
-    <!-- 2026年趋势图 -->
-    <el-card class="trend-card" v-loading="trendLoading">
-      <div class="trend-header">
-        <el-icon :size="18"><TrendCharts /></el-icon>
-        <span>2026年趋势</span>
-      </div>
-      <div v-if="earningsTrendOption" class="trend-chart">
-        <VChart :option="earningsTrendOption" autoresize style="width:100%;height:260px" />
-      </div>
-      <div v-else class="trend-empty">
-        <el-empty description="暂无当年收益数据" :image-size="80" />
-      </div>
+        <!-- 资产分析 -->
+        <el-tab-pane label="资产分析" name="assets">
+          <el-collapse v-model="expandedAssetCharts" accordion>
+            <!-- 资产分布饼图 -->
+            <el-collapse-item title="资产分布" name="distribution">
+              <div v-if="distributionOption" class="trend-chart">
+                <VChart :option="distributionOption" autoresize style="width:100%;height:320px" />
+              </div>
+              <div v-else class="trend-empty">
+                <el-empty description="暂无资产数据" :image-size="80" />
+              </div>
+            </el-collapse-item>
+            <!-- 平台收益对比柱状图 -->
+            <el-collapse-item title="平台收益对比" name="platform">
+              <div v-if="platformCompareOption" class="trend-chart">
+                <VChart :option="platformCompareOption" autoresize style="width:100%;height:400px" />
+              </div>
+              <div v-else class="trend-empty">
+                <el-empty description="暂无收益数据" :image-size="80" />
+              </div>
+            </el-collapse-item>
+          </el-collapse>
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
 
     <!-- 各平台卡片 -->

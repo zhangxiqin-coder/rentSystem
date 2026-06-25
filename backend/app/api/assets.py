@@ -530,3 +530,115 @@ async def get_zhaopingfei_summary(
         total_out=total_out,
         total_net=total_in - total_out
     )
+
+
+@router.get("/assets/export")
+async def export_assets(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """导出资产数据为Excel文件"""
+    from fastapi.responses import StreamingResponse
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from datetime import date
+
+    # 获取所有平台和记录
+    platforms = db.query(AssetPlatform).filter(
+        AssetPlatform.owner_id == current_user.id,
+        AssetPlatform.is_active == True
+    ).order_by(AssetPlatform.sort_order, AssetPlatform.id).all()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "资产记录"
+
+    # 标题样式
+    header_font = Font(bold=True, size=11)
+    header_fill = PatternFill(start_color="E8F4FF", end_color="E8F4FF", fill_type="solid")
+    center_align = Alignment(horizontal="center", vertical="center")
+
+    # 表头
+    headers = ["日期", "平台", "类型", "余额变化", "收益变化", "转入/转出", "备注"]
+    ws.append(headers)
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(1, col)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center_align
+
+    # 获取所有记录
+    all_records = []
+    for p in platforms:
+        records = db.query(AssetRecord).filter(
+            AssetRecord.platform_id == p.id
+        ).order_by(AssetRecord.created_at.desc()).all()
+        for r in records:
+            all_records.append((p.name, r))
+
+    # 按日期排序
+    all_records.sort(key=lambda x: x[1].created_at, reverse=True)
+
+    # 填充数据
+    for p_name, r in all_records:
+        row = [
+            r.created_at.strftime("%Y-%m-%d %H:%M"),
+            p_name,
+            r.record_type,
+            str(r.reported_balance or ""),
+            str(r.reported_earnings or ""),
+            str(r.calculated_transfer or ""),
+            r.notes or ""
+        ]
+        ws.append(row)
+
+    # 设置列宽
+    ws.column_dimensions["A"].width = 18  # 日期
+    ws.column_dimensions["B"].width = 15  # 平台
+    ws.column_dimensions["C"].width = 12  # 类型
+    ws.column_dimensions["D"].width = 12  # 余额变化
+    ws.column_dimensions["E"].width = 12  # 收益变化
+    ws.column_dimensions["F"].width = 12  # 转入/转出
+    ws.column_dimensions["G"].width = 30  # 备注
+
+    # 添加平台汇总sheet
+    ws_summary = wb.create_sheet("平台汇总")
+    summary_headers = ["平台", "当前余额", "当年收益", "年化收益率"]
+    ws_summary.append(summary_headers)
+    for col, header in enumerate(summary_headers, 1):
+        cell = ws_summary.cell(1, col)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center_align
+
+    for p in platforms:
+        annualized = None
+        if p.current_balance and p.current_balance > 0 and p.total_earnings is not None:
+            annualized = round(p.total_earnings / p.current_balance * 100, 2)
+
+        row = [
+            p.name,
+            float(p.current_balance or 0),
+            float(p.total_earnings or 0),
+            f"{annualized}%" if annualized is not None else ""
+        ]
+        ws_summary.append(row)
+
+    ws_summary.column_dimensions["A"].width = 15
+    ws_summary.column_dimensions["B"].width = 15
+    ws_summary.column_dimensions["C"].width = 15
+    ws_summary.column_dimensions["D"].width = 12
+
+    # 保存到内存
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"资产记录_{date.today().strftime('%Y%m%d')}.xlsx"
+
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=utf-8''{filename}"}
+    )

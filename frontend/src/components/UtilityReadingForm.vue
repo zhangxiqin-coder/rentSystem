@@ -380,7 +380,7 @@ const submitForm = async () => {
     console.log('准备创建水表记录...')
     const waterData = {
       room_id: formData.value.room_id,
-      utility_type: 'water',
+      utility_type: 'water' as const,
       reading: formData.value.water_reading || 0,
       reading_date: formData.value.reading_date,
       previous_reading: (formData.value.water_reading > 0 ? displayedPreviousWater.value : 0) ?? 0,
@@ -393,7 +393,7 @@ const submitForm = async () => {
     console.log('准备创建电表记录...')
     const electricData = {
       room_id: formData.value.room_id,
-      utility_type: 'electricity',
+      utility_type: 'electricity' as const,
       reading: formData.value.electric_reading || 0,
       reading_date: formData.value.reading_date,
       previous_reading: (formData.value.electric_reading > 0 ? displayedPreviousElectric.value : 0) ?? 0,
