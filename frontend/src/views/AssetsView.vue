@@ -595,9 +595,33 @@ const submitEdit = async () => {
 const exportAssets = async () => {
   try {
     ElMessage.info('正在导出，请稍候...')
+
+    // 使用和资产API相同的认证方法
+    const token = (() => {
+      try {
+        const encrypted = localStorage.getItem('access_token')
+        if (!encrypted) return null
+        const decoded = atob(encrypted)
+        const key = import.meta.env.VITE_ENCRYPTION_KEY || 'dev-only-rent-system-encryption-key-2026'
+        let result = ''
+        for (let i = 0; i < decoded.length; i++) {
+          result += String.fromCharCode(decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length))
+        }
+        const parts = result.split('|')
+        return parts.length === 4 ? parts[3] : null
+      } catch {
+        return null
+      }
+    })()
+
+    if (!token) {
+      ElMessage.error('请先登录')
+      return
+    }
+
     const response = await fetch('/api/v1/assets/export', {
       headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${token}`
       }
     })
 
