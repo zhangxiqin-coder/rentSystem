@@ -595,7 +595,7 @@ const submitEdit = async () => {
 const exportAssets = async () => {
   try {
     ElMessage.info('正在导出，请稍候...')
-    const response = await fetch('/api/assets/export', {
+    const response = await fetch('/api/v1/assets/export', {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       }
