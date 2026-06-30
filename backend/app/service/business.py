@@ -325,6 +325,9 @@ def get_expiring_leases(
     """
     获取即将到期的租约（以LeaseRecord为准）
     
+    注意：如果租约已经续签（同一房间有后续租约在旧租约到期当天或之后开始），
+    则不显示在即将到期列表中
+    
     Args:
         db: 数据库会话
         days_threshold: 天数阈值（默认30天）
@@ -354,6 +357,20 @@ def get_expiring_leases(
         tenant = db.query(Tenant).filter(Tenant.id == lease.tenant_id).first()
         room = db.query(Room).filter(Room.id == lease.room_id).first()
         if not tenant or not room:
+            continue
+        
+        # 检查是否已续签：同一房间是否有后续租约在当前租约到期当天或之后开始
+        has_renewal = db.query(LeaseRecord).filter(
+            and_(
+                LeaseRecord.room_id == lease.room_id,  # 同一房间
+                LeaseRecord.tenant_id == lease.tenant_id,  # 同一租客
+                LeaseRecord.lease_start >= lease.lease_end,  # 续签在旧租约到期当天或之后开始
+                LeaseRecord.id != lease.id  # 排除当前租约
+            )
+        ).first()
+        
+        # 如果已续签，跳过该租约
+        if has_renewal:
             continue
         
         days_remaining = (lease.lease_end - date.today()).days

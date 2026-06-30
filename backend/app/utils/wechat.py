@@ -72,7 +72,8 @@ def generate_rent_notification(
     water_usage: float = 0,
     electricity_usage: float = 0,
     last_month_data: dict = None,
-    include_utilities: bool = True
+    include_utilities: bool = True,
+    include_rent: bool = True
 ) -> str:
     """
     生成收租通知消息
@@ -89,6 +90,7 @@ def generate_rent_notification(
         electricity_usage: 电用量（可选）
         last_month_data: 上月数据字典（可选）
         include_utilities: 是否包含水电信息（2501房间为False）
+        include_rent: 是否包含房租（季度付本周期已收租时为False）
 
     Returns:
         格式化的收租消息
@@ -97,36 +99,44 @@ def generate_rent_notification(
     rent_due = monthly_rent * cycle
     rent_label = f"房租（{cycle}个月）" if cycle > 1 else "房租"
 
+    # 水电详情行（公共逻辑，两种模式都可能用到）
+    def _build_utility_lines():
+        lines = []
+        if water_reading is not None and water_usage > 0:
+            last_water_reading = last_month_data.get('water_reading') if last_month_data else None
+            if last_water_reading:
+                water_unit_price = water_amount / water_usage if water_usage > 0 else 5
+                lines.append(f"水：{int(last_water_reading)}→{int(water_reading)}（{int(water_usage)}吨×{water_unit_price:.0f}元={int(water_amount)}元）")
+            else:
+                water_unit_price = water_amount / water_usage if water_usage > 0 else 5
+                lines.append(f"水：本月{int(water_reading)}吨（{int(water_usage)}吨×{water_unit_price:.0f}元={int(water_amount)}元）")
+
+        if electricity_reading is not None and electricity_usage > 0:
+            last_electricity_reading = last_month_data.get('electricity_reading') if last_month_data else None
+            if last_electricity_reading:
+                elec_unit_price = electricity_amount / electricity_usage if electricity_usage > 0 else 1
+                lines.append(f"电：{int(last_electricity_reading)}→{int(electricity_reading)}（{int(electricity_usage)}度×{elec_unit_price:.0f}元={int(electricity_amount)}元）")
+            else:
+                elec_unit_price = electricity_amount / electricity_usage if electricity_usage > 0 else 1
+                lines.append(f"电：本月{int(electricity_reading)}度（{int(electricity_usage)}度×{elec_unit_price:.0f}元={int(electricity_amount)}元）")
+        return lines
+
+    if not include_rent:
+        # ===== 只收水电模式 =====
+        total = water_amount + electricity_amount
+        title = f"**{room_number} 本月水电：{int(total)} 元**"
+        lines = [title] + _build_utility_lines()
+        return "\n".join(lines)
+
     if include_utilities:
+        # ===== 收租+水电模式 =====
         total = rent_due + water_amount + electricity_amount
 
         lines = [
             f"**{room_number} 本月收租：{int(total)} 元**"
         ]
 
-        # 水费信息
-        if water_reading is not None and water_usage > 0:
-            last_water_reading = last_month_data.get('water_reading') if last_month_data else None
-            if last_water_reading:
-                # 水：上月读数→本月读数（用量×单价=费用）
-                water_unit_price = water_amount / water_usage if water_usage > 0 else 5
-                lines.append(f"水：{int(last_water_reading)}→{int(water_reading)}（{int(water_usage)}吨×{water_unit_price:.0f}元={int(water_amount)}元）")
-            else:
-                # 没有上月数据，只显示本月
-                water_unit_price = water_amount / water_usage if water_usage > 0 else 5
-                lines.append(f"水：本月{int(water_reading)}吨（{int(water_usage)}吨×{water_unit_price:.0f}元={int(water_amount)}元）")
-
-        # 电费信息
-        if electricity_reading is not None and electricity_usage > 0:
-            last_electricity_reading = last_month_data.get('electricity_reading') if last_month_data else None
-            if last_electricity_reading:
-                # 电：上月读数→本月读数（用量×单价=费用）
-                elec_unit_price = electricity_amount / electricity_usage if electricity_usage > 0 else 1
-                lines.append(f"电：{int(last_electricity_reading)}→{int(electricity_reading)}（{int(electricity_usage)}度×{elec_unit_price:.0f}元={int(electricity_amount)}元）")
-            else:
-                # 没有上月数据，只显示本月
-                elec_unit_price = electricity_amount / electricity_usage if electricity_usage > 0 else 1
-                lines.append(f"电：本月{int(electricity_reading)}度（{int(electricity_usage)}度×{elec_unit_price:.0f}元={int(electricity_amount)}元）")
+        lines.extend(_build_utility_lines())
 
         # 房租
         lines.append(f"{rent_label}：{int(rent_due)}元")

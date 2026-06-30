@@ -2,6 +2,7 @@ import { ref, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { utilityApi } from '@/api/utility'
 import { roomApi } from '@/api/room'
+import { paymentApi } from '@/api/payment'
 import type { Room, UtilityReading } from '@/types'
 
 interface UseMessageGenerationDeps {
@@ -84,14 +85,44 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
 
     // 添加房租
     const cycle = Math.max(1, Number(room.payment_cycle || 1))
-    const rentAmount = Number(room.monthly_rent || 0) * cycle
+
+    // 季度付等长周期房间：判断本周期是否已收过房租
+    // 如果已收，则只收水电，不包含房租
+    let includeRent = true
+    if (cycle > 1) {
+      try {
+        const cutoffDate = new Date()
+        cutoffDate.setDate(cutoffDate.getDate() - (cycle * 30 - 5))
+        const resp = await paymentApi.getPayments({
+          room_id: roomId,
+          payment_type: 'rent',
+          size: 1,
+        })
+        const payments = resp.data?.items || resp.data || []
+        const recentRent = Array.isArray(payments) ? payments.find((p: any) => {
+          if (!p.payment_date) return false
+          const d = new Date(p.payment_date)
+          return d >= cutoffDate && p.status !== 'cancelled'
+        }) : null
+        if (recentRent) {
+          includeRent = false
+        }
+      } catch {
+        // 查询失败，默认包含房租
+      }
+    }
+
+    const rentAmount = includeRent ? Number(room.monthly_rent || 0) * cycle : 0
     totalAmount += rentAmount
 
     // 构建消息
-    let message = `【${roomNumber} 收租明细】\n`
+    const titleLabel = includeRent ? '收租明细' : '水电明细'
+    let message = `【${roomNumber} ${titleLabel}】\n`
     message += `抄表日期：${readingDate}\n`
     message += `💰 合计：${(forceShowAmount || !hideAmounts.value) ? formatter(totalAmount) : '****'}\n`
-    message += `🏠 房租：${(forceShowAmount || !hideAmounts.value) ? formatter(rentAmount) : '****'}\n`
+    if (includeRent) {
+      message += `🏠 房租：${(forceShowAmount || !hideAmounts.value) ? formatter(rentAmount) : '****'}\n`
+    }
     if (waterText) message += `${waterText}\n`
     if (electricityText) message += `${electricityText}\n`
 

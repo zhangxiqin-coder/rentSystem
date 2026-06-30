@@ -33,12 +33,165 @@ def get_contract_template(series: str) -> Path:
     return TEMPLATE_PATH
 
 
+def inject_editable_features(html: str) -> str:
+    """
+    给已填充数据的合同HTML注入编辑功能：
+    1. 整个合同区域设为contenteditable
+    2. 添加浮动工具栏（打印按钮）
+    3. 添加编辑提示
+    4. 打印时隐藏工具栏和编辑边框
+    """
+    editable_css = """
+    <style id="editable-mode">
+        /* 编辑模式专用样式 */
+        body {
+            background: #f0f2f5 !important;
+            padding: 20px 0 !important;
+        }
+
+        .contract-container {
+            box-shadow: 0 2px 20px rgba(0,0,0,0.15) !important;
+            outline: 2px dashed transparent;
+            outline-offset: 4px;
+            transition: outline-color 0.2s;
+        }
+
+        .contract-container:hover {
+            outline-color: #409eff;
+        }
+
+        .contract-container:focus {
+            outline: 2px solid #409eff !important;
+            outline-offset: 4px;
+        }
+
+        /* 浮动工具栏 */
+        .editable-toolbar {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .editable-toolbar button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+
+        .editable-toolbar .btn-print {
+            background: #409eff;
+            color: white;
+        }
+
+        .editable-toolbar .btn-print:hover {
+            background: #66b1ff;
+        }
+
+        .editable-toolbar .btn-hint {
+            background: #f4f4f5;
+            color: #909399;
+            font-size: 12px;
+            font-weight: normal;
+            cursor: default;
+            text-align: center;
+            line-height: 1.4;
+        }
+
+        /* 编辑提示横幅 */
+        .editable-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(90deg, #409eff, #66b1ff);
+            color: white;
+            text-align: center;
+            padding: 6px;
+            font-size: 13px;
+            z-index: 9998;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* 打印时隐藏工具元素 */
+        @media print {
+            .editable-toolbar,
+            .editable-banner {
+                display: none !important;
+            }
+
+            body {
+                background: #fff !important;
+                padding: 0 !important;
+            }
+
+            .contract-container {
+                box-shadow: none !important;
+                outline: none !important;
+            }
+        }
+    </style>
+    """
+
+    editable_html = """
+    <!-- 编辑模式横幅 -->
+    <div class="editable-banner">
+        ✏️ 编辑模式 — 直接点击合同内容即可修改，完成后点击右上角「打印 / 保存PDF」
+    </div>
+
+    <!-- 编辑模式工具栏 -->
+    <div class="editable-toolbar">
+        <button class="btn-hint">📝 可直接编辑<br>合同任意内容</button>
+        <button class="btn-print" onclick="window.print()">🖨️ 打印 / 保存PDF</button>
+    </div>
+    """
+
+    # 1. 注入CSS到 </head> 之前
+    html = html.replace("</head>", editable_css + "\n</head>")
+
+    # 2. 在 <body> 后面注入横幅和工具栏
+    # 处理 <body> 和 <body class="..."> 两种情况
+    import re
+    body_match = re.search(r'<body[^>]*>', html)
+    if body_match:
+        body_tag = body_match.group()
+        html = html.replace(body_tag, body_tag + "\n" + editable_html)
+
+    # 3. 让合同容器可编辑
+    # 找到 contract-container 的div，添加 contenteditable
+    html = html.replace(
+        '<div class="contract-container">',
+        '<div class="contract-container" contenteditable="true" spellcheck="false">',
+    )
+    # 处理可能的其他格式
+    if 'contenteditable="true"' not in html:
+        html = re.sub(
+            r'<div class="contract-container"[^>]*>',
+            lambda m: m.group().replace('>', ' contenteditable="true" spellcheck="false">'),
+            html,
+        )
+
+    return html
+
+
 @router.get("/generate-contract/{lease_record_id}", response_class=HTMLResponse)
 async def generate_lease_contract(
     lease_record_id: int,
     keys_count: Optional[int] = 2,
     electricity_initial_reading: Optional[float] = None,
-    water_initial_reading: Optional[float] = None
+    water_initial_reading: Optional[float] = None,
+    editable: Optional[bool] = False
 ):
     """
     生成房屋租赁合同 HTML
@@ -180,6 +333,10 @@ async def generate_lease_contract(
         for key, value in contract_data.items():
             placeholder = f"{{{{ {key} }}}}"
             template = template.replace(placeholder, str(value))
+
+        # 如果是编辑模式，注入编辑功能
+        if editable:
+            template = inject_editable_features(template)
 
         return template
 

@@ -1,4 +1,4 @@
-import type { UtilityReading, Room } from '@/types'
+import type { UtilityReading, Room, Payment } from '@/types'
 
 export interface MergedReading {
   room_id: number
@@ -13,7 +13,11 @@ export interface MergedReading {
   is_paid?: boolean
 }
 
-export function mergeReadings(readings: UtilityReading[], roomOptions: Room[]): MergedReading[] {
+export function mergeReadings(
+  readings: UtilityReading[],
+  roomOptions: Room[],
+  allPayments?: Payment[]
+): MergedReading[] {
   // 性能优化：提前创建房间 Map，避免重复 find
   const roomMap = new Map(roomOptions.map(r => [r.id, r]))
   const map = new Map<string, MergedReading>()
@@ -46,7 +50,22 @@ export function mergeReadings(readings: UtilityReading[], roomOptions: Room[]): 
 
   Array.from(map.values()).forEach(merged => {
     const cycle = Math.max(1, merged.payment_cycle || 1)
-    let total = (merged.monthly_rent || 0) * cycle
+
+    // 季度付等长周期房间：判断本周期是否已收房租
+    let includeRent = true
+    if (cycle > 1 && allPayments && allPayments.length > 0) {
+      const thresholdDays = cycle * 30
+      const cutoff = new Date()
+      cutoff.setDate(cutoff.getDate() - thresholdDays)
+      const hasRentPayment = allPayments.some(p =>
+        p.room_id === merged.room_id &&
+        p.payment_type === 'rent' &&
+        new Date(p.payment_date) >= cutoff
+      )
+      if (hasRentPayment) includeRent = false
+    }
+
+    let total = includeRent ? (merged.monthly_rent || 0) * cycle : 0
 
     if (merged.water_reading) {
       total += merged.water_reading.amount || 0

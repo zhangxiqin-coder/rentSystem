@@ -143,12 +143,28 @@ export function useUtilityReadings(deps: {
         // 从 Map 中快速获取房间信息
         const room = roomMap.get(reading.room_id)
         const cycle = Math.max(1, Number(room?.payment_cycle || 1))
+
+        // 季度付等长周期房间：判断本周期是否已收房租
+        // 已收则总计不含房租，只算水电
+        let includeRent = true
+        if (cycle > 1) {
+          const thresholdDays = cycle * 30
+          const cutoff = new Date()
+          cutoff.setDate(cutoff.getDate() - thresholdDays)
+          const hasRentPayment = payments.value.some(p =>
+            p.room_id === reading.room_id &&
+            p.payment_type === 'rent' &&
+            new Date(p.payment_date) >= cutoff
+          )
+          if (hasRentPayment) includeRent = false
+        }
+
         map.set(key, {
           room_id: reading.room_id,
           reading_date: reading.reading_date,
           monthly_rent: room?.monthly_rent || 0,
           payment_cycle: room?.payment_cycle || 1,
-          total_amount: Number(room?.monthly_rent || 0) * cycle,
+          total_amount: includeRent ? Number(room?.monthly_rent || 0) * cycle : 0,
           notes: reading.notes || ''
         })
       }

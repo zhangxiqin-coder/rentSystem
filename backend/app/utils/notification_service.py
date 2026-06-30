@@ -6,12 +6,33 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models import Room
+from app.models import Room, Payment
 from app.utils.wechat import (
     check_if_both_utilities_recorded,
     generate_rent_notification,
     send_wechat_message,
 )
+
+
+def _has_recent_rent_payment(db: Session, room_id: int, cycle_months: int) -> bool:
+    """
+    检查最近 cycle_months*30-5 天内是否有 rent 类型的支付记录
+    用于判断季度付等长周期房间本周期是否已收过房租
+    """
+    today = date.today()
+    threshold_days = cycle_months * 30 - 5
+    from datetime import timedelta
+    cutoff_date = today - timedelta(days=threshold_days)
+
+    payment = db.query(Payment).filter(
+        Payment.room_id == room_id,
+        Payment.payment_type == 'rent',
+        Payment.status != 'cancelled',
+        Payment.payment_date >= cutoff_date,
+        Payment.payment_date <= today
+    ).first()
+
+    return payment is not None
 
 
 async def send_rent_notification_if_complete(
@@ -25,8 +46,9 @@ async def send_rent_notification_if_complete(
 
     1. Skip 2501 rooms (when include_utilities=True)
     2. Check both water and electricity recorded (when include_utilities=True)
-    3. Generate notification message
-    4. Send via wechat/feishu
+    3. For quarterly+ rooms, check if rent already collected this cycle
+    4. Generate notification message
+    5. Send via wechat/feishu
 
     Returns:
         {"sent": bool, "reason": str}
@@ -36,6 +58,13 @@ async def send_rent_notification_if_complete(
             return {"sent": False, "reason": "2501 room skipped"}
 
         tenant_name = room.tenant_name or room.room_number
+        cycle = max(1, room.payment_cycle or 1)
+
+        # 判断是否需要包含房租：
+        # payment_cycle > 1 的房间（季度付等），如果本周期已收过房租，则只收水电
+        include_rent = True
+        if cycle > 1:
+            include_rent = not _has_recent_rent_payment(db, room.id, cycle)
 
         if include_utilities:
             utility_status = check_if_both_utilities_recorded(
@@ -49,7 +78,7 @@ async def send_rent_notification_if_complete(
                 room_number=room.room_number,
                 tenant_name=tenant_name,
                 monthly_rent=float(room.monthly_rent),
-                payment_cycle=room.payment_cycle or 1,
+                payment_cycle=cycle,
                 water_amount=utility_status['water_amount'],
                 electricity_amount=utility_status['electricity_amount'],
                 water_reading=utility_status['water_reading'],
@@ -58,14 +87,16 @@ async def send_rent_notification_if_complete(
                 electricity_usage=utility_status.get('electricity_usage', 0),
                 last_month_data=utility_status.get('last_month'),
                 include_utilities=True,
+                include_rent=include_rent,
             )
         else:
             message = generate_rent_notification(
                 room_number=room.room_number,
                 tenant_name=tenant_name,
                 monthly_rent=float(room.monthly_rent),
-                payment_cycle=room.payment_cycle or 1,
+                payment_cycle=cycle,
                 include_utilities=False,
+                include_rent=include_rent,
             )
 
         await send_wechat_message(message)

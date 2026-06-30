@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>房屋租赁合同 - 可编辑版本</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: "SimSun", "宋体", serif;
+            line-height: 1.8;
+            color: #333;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .contract-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 60px 80px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .contract-header {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 3px solid #333;
+            padding-bottom: 20px;
+        }
+        
+        .contract-title {
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .contract-subtitle {
+            font-size: 18px;
+            color: #666;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #2c3e50;
+            border-left: 4px solid #3498db;
+            padding-left: 10px;
+        }
+        
+        .paragraph {
+            margin-bottom: 15px;
+            text-indent: 2em;
+            text-align: justify;
+        }
+        
+        .editable {
+            border: 1px dashed #bdc3c7;
+            padding: 2px 5px;
+            background-color: #f9f9f9;
+            border-radius: 3px;
+            min-width: 50px;
+            display: inline-block;
+            cursor: text;
+        }
+        
+        .editable:hover {
+            border-color: #3498db;
+            background-color: #eaf2f8;
+        }
+        
+        .editable:focus {
+            outline: none;
+            border: 2px solid #3498db;
+            background-color: white;
+            box-shadow: 0 0 5px rgba(52, 152, 219, 0.3);
+        }
+        
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        
+        .info-table th,
+        .info-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        
+        .info-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            width: 30%;
+        }
+        
+        .info-table td {
+            width: 70%;
+        }
+        
+        .signature-section {
+            margin-top: 50px;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .signature-block {
+            width: 45%;
+        }
+        
+        .signature-title {
+            font-weight: bold;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        .signature-line {
+            border-top: 1px solid #333;
+            margin-top: 80px;
+            padding-top: 10px;
+            text-align: center;
+        }
+        
+        .date-line {
+            text-align: center;
+            margin-top: 10px;
+        }
+        
+        .stamp-area {
+            height: 100px;
+            border: 2px dashed #ccc;
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 14px;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #999;
+            font-size: 12px;
+        }
+        
+        .toolbar {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+        
+        .toolbar button {
+            display: block;
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .btn-print {
+            background-color: #3498db;
+            color: white;
+        }
+        
+        .btn-save {
+            background-color: #2ecc71;
+            color: white;
+        }
+        
+        .btn-reset {
+            background-color: #e74c3c;
+            color: white;
+        }
+        
+        .toolbar button:hover {
+            opacity: 0.9;
+        }
+        
+        .highlight {
+            background-color: #fff3cd;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+        
+        @media print {
+            .toolbar {
+                display: none;
+            }
+            
+            .editable {
+                border: none !important;
+                background: none !important;
+                padding: 0 !important;
+            }
+            
+            body {
+                background: white;
+                padding: 0;
+            }
+            
+            .contract-container {
+                box-shadow: none;
+                padding: 40px;
+            }
+        }
+        
+        .instructions {
+            background-color: #e8f4f8;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .instructions h3 {
+            margin-bottom: 10px;
+            color: #2980b9;
+        }
+        
+        .instructions ul {
+            margin-left: 20px;
+        }
+        
+        .instructions li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <button class="btn-print" onclick="window.print()">🖨️ 打印合同</button>
+        <button class="btn-save" onclick="saveContract()">💾 保存为HTML</button>
+        <button class="btn-reset" onclick="resetContract()">🔄 重置内容</button>
+    </div>
+
+    <div class="contract-container">
+        <div class="contract-header">
+            <h1 class="contract-title">房屋租赁合同</h1>
+            <p class="contract-subtitle">Contract Number: <span class="editable" contenteditable="true">2026-HT-001</span></p>
+        </div>
+
+        <div class="instructions">
+            <h3>📝 使用说明</h3>
+            <ul>
+                <li>点击 <span class="highlight">灰色虚线框</span> 中的内容可以直接编辑</li>
+                <li>编辑完成后点击"保存为HTML"按钮下载可编辑版本</li>
+                <li>点击"打印合同"可以直接打印或另存为PDF</li>
+                <li>所有编辑内容都会在打印时显示为正常格式</li>
+            </ul>
+        </div>
+
+        <!-- 甲方信息 -->
+        <div class="section">
+            <h2 class="section-title">一、甲方（出租方）信息</h2>
+            <table class="info-table">
+                <tr>
+                    <th>姓名/名称</th>
+                    <td><span class="editable" contenteditable="true">请输入甲方姓名</span></td>
+                </tr>
+                <tr>
+                    <th>联系电话</th>
+                    <td><span class="editable" contenteditable="true">请输入甲方电话</span></td>
+                </tr>
+                <tr>
+                    <th>身份证号</th>
+                    <td><span class="editable" contenteditable="true">请输入甲方身份证号</span></td>
+                </tr>
+                <tr>
+                    <th>联系地址</th>
+                    <td><span class="editable" contenteditable="true">请输入甲方地址</span></td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- 乙方信息 -->
+        <div class="section">
+            <h2 class="section-title">二、乙方（承租方）信息</h2>
+            <table class="info-table">
+                <tr>
+                    <th>姓名</th>
+                    <td><span class="editable" contenteditable="true">请输入乙方姓名</span></td>
+                </tr>
+                <tr>
+                    <th>联系电话</th>
+                    <td><span class="editable" contenteditable="true">请输入乙方电话</span></td>
+                </tr>
+                <tr>
+                    <th>身份证号</th>
+                    <td><span class="editable" contenteditable="true">请输入乙方身份证号</span></td>
+                </tr>
+                <tr>
+                    <th>联系地址</th>
+                    <td><span class="editable" contenteditable="true">请输入乙方地址</span></td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- 房屋信息 -->
+        <div class="section">
+            <h2 class="section-title">三、租赁房屋信息</h2>
+            <table class="info-table">
+                <tr>
+                    <th>房屋地址</th>
+                    <td><span class="editable" contenteditable="true">请输入房屋详细地址</span></td>
+                </tr>
+                <tr>
+                    <th>房间号</th>
+                    <td><span class="editable" contenteditable="true">请输入房间号</span></td>
+                </tr>
+                <tr>
+                    <th>房屋面积</th>
+                    <td><span class="editable" contenteditable="true">请输入房屋面积</span> 平方米</td>
+                </tr>
+                <tr>
+                    <th>房屋用途</th>
+                    <td><span class="editable" contenteditable="true">居住</span></td>
+                </tr>
+                <tr>
+                    <th>房屋设施</th>
+                    <td><span class="editable" contenteditable="true">床、衣柜、书桌、空调、热水器等</span></td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- 租赁期限 -->
+        <div class="section">
+            <h2 class="section-title">四、租赁期限</h2>
+            <p class="paragraph">
+                租赁期限共 <span class="editable" contenteditable="true">12</span> 个月，自 <span class="editable" contenteditable="true">2026年6月27日</span> 起至 <span class="editable" contenteditable="true">2027年6月26日</span> 止。
+            </p>
+            <p class="paragraph">
+                租赁期满，甲方有权收回该房屋，乙方应如期返还。乙方如需续租，应提前 <span class="editable" contenteditable="true">30</span> 天向甲方提出书面续租要求，经甲方同意后，重新签订租赁合同。
+            </p>
+        </div>
+
+        <!-- 租金及支付方式 -->
+        <div class="section">
+            <h2 class="section-title">五、租金及支付方式</h2>
+            <p class="paragraph">
+                1. 该房屋每月租金为人民币 <span class="editable" contenteditable="true">1200</span> 元整（¥<span class="editable" contenteditable="true">1200.00</span>）。
+            </p>
+            <p class="paragraph">
+                2. 租金支付方式：<span class="editable" contenteditable="true">按月支付</span>，每 <span class="editable" contenteditable="true">1</span> 个月支付一次。
+            </p>
+            <p class="paragraph">
+                3. 首次租金应于本合同签订之日支付，后续租金应于每期开始前 <span class="editable" contenteditable="true">7</span> 日内支付。
+            </p>
+            <p class="paragraph">
+                4. 租金支付方式：<span class="editable" contenteditable="true">银行转账/微信/支付宝</span>
+            </p>
+            <p class="paragraph">
+                5. 甲方收款账户：<span class="editable" contenteditable="true">请输入收款账户信息</span>
+            </p>
+        </div>
+
+        <!-- 押金 -->
+        <div class="section">
+            <h2 class="section-title">六、押金</h2>
+            <p class="paragraph">
+                1. 乙方应于本合同签订之日向甲方支付押金人民币 <span class="editable" contenteditable="true">1200</span> 元整（¥<span class="editable" contenteditable="true">1200.00</span>）。
+            </p>
+            <p class="paragraph">
+                2. 租赁期满，乙方如无违约行为且付清全部费用后，甲方应将押金无息全额退还给乙方。
+            </p>
+            <p class="paragraph">
+                3. 如乙方有违约行为，甲方有权从押金中扣除相应费用，不足部分乙方应继续承担。
+            </p>
+        </div>
+
+        <!-- 水电费用 -->
+        <div class="section">
+            <h2 class="section-title">七、水电费用</h2>
+            <p class="paragraph">
+                1. 租赁期间产生的水费、电费、燃气费等由乙方承担，按实际用量计算。
+            </p>
+            <p class="paragraph">
+                2. 水费标准：<span class="editable" contenteditable="true">5</span> 元/吨，电费标准：<span class="editable" contenteditable="true">1</span> 元/度。
+            </p>
+            <p class="paragraph">
+                3. 初始水表读数：<span class="editable" contenteditable="true">0</span> 吨，初始电表读数：<span class="editable" contenteditable="true">0</span> 度。
+            </p>
+            <p class="paragraph">
+                4. 乙方应按时缴纳水电费用，逾期缴纳将产生滞纳金。
+            </p>
+        </div>
+
+        <!-- 房屋使用 -->
+        <div class="section">
+            <h2 class="section-title">八、房屋使用</h2>
+            <p class="paragraph">
+                1. 乙方应合理使用房屋及其设施，不得擅自改变房屋结构，不得损坏房屋设施。
+            </p>
+            <p class="paragraph">
+                2. 乙方不得利用该房屋从事违法活动，不得储存危险物品。
+            </p>
+            <p class="paragraph">
+                3. 乙方应遵守小区管理规定，不得影响邻居正常生活。
+            </p>
+            <p class="paragraph">
+                4. 乙方不得将房屋转租、转借他人使用，如需转租应征得甲方书面同意。
+            </p>
+        </div>
+
+        <!-- 维修责任 -->
+        <div class="section">
+            <h2 class="section-title">九、维修责任</h2>
+            <p class="paragraph">
+                1. 房屋主体结构、固有设施（如水管、电路等）的维修由甲方负责。
+            </p>
+            <p class="paragraph">
+                2. 因乙方使用不当造成的损坏，由乙方负责维修或赔偿。
+            </p>
+            <p class="paragraph">
+                3. 日常消耗品（如灯泡、水龙头等）的更换由乙方负责。
+            </p>
+        </div>
+
+        <!-- 合同解除 -->
+        <div class="section">
+            <h2 class="section-title">十、合同解除</h2>
+            <p class="paragraph">
+                1. 租赁期内，乙方如需提前退租，应提前 <span class="editable" contenteditable="true">30</span> 天通知甲方，并支付相当于 <span class="editable" contenteditable="true">1</span> 个月租金的违约金。
+            </p>
+            <p class="paragraph">
+                2. 甲方如需提前收回房屋，应提前 <span class="editable" contenteditable="true">30</span> 天通知乙方，并退还乙方剩余租金和押金。
+            </p>
+            <p class="paragraph">
+                3. 如乙方有严重违约行为，甲方有权立即解除合同并收回房屋。
+            </p>
+        </div>
+
+        <!-- 其他条款 -->
+        <div class="section">
+            <h2 class="section-title">十一、其他条款</h2>
+            <p class="paragraph">
+                1. 本合同未尽事宜，双方可另行协商补充，补充协议与本合同具有同等法律效力。
+            </p>
+            <p class="paragraph">
+                2. 本合同一式两份，甲乙双方各执一份，自双方签字之日起生效。
+            </p>
+            <p class="paragraph">
+                3. 本合同履行过程中发生争议，双方应协商解决；协商不成的，可向房屋所在地人民法院提起诉讼。
+            </p>
+        </div>
+
+        <!-- 签字盖章 -->
+        <div class="signature-section">
+            <div class="signature-block">
+                <h3 class="signature-title">甲方（签字/盖章）</h3>
+                <div class="stamp-area">此处盖甲方印章</div>
+                <div class="signature-line">
+                    <span class="editable" contenteditable="true">甲方签字</span>
+                </div>
+                <div class="date-line">
+                    签署日期：<span class="editable" contenteditable="true">2026年6月27日</span>
+                </div>
+            </div>
+
+            <div class="signature-block">
+                <h3 class="signature-title">乙方（签字/盖章）</h3>
+                <div class="stamp-area">此处盖乙方印章</div>
+                <div class="signature-line">
+                    <span class="editable" contenteditable="true">乙方签字</span>
+                </div>
+                <div class="date-line">
+                    签署日期：<span class="editable" contenteditable="true">2026年6月27日</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>本合同生成时间：<span class="editable" contenteditable="true">2026年6月27日</span></p>
+            <p>合同版本：V1.0 | 可编辑HTML版本</p>
+        </div>
+    </div>
+
+    <script>
+        function saveContract() {
+            const htmlContent = document.documentElement.outerHTML;
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '房屋租赁合同_' + new Date().toISOString().slice(0,10) + '.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            alert('合同已保存为HTML文件！');
+        }
+
+        function resetContract() {
+            if (confirm('确定要重置所有编辑内容吗？此操作不可恢复。')) {
+                location.reload();
+            }
+        }
+
+        // 添加键盘快捷键
+        document.addEventListener('keydown', function(e) {
+            // Ctrl+S 保存
+            if (e.ctrlKey && e.key === 's') {
+                e.preventDefault();
+                saveContract();
+            }
+            // Ctrl+P 打印
+            if (e.ctrlKey && e.key === 'p') {
+                e.preventDefault();
+                window.print();
+            }
+        });
+
+        // 自动保存提醒
+        let editTimeout;
+        document.querySelectorAll('.editable').forEach(element => {
+            element.addEventListener('input', function() {
+                clearTimeout(editTimeout);
+                editTimeout = setTimeout(() => {
+                    console.log('内容已更改，记得保存！');
+                }, 1000);
+            });
+        });
+    </script>
+</body>
+</html>

@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowDown, Edit, Delete, Plus, House, Document, Refresh, CircleClose } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowDown, Edit, EditPen, Delete, Plus, House, Document, Refresh, CircleClose } from '@element-plus/icons-vue'
 import { tenantsApi } from '@/api/tenants'
 import { leaseRecordsApi } from '@/api/leaseRecords'
 import { roomApi } from '@/api/room'
@@ -151,6 +151,12 @@ const handleCheckIn = async () => {
 const handle下载PDF = (record: LeaseRecord) => {
   const pdfUrl = `/api/v1/generate-contract-pdf/${record.id}`
   window.open(pdfUrl, '_blank')
+}
+
+// 编辑合同（在新标签页打开可编辑的HTML合同）
+const handle编辑合同 = (record: LeaseRecord) => {
+  const editUrl = `/api/v1/generate-contract/${record.id}?editable=true`
+  window.open(editUrl, '_blank')
 }
 
 // 结束租赁（退租）
@@ -423,6 +429,9 @@ onMounted(() => {
                     </el-dropdown-item>
                     <el-dropdown-item @click.native="handle下载PDF(row)">
                       <el-icon><Document /></el-icon>下载合同
+                    </el-dropdown-item>
+                    <el-dropdown-item @click.native="handle编辑合同(row)">
+                      <el-icon><EditPen /></el-icon>编辑合同
                     </el-dropdown-item>
                     <el-dropdown-item
                       v-if="row.status_display === 'active' || row.status_display === 'pending'"
