@@ -376,13 +376,21 @@ watch(rentCollectionByMonthDesc, (val) => {
 // 水电月度明细按月份分组
 const utilityBreakdownByMonth = computed(() => {
   if (!utilityProfit.value?.monthly_breakdown) return []
-  const map = new Map<string, { key: string; label: string; rows: typeof utilityProfit.value.monthly_breakdown }>()
+  const map = new Map<string, { key: string; label: string; rows: typeof utilityProfit.value.monthly_breakdown; monthTotal: number; monthWaterCollected: number; monthWaterCost: number; monthWaterProfit: number; monthElectricCollected: number; monthElectricCost: number; monthElectricProfit: number }>()
   for (const row of utilityProfit.value.monthly_breakdown) {
     const key = `${row.year}-${String(row.month).padStart(2, '0')}`
     if (!map.has(key)) {
-      map.set(key, { key, label: `${row.year}年${row.month}月`, rows: [] })
+      map.set(key, { key, label: `${row.year}年${row.month}月`, rows: [], monthTotal: 0, monthWaterCollected: 0, monthWaterCost: 0, monthWaterProfit: 0, monthElectricCollected: 0, monthElectricCost: 0, monthElectricProfit: 0 })
     }
-    map.get(key)!.rows.push(row)
+    const g = map.get(key)!
+    g.rows.push(row)
+    g.monthWaterCollected += row.water_collected
+    g.monthWaterCost += row.water_cost
+    g.monthWaterProfit += row.water_profit
+    g.monthElectricCollected += row.electric_collected
+    g.monthElectricCost += row.electric_cost
+    g.monthElectricProfit += row.electric_profit
+    g.monthTotal += row.total_profit
   }
   // 倒序（最新在前）
   return [...map.values()].reverse()
@@ -1033,7 +1041,12 @@ watch(lookbackMonths, () => {
           <el-tabs v-model="utilityMonthTab" type="border-card">
             <el-tab-pane v-for="monthGroup in utilityBreakdownByMonth" :key="monthGroup.key" :label="monthGroup.label" :name="monthGroup.key">
               <!-- 桌面端：表格 -->
-              <el-table :data="monthGroup.rows" size="small" class="hidden-mobile">
+              <el-table :data="monthGroup.rows" size="small" class="hidden-mobile" show-summary :summary-method="() => [
+                '月度合计',
+                `收: ¥${monthGroup.monthWaterCollected.toFixed(2)}\n支: ¥${monthGroup.monthWaterCost.toFixed(2)}\n益: ¥${monthGroup.monthWaterProfit.toFixed(2)}`,
+                `收: ¥${monthGroup.monthElectricCollected.toFixed(2)}\n支: ¥${monthGroup.monthElectricCost.toFixed(2)}\n益: ¥${monthGroup.monthElectricProfit.toFixed(2)}`,
+                `¥${monthGroup.monthTotal.toFixed(2)}`
+              ]">
                 <el-table-column label="系列" width="100">
                   <template #default="{ row }">
                     <div>{{ row.series }}</div>
@@ -1102,6 +1115,41 @@ watch(lookbackMonths, () => {
                     </div>
                     <div class="monthly-card-total">
                       总收益: ¥{{ row.total_profit.toFixed(2) }}
+                    </div>
+                  </div>
+                </div>
+                <!-- 手机端月度合计 -->
+                <div class="monthly-card monthly-card-summary">
+                  <div class="monthly-card-header">
+                    <span>📊 月度合计</span>
+                  </div>
+                  <div class="monthly-card-body">
+                    <div class="monthly-card-cell">
+                      <span class="label">水收</span>
+                      <span>¥{{ monthGroup.monthWaterCollected.toFixed(2) }}</span>
+                    </div>
+                    <div class="monthly-card-cell">
+                      <span class="label">水支</span>
+                      <span>¥{{ monthGroup.monthWaterCost.toFixed(2) }}</span>
+                    </div>
+                    <div class="monthly-card-cell">
+                      <span class="label">电收</span>
+                      <span>¥{{ monthGroup.monthElectricCollected.toFixed(2) }}</span>
+                    </div>
+                    <div class="monthly-card-cell">
+                      <span class="label">电支</span>
+                      <span>¥{{ monthGroup.monthElectricCost.toFixed(2) }}</span>
+                    </div>
+                    <div class="monthly-card-cell">
+                      <span class="label">水益</span>
+                      <span class="profit-value">¥{{ monthGroup.monthWaterProfit.toFixed(2) }}</span>
+                    </div>
+                    <div class="monthly-card-cell">
+                      <span class="label">电益</span>
+                      <span class="profit-value">¥{{ monthGroup.monthElectricProfit.toFixed(2) }}</span>
+                    </div>
+                    <div class="monthly-card-total">
+                      月度总收益: ¥{{ monthGroup.monthTotal.toFixed(2) }}
                     </div>
                   </div>
                 </div>
@@ -2181,6 +2229,12 @@ td {
     background: #f9fafb;
     border-radius: 8px;
     padding: 0.75rem;
+  }
+
+  .monthly-card-summary {
+    background: #ecf5ff;
+    border: 1px solid #409eff;
+    margin-top: 0.5rem;
   }
 
   .monthly-card-header {
