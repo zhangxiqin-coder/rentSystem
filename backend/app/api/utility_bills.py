@@ -157,9 +157,15 @@ def get_profit_stats(
         electric_cost = data["electric_cost"]
         
         # 收益 = 从租客收取的 - 交给供电局的 = 净收益
-        # 正数=赚了（收的比交的多），负数=亏了（交的比收的多）
-        water_profit = water_collected - water_cost
-        electric_profit = electric_collected - electric_cost
+        # 支出为0（还没录入供电局账单）时，收益暂不算
+        if water_cost > 0:
+            water_profit = water_collected - water_cost
+        else:
+            water_profit = Decimal("0")
+        if electric_cost > 0:
+            electric_profit = electric_collected - electric_cost
+        else:
+            electric_profit = Decimal("0")
         
         total_water_profit += water_profit
         total_electric_profit += electric_profit
