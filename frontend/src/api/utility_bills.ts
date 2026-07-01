@@ -23,8 +23,8 @@ export interface UtilityBillCreate {
 }
 
 export interface UtilityBillUpdate {
-  water_cost?: number
-  electric_cost?: number
+  utility_type?: 'water' | 'electric'
+  cost?: number
   notes?: string
 }
 

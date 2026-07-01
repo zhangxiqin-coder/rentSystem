@@ -828,8 +828,9 @@ const openBillDialog = (bill?: utilityBillApi.UtilityBill) => {
 const saveUtilityBill = async () => {
   try {
     if (editingBillId.value) {
-      // 更新
-      await utilityBillApi.updateUtilityBill(editingBillId.value, billForm.value)
+      // 更新（只传后端支持的字段）
+      const { utility_type, cost, notes } = billForm.value
+      await utilityBillApi.updateUtilityBill(editingBillId.value, { utility_type, cost, notes })
       ElMessage.success('更新成功')
     } else {
       // 创建
@@ -1110,6 +1111,58 @@ watch(lookbackMonths, () => {
         </div>
       </div>
 
+      <!-- 已录入账单列表 -->
+      <div v-if="!hideAmounts && utilityBills.length > 0" class="utility-bills-list-card">
+        <el-collapse>
+          <el-collapse-item name="bills">
+            <template #title>
+              <span class="bills-list-title">📋 已录入账单（{{ utilityBills.length }}条）</span>
+            </template>
+            <!-- 桌面端表格 -->
+            <el-table :data="utilityBills" size="small" class="hidden-mobile">
+              <el-table-column label="系列" prop="series" width="90" />
+              <el-table-column label="年月" width="90">
+                <template #default="{ row }">{{ row.year }}-{{ String(row.month).padStart(2, '0') }}</template>
+              </el-table-column>
+              <el-table-column label="类型" width="70">
+                <template #default="{ row }">
+                  <el-tag :type="row.utility_type === 'water' ? 'info' : 'warning'" size="small">
+                    {{ row.utility_type === 'water' ? '💧 水费' : '⚡ 电费' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="金额" width="100">
+                <template #default="{ row }">¥{{ row.cost.toFixed(2) }}</template>
+              </el-table-column>
+              <el-table-column label="备注" prop="notes" show-overflow-tooltip />
+              <el-table-column label="操作" width="120">
+                <template #default="{ row }">
+                  <el-button type="primary" link size="small" @click="openBillDialog(row)">编辑</el-button>
+                  <el-button type="danger" link size="small" @click="deleteUtilityBill(row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <!-- 手机端卡片 -->
+            <div class="hidden-desktop">
+              <div v-for="bill in utilityBills" :key="bill.id" class="bill-card-item">
+                <div class="bill-card-info">
+                  <span class="bill-series">{{ bill.series }}</span>
+                  <span>{{ bill.year }}-{{ String(bill.month).padStart(2, '0') }}</span>
+                  <el-tag :type="bill.utility_type === 'water' ? 'info' : 'warning'" size="small">
+                    {{ bill.utility_type === 'water' ? '💧水费' : '⚡电费' }}
+                  </el-tag>
+                  <span class="bill-cost">¥{{ bill.cost.toFixed(2) }}</span>
+                </div>
+                <div class="bill-card-actions">
+                  <el-button type="primary" link size="small" @click="openBillDialog(bill)">编辑</el-button>
+                  <el-button type="danger" link size="small" @click="deleteUtilityBill(bill)">删除</el-button>
+                </div>
+              </div>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
+      </div>
+
       <!-- 录入/编辑对话框 -->
       <el-dialog
         v-model="showBillDialog"
@@ -1122,6 +1175,7 @@ watch(lookbackMonths, () => {
               v-model="billForm.series" 
               placeholder="请选择房子系列"
               style="width: 100%"
+              :disabled="!!editingBillId"
             >
               <el-option
                 v-for="item in seriesList"
@@ -1138,10 +1192,10 @@ watch(lookbackMonths, () => {
             </el-radio-group>
           </el-form-item>
           <el-form-item label="年份">
-            <el-input-number v-model="billForm.year" :min="2020" :max="2100" />
+            <el-input-number v-model="billForm.year" :min="2020" :max="2100" :disabled="!!editingBillId" />
           </el-form-item>
           <el-form-item label="月份">
-            <el-input-number v-model="billForm.month" :min="1" :max="12" />
+            <el-input-number v-model="billForm.month" :min="1" :max="12" :disabled="!!editingBillId" />
           </el-form-item>
           <el-form-item :label="billForm.utility_type === 'water' ? '水费支出' : '电费支出'">
             <el-input-number v-model="billForm.cost" :min="0" :precision="2" />
@@ -1448,6 +1502,49 @@ watch(lookbackMonths, () => {
   padding: 1.5rem;
   margin-bottom: 1.5rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.utility-bills-list-card {
+  background: white;
+  border-radius: 8px;
+  padding: 0.5rem 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.bills-list-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #303133;
+}
+
+.bill-card-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.bill-card-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.bill-series {
+  font-weight: 600;
+}
+
+.bill-cost {
+  font-weight: 600;
+  color: #f56c6c;
+}
+
+.bill-card-actions {
+  display: flex;
+  gap: 0.25rem;
 }
 
 .profit-header {
