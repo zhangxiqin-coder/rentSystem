@@ -237,7 +237,7 @@ const rentCollectionByMonth = computed(() => {
     paidRent: number
   }> = []
 
-  for (let i = lookbackMonths.value; i >= 0; i--) {
+  for (let i = lookbackMonths.value - 1; i >= 0; i--) {
     const m = currentMonth - i
     const year = currentYear + Math.floor(m / 12)
     const month = ((m % 12) + 12) % 12
