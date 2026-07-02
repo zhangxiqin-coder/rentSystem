@@ -392,8 +392,8 @@ const utilityBreakdownByMonth = computed(() => {
     g.monthElectricProfit += row.electric_profit
     g.monthTotal += row.total_profit
   }
-  // 倒序（最新在前）
-  return [...map.values()].reverse()
+  // 按 key 降序（最新月份在前）
+  return [...map.values()].sort((a, b) => b.key.localeCompare(a.key))
 })
 const utilityMonthTab = ref('')
 watch(utilityBreakdownByMonth, (val) => {
