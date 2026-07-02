@@ -733,7 +733,10 @@ const loadPayments = async () => {
 
     const params: any = { page: 1, size: 1000 }
     if (startDate.value) {
-      params.start_date = formatDate(startDate.value)
+      // 往前多推90天，确保季度付/半年付房间提前交的房租记录也被加载（用于isPaid判断）
+      const apiStartDate = new Date(startDate.value)
+      apiStartDate.setDate(apiStartDate.getDate() - 90)
+      params.start_date = formatDate(apiStartDate)
     }
     if (endDate.value) {
       params.end_date = formatDate(endDate.value)
