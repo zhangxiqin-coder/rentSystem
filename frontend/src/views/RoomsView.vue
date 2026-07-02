@@ -2,7 +2,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, ArrowDown, Edit, Delete, CircleCheck, CircleClose, UploadFilled, Refresh, Document } from '@element-plus/icons-vue'
+import { Plus, Search, ArrowDown, Edit, Delete, CircleCheck, CircleClose, UploadFilled, Refresh, Document, Download } from '@element-plus/icons-vue'
 import type { Room } from '@/types'
 import { roomApi } from '@/api/room'
 import RoomForm from '@/components/RoomForm.vue'
@@ -23,6 +23,7 @@ const searchQuery = ref('')
 const uploading = ref(false)
 const fileList = ref<any[]>([])
 const importResult = ref<any>(null)
+const exportLoading = ref(false)
 
 // 系列tab
 const activeSeriesTab = ref('all')
@@ -142,6 +143,61 @@ const handleDownloadTemplate = () => {
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
+}
+
+const handleExportAll = async () => {
+  exportLoading.value = true
+  try {
+    // 解密获取token
+    const token = (() => {
+      try {
+        const encrypted = localStorage.getItem('access_token')
+        if (!encrypted) return null
+        const decoded = atob(encrypted)
+        const key = import.meta.env.VITE_ENCRYPTION_KEY || 'dev-only-rent-system-encryption-key-2026'
+        let result = ''
+        for (let i = 0; i < decoded.length; i++) {
+          result += String.fromCharCode(decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length))
+        }
+        const parts = result.split('|')
+        return parts.length === 4 ? parts[3] : null
+      } catch {
+        return null
+      }
+    })()
+
+    if (!token) {
+      ElMessage.error('请先登录')
+      return
+    }
+
+    const response = await fetch('/api/v1/export/system-overview', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    if (!response.ok) throw new Error('导出失败')
+    const blob = await response.blob()
+    const disposition = response.headers.get('Content-Disposition') || ''
+    const filenameMatch = disposition.match(/filename\*=UTF-8''(.+)/)
+    const filename = filenameMatch
+      ? decodeURIComponent(filenameMatch[1])
+      : `系统数据导出_${new Date().toISOString().slice(0, 10)}.xlsx`
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    ElMessage.success('导出成功！')
+  } catch (error) {
+    console.error('导出失败:', error)
+    ElMessage.error('导出失败，请重试')
+  } finally {
+    exportLoading.value = false
+  }
 }
 
 const handleFileChange = (file: any) => {
@@ -506,6 +562,10 @@ onMounted(() => {
               </el-dropdown-menu>
             </template>
           </el-dropdown>
+          <el-button type="warning" size="large" :loading="exportLoading" @click="handleExportAll">
+            <el-icon><Download /></el-icon>
+            导出全部数据
+          </el-button>
         </div>
       </div>
     </el-card>
