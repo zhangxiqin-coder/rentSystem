@@ -802,3 +802,151 @@ class ZhaopingfeiSummaryResponse(BaseModel):
     total_in: Decimal = Field(Decimal('0'), description="总转入")
     total_out: Decimal = Field(Decimal('0'), description="总转出")
     total_net: Decimal = Field(Decimal('0'), description="总净转入")
+
+
+# ==================== 固定资产 ====================
+
+
+class FixedAssetCreate(BaseModel):
+    name: str
+    category: str
+    estimated_value: Decimal = Decimal('0')
+    role: Optional[str] = None
+    monthly_rent: Optional[Decimal] = None
+    notes: Optional[str] = None
+    sort_order: int = 0
+
+
+class FixedAssetUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    estimated_value: Optional[Decimal] = None
+    role: Optional[str] = None
+    monthly_rent: Optional[Decimal] = None
+    notes: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
+class FixedAssetResponse(BaseModel):
+    id: int
+    name: str
+    category: str
+    estimated_value: Decimal
+    role: Optional[str] = None
+    monthly_rent: Optional[Decimal] = None
+    notes: Optional[str] = None
+    sort_order: int
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== 资产快照 ====================
+
+
+class AssetSnapshotCreate(BaseModel):
+    notes: Optional[str] = None
+
+
+class AssetSnapshotResponse(BaseModel):
+    id: int
+    snapshot_date: date
+    snapshot_data: list
+    total_amount: Decimal
+    platform_summary: Optional[dict] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+    @field_validator('snapshot_data', mode='before')
+    @classmethod
+    def parse_list_json(cls, v):
+        if isinstance(v, str):
+            import json
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, ValueError):
+                return []
+        return v or []
+
+    @field_validator('platform_summary', mode='before')
+    @classmethod
+    def parse_dict_json(cls, v):
+        if isinstance(v, str):
+            import json
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, ValueError):
+                return {}
+        return v or {}
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== 持仓明细（资产项） ====================
+
+
+class AssetItemCreate(BaseModel):
+    """创建持仓项"""
+    name: str = Field(..., description="资产名称")
+    code: Optional[str] = Field(None, description="编号")
+    amount: Decimal = Field(Decimal('0'), description="持仓金额")
+    stock_pct: Decimal = Field(Decimal('0'), description="股票占比%")
+    bond_pct: Decimal = Field(Decimal('0'), description="债权占比%")
+    cash_pct: Decimal = Field(Decimal('0'), description="现金占比%")
+    commodity_pct: Decimal = Field(Decimal('0'), description="商品占比%")
+    fixed_income_pct: Decimal = Field(Decimal('0'), description="固收占比%")
+    other_pct: Decimal = Field(Decimal('0'), description="其他占比%")
+    platform_id: Optional[int] = Field(None, description="所属平台ID")
+    sort_order: int = Field(0, description="排序")
+
+
+class AssetItemUpdate(BaseModel):
+    """更新持仓项"""
+    name: Optional[str] = Field(None, description="资产名称")
+    code: Optional[str] = Field(None, description="编号")
+    amount: Optional[Decimal] = Field(None, description="持仓金额")
+    stock_pct: Optional[Decimal] = Field(None, description="股票占比%")
+    bond_pct: Optional[Decimal] = Field(None, description="债权占比%")
+    cash_pct: Optional[Decimal] = Field(None, description="现金占比%")
+    commodity_pct: Optional[Decimal] = Field(None, description="商品占比%")
+    fixed_income_pct: Optional[Decimal] = Field(None, description="固收占比%")
+    other_pct: Optional[Decimal] = Field(None, description="其他占比%")
+    platform_id: Optional[int] = Field(None, description="所属平台ID")
+    sort_order: Optional[int] = Field(None, description="排序")
+
+
+class AssetItemResponse(BaseModel):
+    """持仓项响应"""
+    id: int
+    name: str
+    code: Optional[str] = None
+    amount: Decimal
+    stock_pct: Decimal
+    bond_pct: Decimal
+    cash_pct: Decimal
+    commodity_pct: Decimal
+    fixed_income_pct: Decimal
+    other_pct: Decimal
+    platform_id: Optional[int] = None
+    platform_name: Optional[str] = None
+    sort_order: int
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PortfolioSummaryResponse(BaseModel):
+    """资产组合汇总"""
+    total_amount: Decimal = Decimal('0')
+    stock_amount: Decimal = Decimal('0')
+    bond_amount: Decimal = Decimal('0')
+    cash_amount: Decimal = Decimal('0')
+    commodity_amount: Decimal = Decimal('0')
+    fixed_income_amount: Decimal = Decimal('0')
+    other_amount: Decimal = Decimal('0')
+    stock_pct: Decimal = Decimal('0')
+    bond_pct: Decimal = Decimal('0')
+    cash_pct: Decimal = Decimal('0')
+    commodity_pct: Decimal = Decimal('0')
+    fixed_income_pct: Decimal = Decimal('0')
+    other_pct: Decimal = Decimal('0')

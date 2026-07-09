@@ -14,14 +14,18 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from app.database import get_db
-from app.models import AssetPlatform, AssetRecord, User
+from app.models import AssetPlatform, AssetRecord, User, AssetItem, AssetSnapshot, FixedAsset
 from app.schemas import (
     AssetPlatformCreate, AssetPlatformUpdate, AssetPlatformResponse,
     AssetPlatformDetailResponse, AssetRecordResponse, AssetRecordCreate,
     AssetRecordUpdate,
     AssetSummaryResponse,
     AssetTrendResponse, AssetTrendPoint, PlatformTrendPoint,
-    ZhaopingfeiYearSummary, ZhaopingfeiSummaryResponse
+    ZhaopingfeiYearSummary, ZhaopingfeiSummaryResponse,
+    AssetItemCreate, AssetItemUpdate, AssetItemResponse,
+    PortfolioSummaryResponse,
+    AssetSnapshotCreate, AssetSnapshotResponse,
+    FixedAssetCreate, FixedAssetUpdate, FixedAssetResponse
 )
 from app.core.deps import get_current_user
 
@@ -630,6 +634,42 @@ async def export_assets(
     ws_summary.column_dimensions["C"].width = 15
     ws_summary.column_dimensions["D"].width = 12
 
+    # 添加持仓明细sheet
+    ws_items = wb.create_sheet("持仓明细")
+    item_headers = ["名称", "编号", "持仓金额", "股基%", "债券%", "现金%", "商品%", "固收%", "其他%", "所属平台"]
+    ws_items.append(item_headers)
+    for col, header in enumerate(item_headers, 1):
+        cell = ws_items.cell(1, col)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center_align
+
+    items = db.query(AssetItem).filter(
+        AssetItem.owner_id == current_user.id
+    ).order_by(AssetItem.platform_id, AssetItem.sort_order).all()
+
+    for item in items:
+        row = [
+            item.name,
+            item.code or "",
+            float(item.amount or 0),
+            float(item.stock_pct or 0),
+            float(item.bond_pct or 0),
+            float(item.cash_pct or 0),
+            float(item.commodity_pct or 0),
+            float(item.fixed_income_pct or 0),
+            float(item.other_pct or 0),
+            item.platform.name if item.platform else ""
+        ]
+        ws_items.append(row)
+
+    ws_items.column_dimensions["A"].width = 28  # 名称
+    ws_items.column_dimensions["B"].width = 12  # 编号
+    ws_items.column_dimensions["C"].width = 12  # 持仓金额
+    for col_letter in ["D", "E", "F", "G", "H", "I"]:
+        ws_items.column_dimensions[col_letter].width = 10  # 占比
+    ws_items.column_dimensions["J"].width = 15  # 所属平台
+
     # 保存到内存
     output = io.BytesIO()
     wb.save(output)
@@ -644,3 +684,405 @@ async def export_assets(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename*=utf-8''{encoded_filename}"}
     )
+
+
+# ==================== 持仓明细（资产项） ====================
+
+
+@router.get("/assets/items", response_model=list[AssetItemResponse])
+async def list_asset_items(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取当前用户的所有持仓项"""
+    items = db.query(AssetItem).filter(
+        AssetItem.owner_id == current_user.id
+    ).order_by(AssetItem.sort_order, AssetItem.id).all()
+
+    result = []
+    for item in items:
+        resp = AssetItemResponse.model_validate(item)
+        if item.platform:
+            resp.platform_name = item.platform.name
+        result.append(resp)
+    return result
+
+
+@router.post("/assets/items", response_model=AssetItemResponse, status_code=201)
+async def create_asset_item(
+    data: AssetItemCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """创建持仓项"""
+    # 校验比例总和 = 100
+    total_pct = data.stock_pct + data.bond_pct + data.cash_pct + data.commodity_pct + data.fixed_income_pct + data.other_pct
+    if total_pct != Decimal('100'):
+        raise HTTPException(status_code=400, detail=f"各类型占比之和必须为100，当前为{total_pct}")
+
+    item = AssetItem(
+        name=data.name,
+        code=data.code,
+        amount=data.amount,
+        stock_pct=data.stock_pct,
+        bond_pct=data.bond_pct,
+        cash_pct=data.cash_pct,
+        commodity_pct=data.commodity_pct,
+        fixed_income_pct=data.fixed_income_pct,
+        other_pct=data.other_pct,
+        platform_id=data.platform_id,
+        sort_order=data.sort_order,
+        owner_id=current_user.id
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+
+    resp = AssetItemResponse.model_validate(item)
+    if item.platform:
+        resp.platform_name = item.platform.name
+    return resp
+
+
+@router.put("/assets/items/{item_id}", response_model=AssetItemResponse)
+async def update_asset_item(
+    item_id: int,
+    data: AssetItemUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """更新持仓项"""
+    item = db.query(AssetItem).filter(
+        AssetItem.id == item_id,
+        AssetItem.owner_id == current_user.id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="持仓项不存在")
+
+    update_data = data.model_dump(exclude_unset=True)
+
+    # 如果更新了比例字段，校验总和
+    pct_fields = ['stock_pct', 'bond_pct', 'cash_pct', 'commodity_pct', 'fixed_income_pct', 'other_pct']
+    has_pct = any(f in update_data for f in pct_fields)
+    if has_pct:
+        stock = update_data.get('stock_pct', item.stock_pct)
+        bond = update_data.get('bond_pct', item.bond_pct)
+        cash = update_data.get('cash_pct', item.cash_pct)
+        commodity = update_data.get('commodity_pct', item.commodity_pct)
+        fixed_income = update_data.get('fixed_income_pct', item.fixed_income_pct)
+        other = update_data.get('other_pct', item.other_pct)
+        total = stock + bond + cash + commodity + fixed_income + other
+        if total != Decimal('100'):
+            raise HTTPException(status_code=400, detail=f"各类型占比之和必须为100，当前为{total}")
+
+    for key, value in update_data.items():
+        setattr(item, key, value)
+    item.updated_at = datetime.now()
+    db.commit()
+    db.refresh(item)
+
+    resp = AssetItemResponse.model_validate(item)
+    if item.platform:
+        resp.platform_name = item.platform.name
+    return resp
+
+
+@router.delete("/assets/items/{item_id}")
+async def delete_asset_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """删除持仓项"""
+    item = db.query(AssetItem).filter(
+        AssetItem.id == item_id,
+        AssetItem.owner_id == current_user.id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="持仓项不存在")
+    db.delete(item)
+    db.commit()
+    return {"message": "持仓项已删除"}
+
+
+@router.get("/assets/platform-items", response_model=dict)
+async def get_platform_items(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取按平台分组的持仓项，自动计算每个标的占该平台余额的比例"""
+    items = db.query(AssetItem).filter(
+        AssetItem.owner_id == current_user.id
+    ).order_by(AssetItem.platform_id, AssetItem.sort_order, AssetItem.id).all()
+
+    # 获取平台余额
+    platforms = db.query(AssetPlatform).filter(
+        AssetPlatform.owner_id == current_user.id
+    ).all()
+    platform_balances = {p.id: p.current_balance or Decimal('0') for p in platforms}
+
+    # 按平台分组
+    platform_groups = {}
+    for item in items:
+        pid = item.platform_id or 0
+        if pid not in platform_groups:
+            platform_groups[pid] = {
+                "platform_id": item.platform.id if item.platform else None,
+                "platform_name": item.platform.name if item.platform else "未分配",
+                "platform_balance": float(platform_balances.get(pid, Decimal('0'))),
+                "items": []
+            }
+
+        balance = platform_balances.get(pid, Decimal('0'))
+        item_pct = round(float(item.amount) / float(balance) * 100, 2) if balance > 0 else 0
+
+        resp = AssetItemResponse.model_validate(item)
+        if item.platform:
+            resp.platform_name = item.platform.name
+        platform_groups[pid]["items"].append({
+            "id": item.id,
+            "name": item.name,
+            "code": item.code,
+            "amount": float(item.amount or 0),
+            "stock_pct": float(item.stock_pct or 0),
+            "bond_pct": float(item.bond_pct or 0),
+            "cash_pct": float(item.cash_pct or 0),
+            "commodity_pct": float(item.commodity_pct or 0),
+            "fixed_income_pct": float(item.fixed_income_pct or 0),
+            "other_pct": float(item.other_pct or 0),
+            "platform_name": item.platform.name if item.platform else None,
+            "pct_of_platform": item_pct
+        })
+
+    return {
+        "platforms": [
+            {
+                "platform_id": g["platform_id"],
+                "platform_name": g["platform_name"],
+                "platform_balance": g["platform_balance"],
+                "items": g["items"]
+            }
+            for g in sorted(platform_groups.values(), key=lambda x: x["platform_name"] or "")
+        ]
+    }
+
+
+@router.get("/assets/portfolio-summary", response_model=PortfolioSummaryResponse)
+async def get_portfolio_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取资产组合汇总（按所有持仓项的金额加权计算总比例）"""
+    items = db.query(AssetItem).filter(
+        AssetItem.owner_id == current_user.id
+    ).all()
+
+    total_amount = Decimal('0')
+    stock_amount = Decimal('0')
+    bond_amount = Decimal('0')
+    cash_amount = Decimal('0')
+    commodity_amount = Decimal('0')
+    fixed_income_amount = Decimal('0')
+    other_amount = Decimal('0')
+
+    for item in items:
+        amt = item.amount or Decimal('0')
+        total_amount += amt
+        stock_amount += amt * (item.stock_pct or Decimal('0')) / Decimal('100')
+        bond_amount += amt * (item.bond_pct or Decimal('0')) / Decimal('100')
+        cash_amount += amt * (item.cash_pct or Decimal('0')) / Decimal('100')
+        commodity_amount += amt * (item.commodity_pct or Decimal('0')) / Decimal('100')
+        fixed_income_amount += amt * (item.fixed_income_pct or Decimal('0')) / Decimal('100')
+        other_amount += amt * (item.other_pct or Decimal('0')) / Decimal('100')
+
+    if total_amount > 0:
+        return PortfolioSummaryResponse(
+            total_amount=round(total_amount, 2),
+            stock_amount=round(stock_amount, 2),
+            bond_amount=round(bond_amount, 2),
+            cash_amount=round(cash_amount, 2),
+            commodity_amount=round(commodity_amount, 2),
+            fixed_income_amount=round(fixed_income_amount, 2),
+            other_amount=round(other_amount, 2),
+            stock_pct=round(stock_amount / total_amount * Decimal('100'), 2),
+            bond_pct=round(bond_amount / total_amount * Decimal('100'), 2),
+            cash_pct=round(cash_amount / total_amount * Decimal('100'), 2),
+            commodity_pct=round(commodity_amount / total_amount * Decimal('100'), 2),
+            fixed_income_pct=round(fixed_income_amount / total_amount * Decimal('100'), 2),
+            other_pct=round(other_amount / total_amount * Decimal('100'), 2),
+        )
+
+    return PortfolioSummaryResponse()
+
+
+# ==================== 资产快照 ====================
+
+
+@router.post("/assets/snapshots", response_model=AssetSnapshotResponse, status_code=201)
+async def create_asset_snapshot(
+    data: AssetSnapshotCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """创建当前持仓快照"""
+    from datetime import date as date_type
+
+    # 获取当前持仓数据
+    items = db.query(AssetItem).filter(
+        AssetItem.owner_id == current_user.id
+    ).order_by(AssetItem.platform_id, AssetItem.sort_order).all()
+
+    platforms = db.query(AssetPlatform).filter(
+        AssetPlatform.owner_id == current_user.id
+    ).all()
+    platform_balances = {p.id: float(p.current_balance or 0) for p in platforms}
+
+    # 构建持仓明细快照
+    snapshot_items = []
+    total_from_items = Decimal('0')
+    for item in items:
+        amt = item.amount or Decimal('0')
+        total_from_items += amt
+        snapshot_items.append({
+            "id": item.id,
+            "name": item.name,
+            "code": item.code,
+            "amount": float(amt),
+            "stock_pct": float(item.stock_pct or 0),
+            "bond_pct": float(item.bond_pct or 0),
+            "cash_pct": float(item.cash_pct or 0),
+            "commodity_pct": float(item.commodity_pct or 0),
+            "fixed_income_pct": float(item.fixed_income_pct or 0),
+            "other_pct": float(item.other_pct or 0),
+            "platform_id": item.platform_id,
+            "platform_name": item.platform.name if item.platform else None
+        })
+
+    snapshot_data = json.dumps(snapshot_items, ensure_ascii=False)
+    platform_summary = json.dumps(platform_balances, ensure_ascii=False)
+
+    # 总资产用平台余额之和（更准确）
+    total_amount = sum((Decimal(str(v)) for v in platform_balances.values()), Decimal('0'))
+
+    today = date_type.today()
+    snapshot = AssetSnapshot(
+        owner_id=current_user.id,
+        snapshot_date=today,
+        snapshot_data=snapshot_data,
+        total_amount=round(total_amount, 2),
+        platform_summary=platform_summary,
+        notes=data.notes
+    )
+    db.add(snapshot)
+    db.commit()
+    db.refresh(snapshot)
+
+    return AssetSnapshotResponse.model_validate(snapshot)
+
+
+@router.get("/assets/snapshots", response_model=list[AssetSnapshotResponse])
+async def list_asset_snapshots(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取所有资产快照列表（最新的在前）"""
+    snapshots = db.query(AssetSnapshot).filter(
+        AssetSnapshot.owner_id == current_user.id
+    ).order_by(AssetSnapshot.snapshot_date.desc(), AssetSnapshot.id.desc()).all()
+
+    return [AssetSnapshotResponse.model_validate(s) for s in snapshots]
+
+
+@router.get("/assets/snapshots/{snapshot_id}", response_model=AssetSnapshotResponse)
+async def get_asset_snapshot(
+    snapshot_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取单个快照详情"""
+    snapshot = db.query(AssetSnapshot).filter(
+        AssetSnapshot.id == snapshot_id,
+        AssetSnapshot.owner_id == current_user.id
+    ).first()
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="快照不存在")
+    return AssetSnapshotResponse.model_validate(snapshot)
+
+
+# ==================== 固定资产 ====================
+
+
+@router.get("/assets/fixed-assets", response_model=list[FixedAssetResponse])
+async def list_fixed_assets(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取所有固定资产"""
+    assets = db.query(FixedAsset).filter(
+        FixedAsset.owner_id == current_user.id
+    ).order_by(FixedAsset.sort_order, FixedAsset.id).all()
+    return [FixedAssetResponse.model_validate(a) for a in assets]
+
+
+@router.post("/assets/fixed-assets", response_model=FixedAssetResponse, status_code=201)
+async def create_fixed_asset(
+    data: FixedAssetCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """创建固定资产"""
+    asset = FixedAsset(
+        owner_id=current_user.id,
+        name=data.name,
+        category=data.category,
+        estimated_value=data.estimated_value,
+        role=data.role,
+        monthly_rent=data.monthly_rent,
+        notes=data.notes,
+        sort_order=data.sort_order
+    )
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    return FixedAssetResponse.model_validate(asset)
+
+
+@router.put("/assets/fixed-assets/{asset_id}", response_model=FixedAssetResponse)
+async def update_fixed_asset(
+    asset_id: int,
+    data: FixedAssetUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """更新固定资产"""
+    asset = db.query(FixedAsset).filter(
+        FixedAsset.id == asset_id,
+        FixedAsset.owner_id == current_user.id
+    ).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="固定资产不存在")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(asset, key, value)
+    db.commit()
+    db.refresh(asset)
+    return FixedAssetResponse.model_validate(asset)
+
+
+@router.delete("/assets/fixed-assets/{asset_id}")
+async def delete_fixed_asset(
+    asset_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """删除固定资产"""
+    asset = db.query(FixedAsset).filter(
+        FixedAsset.id == asset_id,
+        FixedAsset.owner_id == current_user.id
+    ).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="固定资产不存在")
+    db.delete(asset)
+    db.commit()
+    return {"message": "固定资产已删除"}

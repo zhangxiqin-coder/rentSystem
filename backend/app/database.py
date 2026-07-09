@@ -41,6 +41,8 @@ def get_db() -> Generator[Session, None, None]:
 
 def create_tables():
     """创建所有数据库表"""
-    from app.models import User, Room, Payment, UtilityReading, UtilityRate, UtilityBill
+    from app.models import User, Room, Payment, UtilityReading, UtilityRate, UtilityBill, \
+        Tenant, LeaseRecord, \
+        AssetPlatform, AssetRecord, AssetItem
     Base.metadata.create_all(bind=engine)
     logging.info("数据库表创建成功")

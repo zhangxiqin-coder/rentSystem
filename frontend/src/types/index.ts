@@ -388,3 +388,82 @@ export interface AssetTrend {
   points: AssetTrendPoint[]
   platforms: PlatformTrendPoint[]
 }
+
+// ==================== 持仓明细类型 ====================
+
+export interface AssetItem {
+  id: number
+  name: string
+  code: string | null
+  amount: number
+  stock_pct: number
+  bond_pct: number
+  cash_pct: number
+  commodity_pct: number
+  fixed_income_pct: number
+  other_pct: number
+  platform_id: number | null
+  platform_name: string | null
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface PortfolioSummary {
+  total_amount: number
+  stock_amount: number
+  bond_amount: number
+  cash_amount: number
+  commodity_amount: number
+  fixed_income_amount: number
+  other_amount: number
+  stock_pct: number
+  bond_pct: number
+  cash_pct: number
+  commodity_pct: number
+  fixed_income_pct: number
+  other_pct: number
+}
+
+// ==================== 平台持仓项（含比例） ====================
+
+export interface PlatformItemDetail {
+  id: number
+  name: string
+  code: string | null
+  amount: number
+  stock_pct: number
+  bond_pct: number
+  cash_pct: number
+  commodity_pct: number
+  fixed_income_pct: number
+  other_pct: number
+  platform_name: string | null
+  pct_of_platform: number
+}
+
+export interface PlatformGroup {
+  platform_id: number | null
+  platform_name: string
+  platform_balance: number
+  items: PlatformItemDetail[]
+}
+
+export interface PlatformItemsResponse {
+  platforms: PlatformGroup[]
+}
+
+// ==================== 固定资产类型 ====================
+
+export interface FixedAsset {
+  id: number
+  name: string
+  category: string
+  estimated_value: number
+  role: string | null
+  monthly_rent: number | null
+  notes: string | null
+  sort_order: number
+  created_at: string
+  updated_at: string
+}

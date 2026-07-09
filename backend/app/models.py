@@ -373,3 +373,71 @@ class AssetRecord(Base):
 
     def __repr__(self):
         return f"<AssetRecord(id={self.id}, platform={self.platform_id}, type='{self.record_type}')>"
+
+
+class AssetItem(Base):
+    """个人资产持仓项（基金、ETF、组合等具体标的）"""
+    __tablename__ = "asset_items"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(100), nullable=False, comment="资产名称（如 易方达蓝筹精选、沪深300ETF）")
+    code = Column(String(20), nullable=True, comment="编号（如 001、002）")
+    amount = Column(DECIMAL(12, 2), default=Decimal('0'), comment="持仓金额")
+    stock_pct = Column(DECIMAL(5, 2), default=Decimal('0'), comment="股票占比%")
+    bond_pct = Column(DECIMAL(5, 2), default=Decimal('0'), comment="债权占比%")
+    cash_pct = Column(DECIMAL(5, 2), default=Decimal('0'), comment="现金占比%")
+    commodity_pct = Column(DECIMAL(5, 2), default=Decimal('0'), comment="商品占比%")
+    fixed_income_pct = Column(DECIMAL(5, 2), default=Decimal('0'), comment="固收占比%")
+    other_pct = Column(DECIMAL(5, 2), default=Decimal('0'), comment="其他占比%")
+    platform_id = Column(Integer, ForeignKey("asset_platforms.id"), nullable=True, index=True, comment="所属平台")
+    sort_order = Column(Integer, default=0, comment="排序")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    owner = relationship("User")
+    platform = relationship("AssetPlatform")
+
+    def __repr__(self):
+        return f"<AssetItem(id={self.id}, name='{self.name}', amount={self.amount})>"
+
+
+class AssetSnapshot(Base):
+    """资产持仓快照（每半月记录一次）"""
+    __tablename__ = "asset_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    snapshot_date = Column(Date, nullable=False, comment="快照日期")
+    snapshot_data = Column(Text, nullable=False, comment="快照数据 JSON，包含各平台持仓明细")
+    total_amount = Column(DECIMAL(12, 2), default=Decimal('0'), comment="快照时持仓总金额")
+    platform_summary = Column(Text, nullable=True, comment="平台余额快照 JSON")
+    notes = Column(String(200), nullable=True, comment="备注")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    owner = relationship("User")
+
+    def __repr__(self):
+        return f"<AssetSnapshot(id={self.id}, date={self.snapshot_date}, total={self.total_amount})>"
+
+
+class FixedAsset(Base):
+    """固定资产（房产等）"""
+    __tablename__ = "fixed_assets"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(100), nullable=False, comment="资产名称（如 府新花园）")
+    category = Column(String(50), nullable=False, comment="类别（如 住房、商业）")
+    estimated_value = Column(DECIMAL(12, 2), default=Decimal('0'), comment="估价")
+    role = Column(String(100), nullable=True, comment="角色/用途（如 保值、居住/改善、现金流机器）")
+    monthly_rent = Column(DECIMAL(12, 2), nullable=True, comment="月租金收入")
+    notes = Column(Text, nullable=True)
+    sort_order = Column(Integer, default=0, comment="排序")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    owner = relationship("User")
+
+    def __repr__(self):
+        return f"<FixedAsset(id={self.id}, name='{self.name}', value={self.estimated_value})>"

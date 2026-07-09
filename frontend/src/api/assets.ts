@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { AssetPlatform, AssetRecord, AssetSummary, AssetTrend } from '@/types'
+import type { AssetPlatform, AssetRecord, AssetSummary, AssetTrend, AssetItem, PortfolioSummary, PlatformItemsResponse, FixedAsset } from '@/types'
 
 // 手动创建带认证的请求
 async function authRequest<T>(config: {
@@ -131,5 +131,58 @@ export const assetApi = {
     total_net: number
   }> {
     return authRequest({ method: 'get', url: '/api/v1/assets/zhaopingfei-summary' })
+  },
+
+  // 持仓明细
+  async listItems(): Promise<AssetItem[]> {
+    return authRequest({ method: 'get', url: '/api/v1/assets/items' })
+  },
+
+  async createItem(data: {
+    name: string
+    code?: string | null
+    amount: number
+    stock_pct: number
+    bond_pct: number
+    cash_pct: number
+    commodity_pct: number
+    fixed_income_pct: number
+    other_pct: number
+    platform_id?: number | null
+  }): Promise<AssetItem> {
+    return authRequest({ method: 'post', url: '/api/v1/assets/items', data })
+  },
+
+  async updateItem(id: number, data: Partial<AssetItem>): Promise<AssetItem> {
+    return authRequest({ method: 'put', url: `/api/v1/assets/items/${id}`, data })
+  },
+
+  async deleteItem(id: number): Promise<void> {
+    await authRequest({ method: 'delete', url: `/api/v1/assets/items/${id}` })
+  },
+
+  async getPortfolioSummary(): Promise<PortfolioSummary> {
+    return authRequest({ method: 'get', url: '/api/v1/assets/portfolio-summary' })
+  },
+
+  async getPlatformItems(): Promise<PlatformItemsResponse> {
+    return authRequest({ method: 'get', url: '/api/v1/assets/platform-items' })
+  },
+
+  // 固定资产
+  async listFixedAssets(): Promise<FixedAsset[]> {
+    return authRequest({ method: 'get', url: '/api/v1/assets/fixed-assets' })
+  },
+
+  async createFixedAsset(data: { name: string; category: string; estimated_value: number; role?: string; monthly_rent?: number; notes?: string }): Promise<FixedAsset> {
+    return authRequest({ method: 'post', url: '/api/v1/assets/fixed-assets', data })
+  },
+
+  async updateFixedAsset(id: number, data: Partial<FixedAsset>): Promise<FixedAsset> {
+    return authRequest({ method: 'put', url: `/api/v1/assets/fixed-assets/${id}`, data })
+  },
+
+  async deleteFixedAsset(id: number): Promise<void> {
+    await authRequest({ method: 'delete', url: `/api/v1/assets/fixed-assets/${id}` })
   }
 }

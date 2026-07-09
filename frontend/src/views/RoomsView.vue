@@ -99,6 +99,12 @@ const totalMonthlyRent = computed(() => {
   return rooms.value.reduce((sum, room) => sum + Number(room.monthly_rent || 0), 0)
 })
 
+// 当前系列的总租金
+const seriesTotalRent = computed(() => {
+  if (activeSeriesTab.value === 'all') return totalMonthlyRent.value
+  return filteredRooms.value.reduce((sum, room) => sum + Number(room.monthly_rent || 0), 0)
+})
+
 const paginatedRooms = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
   const end = start + pageSize.value
@@ -581,6 +587,10 @@ onMounted(() => {
           :name="series"
         />
       </el-tabs>
+
+      <div v-if="activeSeriesTab !== 'all'" class="series-total-rent">
+        <strong>{{ activeSeriesTab }}</strong> 系列 · 月租合计 <strong>{{ formatAmount(seriesTotalRent) }}</strong>
+      </div>
 
       <!-- Filters -->
       <div class="filters">
@@ -1139,6 +1149,14 @@ onMounted(() => {
 
 .series-tabs :deep(.el-tabs__header) {
   margin-bottom: 0;
+}
+
+.series-total-rent {
+  font-size: 14px;
+  color: #606266;
+  padding: 10px 0 6px;
+  border-bottom: 1px solid #f0f0f0;
+  margin-bottom: 12px;
 }
 
 .filters {

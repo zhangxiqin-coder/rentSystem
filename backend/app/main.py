@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app.api import auth, rooms, payments, utility_readings, utility_rates, users, statistics, reminders, export, ocr, utility_bills, contracts, tenants, lease_records, assets
+from app.database import create_tables
 
 app = FastAPI(
     title="Rent Management System API",
@@ -179,6 +180,11 @@ async def health_check() -> Dict[str, Any]:
         return {"status": "healthy", "message": "Rent Management System API is running"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"健康检查失败: {str(e)}")
+
+# 启动时自动创建表
+@app.on_event("startup")
+async def on_startup():
+    create_tables()
 
 # 基础路由
 @app.get("/api/v1/health")
