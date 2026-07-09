@@ -55,7 +55,7 @@ const loadItems = async () => {
       assetApi.listItems(),
       assetApi.getPortfolioSummary()
     ])
-    items.value = itemList
+    items.value = itemList.sort((a, b) => b.amount - a.amount)
     portfolioSummary.value = summary
   } catch (error) {
     console.error('加载持仓数据失败', error)
@@ -460,6 +460,7 @@ const reportForm = ref({
 const reportLoading = ref(false)
 
 // 展开记录
+const activeAssetTab = ref('portfolio')
 const expandedPlatformIds = ref<Set<number>>(new Set())
 
 const loadSummary = async () => {
@@ -935,7 +936,9 @@ onUnmounted(() => {
       </el-card>
     </div>
 
-    <!-- 持仓组合 -->
+    <el-tabs v-model="activeAssetTab" class="asset-group-tabs">
+      <el-tab-pane label="📊 持仓组合" name="portfolio">
+        <!-- 持仓组合 -->
     <el-card v-loading="itemsLoading" class="portfolio-card">
       <div class="portfolio-header">
         <h3><el-icon :size="20"><PieIcon /></el-icon> 持仓组合</h3>
@@ -964,22 +967,25 @@ onUnmounted(() => {
                 <span class="item-name">{{ item.name }}</span>
                 <span v-if="item.code" class="item-code">#{{ item.code }}</span>
                 <span v-for="(pct, key) in { stock_pct: item.stock_pct, bond_pct: item.bond_pct, cash_pct: item.cash_pct, commodity_pct: item.commodity_pct, fixed_income_pct: item.fixed_income_pct, other_pct: item.other_pct }" :key="key">
-                  <el-tag v-if="Number(pct) > 0" size="small" :color="typeColors[key]" effect="dark" style="color:#fff;border:0">
+                  <el-tag v-if="Number(pct) > 0" size="small" :color="typeColors[key]" effect="dark" style="color:#fff;border:0; scale: 0.9;">
                     {{ typeLabels[key] }} {{ Number(pct).toFixed(0) }}%
                   </el-tag>
                 </span>
-                <el-tag v-if="item.platform_name" size="small" type="info">{{ item.platform_name }}</el-tag>
+              </div>
+              <span class="item-amount">{{ formatAmount(item.amount) }}</span>
+              <div class="item-actions">
                 <el-button text size="small" type="primary" @click="openEditItem(item)">编辑</el-button>
                 <el-button text size="small" type="danger" @click="deleteItem(item.id, item.name)">删除</el-button>
               </div>
-              <div class="item-amount">{{ formatAmount(item.amount) }}</div>
             </div>
           </div>
         </div>
       </template>
       <el-empty v-else description="暂无持仓数据，点击「添加持仓」开始录入" :image-size="80" />
     </el-card>
-    <!-- 固定资产 -->
+      </el-tab-pane>
+      <el-tab-pane label="🏠 固定资产" name="fixed">
+        <!-- 固定资产 -->
     <el-card v-loading="fixedAssetsLoading" class="fixed-assets-card">
       <div class="portfolio-header">
         <h3><el-icon :size="20"><HomeFilled /></el-icon> 固定资产</h3>
@@ -1021,8 +1027,8 @@ onUnmounted(() => {
       </template>
       <el-empty v-else description="暂无固定资产数据" :image-size="60" />
     </el-card>
-
-    <!-- 图表分析 -->
+      </el-tab-pane>
+    </el-tabs>    <!-- 图表分析 -->
     <el-card class="trend-card">
       <el-tabs v-model="activeChartTab">
         <!-- 趋势分析 -->
@@ -1125,6 +1131,7 @@ onUnmounted(() => {
                     </span>
                     <span class="pdi-amount">{{ formatAmount(item.amount) }}</span>
                     <span class="pdi-pct">{{ item.pct_of_platform.toFixed(1) }}%</span>
+                    <el-button text size="small" type="primary" @click="openEditItem(item as any)">编辑</el-button>
                   </div>
                 </div>
               </template>
@@ -1742,19 +1749,49 @@ onUnmounted(() => {
 .portfolio-pct-item strong { font-weight: 700; font-size: 14px; }
 .pct-badge { font-size: 11px; color: #fff; padding: 1px 6px; border-radius: 8px; margin-left: 2px; }
 .portfolio-content { display: flex; gap: 20px; }
-.portfolio-chart { width: 280px; flex-shrink: 0; }
-.portfolio-items { flex: 1; display: flex; flex-direction: column; gap: 12px; }
-.portfolio-item { border: 1px solid #f0f0f0; border-radius: 8px; padding: 10px 12px; }
-.item-header { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.item-name { font-size: 14px; font-weight: 600; color: #303133; }
-.item-code { font-size: 11px; color: #909399; background: #f5f7fa; padding: 1px 5px; border-radius: 3px; }
-.item-amount { font-size: 13px; color: #409EFF; font-weight: 600; margin-top: 4px; }
-.item-types { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.portfolio-chart { width: 240px; flex-shrink: 0; }
+.portfolio-items {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px 12px;
+  align-content: start;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.portfolio-items::-webkit-scrollbar { width: 5px; }
+.portfolio-items::-webkit-scrollbar-thumb { background: #dcdfe6; border-radius: 3px; }
+.portfolio-items::-webkit-scrollbar-thumb:hover { background: #c0c4cc; }
+.portfolio-item {
+  background: #fafbfc;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.portfolio-item:hover { border-color: #c0c4cc; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.item-header { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; min-width: 0; flex: 1; }
+.item-name { font-size: 13px; font-weight: 500; color: #303133; }
+.item-code { font-size: 10px; color: #909399; background: #f0f2f5; padding: 0 4px; border-radius: 2px; }
+.item-amount { font-size: 13px; color: #409EFF; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+.portfolio-item:hover .item-actions { opacity: 1; }
+.item-actions { display: flex; gap: 2px; flex-shrink: 0; opacity: 0; transition: opacity .15s; }
+.item-types { display: inline-flex; flex-wrap: wrap; gap: 2px; }
 .type-tag { font-size: 11px; font-weight: 500; background: #f0f0f0; padding: 1px 6px; border-radius: 8px; }
+.asset-group-tabs { margin-bottom: 16px; }
+.asset-group-tabs :deep(.el-tabs__header) { margin-bottom: 12px; }
+.asset-group-tabs :deep(.el-tabs__item) { font-size: 14px; font-weight: 600; }
 .header-actions { display: flex; gap: 8px; }
 @media (max-width: 768px) {
   .portfolio-content { flex-direction: column; }
   .portfolio-chart { width: 100%; }
+  .portfolio-items { grid-template-columns: 1fr; }
+  .item-actions { opacity: 1; }
 }
 
 </style>
