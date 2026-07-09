@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Wallet, Edit, TrendCharts, Download, Coin, PieChart as PieIcon, Loading, HomeFilled } from '@element-plus/icons-vue'
+import { Plus, Wallet, Edit, TrendCharts, Download, Coin, PieChart as PieIcon, Loading, HomeFilled, Search } from '@element-plus/icons-vue'
 import { assetApi } from '@/api/assets'
 import { useAmountVisibility } from '@/composables/useAmountVisibility'
 import { useAuthStore } from '@/stores/auth'
@@ -36,6 +36,8 @@ const { hideAmounts, formatAmount } = useAmountVisibility()
 const items = ref<AssetItem[]>([])
 const portfolioSummary = ref<PortfolioSummary | null>(null)
 const itemsLoading = ref(false)
+const portfolioSearch = ref('')
+const portfolioFilterType = ref('')
 
 // 平台持仓数据（含比例）
 const platformItemsData = ref<PlatformGroup[]>([])
@@ -63,6 +65,39 @@ const loadItems = async () => {
     itemsLoading.value = false
   }
 }
+
+// 筛选+排序后的持仓项
+const filteredItems = computed(() => {
+  let result = items.value
+  // 按类型筛选
+  if (portfolioFilterType.value) {
+    result = result.filter(item => Number((item as any)[portfolioFilterType.value]) > 0)
+  }
+  // 按名称搜索
+  if (portfolioSearch.value.trim()) {
+    const q = portfolioSearch.value.trim().toLowerCase()
+    result = result.filter(item =>
+      item.name.toLowerCase().includes(q) ||
+      (item.code || '').toLowerCase().includes(q)
+    )
+  }
+  return result
+})
+
+// 每个标的占持仓总额的比例
+const itemWeight = (item: AssetItem) => {
+  if (!portfolioSummary.value || portfolioSummary.value.total_amount <= 0) return 0
+  return (item.amount / portfolioSummary.value.total_amount * 100)
+}
+
+// 构建平台名映射，用于hover显示
+const platformNameMap = computed(() => {
+  const m = new Map<number, string>()
+  for (const pg of platformItemsData.value) {
+    m.set(pg.platform_id, pg.platform_name)
+  }
+  return m
+})
 
 const loadPlatformItems = async () => {
   platformItemsLoading.value = true
@@ -180,14 +215,18 @@ const balanceTrendOption = computed(() => {
         return html
       }
     },
-    grid: { left: 80, right: 40, top: 20, bottom: 40 },
-    xAxis: { type: 'category', data: dates, axisLabel: { rotate: 30, fontSize: 11 } },
+    grid: { left: 80, right: 40, top: 20, bottom: 50 },
+    xAxis: { type: 'category', data: dates, axisLabel: { rotate: 0, fontSize: 11, formatter: (v: string) => v.slice(5) } },
     yAxis: {
       type: 'value',
       name: '总资产 (¥)',
       min: 0,
       axisLabel: { formatter: (v: number) => v >= 10000 ? (v / 10000).toFixed(0) + '万' : v.toFixed(0) }
     },
+    dataZoom: [
+      { type: 'inside', start: 0, end: 100 },
+      { type: 'slider', start: 0, end: 100, height: 18, bottom: 8 }
+    ],
     series: [{
       name: '总资产',
       type: 'line',
@@ -235,8 +274,12 @@ const earningsTrendOption = computed(() => {
       }
     },
     legend: { data: ['本年总资产', '当年收益'], top: 0, right: 20, textStyle: { fontSize: 12 } },
-    grid: { left: 80, right: 60, top: 30, bottom: 40 },
-    xAxis: { type: 'category', data: dates, axisLabel: { rotate: 30, fontSize: 11 } },
+    grid: { left: 80, right: 60, top: 30, bottom: 50 },
+    xAxis: { type: 'category', data: dates, axisLabel: { rotate: 0, fontSize: 11, formatter: (v: string) => v.slice(5) } },
+    dataZoom: [
+      { type: 'inside', start: 0, end: 100 },
+      { type: 'slider', start: 0, end: 100, height: 18, bottom: 8 }
+    ],
     yAxis: [
       {
         type: 'value',
@@ -961,21 +1004,49 @@ onUnmounted(() => {
           <div v-if="portfolioOption" class="portfolio-chart">
             <VChart :option="portfolioOption" autoresize style="width:100%;height:260px" />
           </div>
-          <div class="portfolio-items">
-            <div v-for="item in items" :key="item.id" class="portfolio-item">
-              <div class="item-header">
-                <span class="item-name">{{ item.name }}</span>
-                <span v-if="item.code" class="item-code">#{{ item.code }}</span>
-                <span v-for="(pct, key) in { stock_pct: item.stock_pct, bond_pct: item.bond_pct, cash_pct: item.cash_pct, commodity_pct: item.commodity_pct, fixed_income_pct: item.fixed_income_pct, other_pct: item.other_pct }" :key="key">
-                  <el-tag v-if="Number(pct) > 0" size="small" :color="typeColors[key]" effect="dark" style="color:#fff;border:0; scale: 0.9;">
-                    {{ typeLabels[key] }} {{ Number(pct).toFixed(0) }}%
-                  </el-tag>
-                </span>
+          <div class="portfolio-items-wrap">
+            <div class="portfolio-filter-bar">
+              <el-input
+                v-model="portfolioSearch"
+                placeholder="搜索名称/编号..."
+                size="small"
+                clearable
+                :prefix-icon="Search"
+                style="width:180px"
+              />
+              <el-radio-group v-model="portfolioFilterType" size="small">
+                <el-radio-button value="">全部</el-radio-button>
+                <el-radio-button value="stock_pct">股基</el-radio-button>
+                <el-radio-button value="bond_pct">债券</el-radio-button>
+                <el-radio-button value="cash_pct">现金</el-radio-button>
+                <el-radio-button value="fixed_income_pct">固收</el-radio-button>
+                <el-radio-button value="other_pct">其他</el-radio-button>
+              </el-radio-group>
+            </div>
+            <div class="portfolio-items">
+              <div v-for="item in filteredItems" :key="item.id" class="portfolio-item"
+                :title="platformNameMap.get(item.platform_id) ? `所属平台：${platformNameMap.get(item.platform_id)}` : '未分配平台'">
+                <div class="item-header">
+                  <span class="item-name">{{ item.name }}</span>
+                  <span v-if="item.code" class="item-code">#{{ item.code }}</span>
+                  <span v-if="platformNameMap.get(item.platform_id)" class="item-platform">{{ platformNameMap.get(item.platform_id) }}</span>
+                  <span v-for="(pct, key) in { stock_pct: item.stock_pct, bond_pct: item.bond_pct, cash_pct: item.cash_pct, commodity_pct: item.commodity_pct, fixed_income_pct: item.fixed_income_pct, other_pct: item.other_pct }" :key="key">
+                    <el-tag v-if="Number(pct) > 0" size="small" :color="typeColors[key]" effect="dark" style="color:#fff;border:0; scale: 0.9;">
+                      {{ typeLabels[key] }} {{ Number(pct).toFixed(0) }}%
+                    </el-tag>
+                  </span>
+                </div>
+                <div class="item-right">
+                  <span class="item-weight">{{ itemWeight(item).toFixed(1) }}%</span>
+                  <span class="item-amount">{{ formatAmount(item.amount) }}</span>
+                </div>
+                <div class="item-actions">
+                  <el-button text size="small" type="primary" @click="openEditItem(item)">编辑</el-button>
+                  <el-button text size="small" type="danger" @click="deleteItem(item.id, item.name)">删除</el-button>
+                </div>
               </div>
-              <span class="item-amount">{{ formatAmount(item.amount) }}</span>
-              <div class="item-actions">
-                <el-button text size="small" type="primary" @click="openEditItem(item)">编辑</el-button>
-                <el-button text size="small" type="danger" @click="deleteItem(item.id, item.name)">删除</el-button>
+              <div v-if="filteredItems.length === 0" class="portfolio-empty-filter">
+                没有匹配的持仓
               </div>
             </div>
           </div>
@@ -1763,6 +1834,11 @@ onUnmounted(() => {
 .portfolio-items::-webkit-scrollbar { width: 5px; }
 .portfolio-items::-webkit-scrollbar-thumb { background: #dcdfe6; border-radius: 3px; }
 .portfolio-items::-webkit-scrollbar-thumb:hover { background: #c0c4cc; }
+.portfolio-filter-bar { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; align-items: center; }
+.portfolio-empty-filter { grid-column: 1 / -1; text-align: center; color: #909399; padding: 20px; font-size: 13px; }
+.item-platform { font-size: 10px; color: #909399; background: #f0f9ff; border: 1px solid #d0e8ff; padding: 0 4px; border-radius: 2px; }
+.item-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.item-weight { font-size: 11px; color: #909399; font-weight: 500; white-space: nowrap; }
 .portfolio-item {
   background: #fafbfc;
   border: 1px solid #ebeef5;
