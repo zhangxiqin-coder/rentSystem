@@ -846,8 +846,8 @@ def get_rent_payment_status(
             continue
         if _has_recent_rent_payment(room.id, payments, max(1, room.payment_cycle or 1)):
             continue
-        if room.lease_start and room.lease_start > today:
-            continue
+        # 注意：不跳过 lease_start > today 的房间
+        # 因为新租约即使尚未开始，首次付款日可能在即将到期的窗口内
 
         days = _get_next_payment_days_with_config(room, payments)
         if days > advance_rent_days and days <= expiring_days:
