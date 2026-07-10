@@ -148,7 +148,7 @@ const loading = ref(false)
 const summary = ref<AssetSummary | null>(null)
 
 // 图表相关
-const activeChartTab = ref('trend')
+const activeChartTab = ref('portfolio')
 const expandedTrendCharts = ref('balance')
 const expandedAssetCharts = ref('distribution')
 
@@ -979,127 +979,7 @@ onUnmounted(() => {
       </el-card>
     </div>
 
-    <el-tabs v-model="activeAssetTab" class="asset-group-tabs">
-      <el-tab-pane label="📊 持仓组合" name="portfolio">
-        <!-- 持仓组合 -->
-    <el-card v-loading="itemsLoading" class="portfolio-card">
-      <div class="portfolio-header">
-        <h3><el-icon :size="20"><PieIcon /></el-icon> 持仓组合</h3>
-        <el-button type="primary" size="small" :icon="Plus" @click="openAddItem">添加持仓</el-button>
-      </div>
-
-      <template v-if="portfolioSummary && portfolioSummary.total_amount > 0">
-        <div class="portfolio-summary">
-          <div class="portfolio-total">持仓总金额：<strong>{{ formatAmount(portfolioSummary.total_amount) }}</strong></div>
-          <div class="portfolio-pct-row">
-            <span v-for="(pct, key) in { stock_pct: '股基', bond_pct: '债券', cash_pct: '现金', commodity_pct: '商品', fixed_income_pct: '固收', other_pct: '其他' }" :key="key"
-              class="portfolio-pct-item" :style="{ color: (typeColors as any)[key] }">
-              {{ pct }} <strong>{{ portfolioSummary ? formatAmount((portfolioSummary as any)[key.replace('_pct', '_amount')]) : 0 }}</strong>
-              <span class="pct-badge" :style="{ background: (typeColors as any)[key] }">{{ portfolioSummary ? Number((portfolioSummary as any)[key]).toFixed(1) + '%' : '0%' }}</span>
-            </span>
-          </div>
-        </div>
-
-        <div class="portfolio-content">
-          <div v-if="portfolioOption" class="portfolio-chart">
-            <VChart :option="portfolioOption" autoresize style="width:100%;height:260px" />
-          </div>
-          <div class="portfolio-items-wrap">
-            <div class="portfolio-filter-bar">
-              <el-input
-                v-model="portfolioSearch"
-                placeholder="搜索名称/编号..."
-                size="small"
-                clearable
-                :prefix-icon="Search"
-                style="width:180px"
-              />
-              <el-radio-group v-model="portfolioFilterType" size="small">
-                <el-radio-button value="">全部</el-radio-button>
-                <el-radio-button value="stock_pct">股基</el-radio-button>
-                <el-radio-button value="bond_pct">债券</el-radio-button>
-                <el-radio-button value="cash_pct">现金</el-radio-button>
-                <el-radio-button value="fixed_income_pct">固收</el-radio-button>
-                <el-radio-button value="other_pct">其他</el-radio-button>
-              </el-radio-group>
-            </div>
-            <div class="portfolio-items">
-              <div v-for="item in filteredItems" :key="item.id" class="portfolio-item"
-                :title="platformNameMap.get(item.platform_id) ? `所属平台：${platformNameMap.get(item.platform_id)}` : '未分配平台'">
-                <div class="item-header">
-                  <span class="item-name">{{ item.name }}</span>
-                  <span v-if="item.code" class="item-code">#{{ item.code }}</span>
-                  <span v-if="platformNameMap.get(item.platform_id)" class="item-platform">{{ platformNameMap.get(item.platform_id) }}</span>
-                  <span v-for="(pct, key) in { stock_pct: item.stock_pct, bond_pct: item.bond_pct, cash_pct: item.cash_pct, commodity_pct: item.commodity_pct, fixed_income_pct: item.fixed_income_pct, other_pct: item.other_pct }" :key="key">
-                    <el-tag v-if="Number(pct) > 0" size="small" :color="typeColors[key]" effect="dark" style="color:#fff;border:0; scale: 0.9;">
-                      {{ typeLabels[key] }} {{ Number(pct).toFixed(0) }}%
-                    </el-tag>
-                  </span>
-                </div>
-                <div class="item-right">
-                  <span class="item-weight">{{ itemWeight(item).toFixed(1) }}%</span>
-                  <span class="item-amount">{{ formatAmount(item.amount) }}</span>
-                </div>
-                <div class="item-actions">
-                  <el-button text size="small" type="primary" @click="openEditItem(item)">编辑</el-button>
-                  <el-button text size="small" type="danger" @click="deleteItem(item.id, item.name)">删除</el-button>
-                </div>
-              </div>
-              <div v-if="filteredItems.length === 0" class="portfolio-empty-filter">
-                没有匹配的持仓
-              </div>
-            </div>
-          </div>
-        </div>
-      </template>
-      <el-empty v-else description="暂无持仓数据，点击「添加持仓」开始录入" :image-size="80" />
-    </el-card>
-      </el-tab-pane>
-      <el-tab-pane label="🏠 固定资产" name="fixed">
-        <!-- 固定资产 -->
-    <el-card v-loading="fixedAssetsLoading" class="fixed-assets-card">
-      <div class="portfolio-header">
-        <h3><el-icon :size="20"><HomeFilled /></el-icon> 固定资产</h3>
-        <span class="fixed-assets-total">估值总计 <strong>{{ formatAmount(fixedAssetsTotal) }}</strong></span>
-      </div>
-      <template v-if="fixedAssets.length > 0">
-        <div class="fixed-assets-list">
-          <div v-for="asset in fixedAssets" :key="asset.id" class="fixed-asset-row">
-            <div class="fixed-asset-info">
-              <span class="fixed-asset-name">{{ asset.name }}</span>
-              <span class="fixed-asset-role">{{ asset.role }}</span>
-            </div>
-            <div class="fixed-asset-value">
-              <span class="fixed-asset-estimate">{{ formatAmount(asset.estimated_value) }}</span>
-              <span v-if="asset.monthly_rent && asset.monthly_rent > 0" class="fixed-asset-rent">月租金 {{ formatAmount(asset.monthly_rent) }}</span>
-            </div>
-          </div>
-        </div>
-        <!-- 2026年租金概算 -->
-        <div class="rental-income-section">
-          <div class="rental-income-title"><el-icon :size="16"><Coin /></el-icon> 2026年租金收入概算</div>
-          <div class="rental-income-summary">
-            <span>1-3月(评估): <strong>{{ formatAmount(estimatedRent * 3) }}</strong></span>
-            <span>4-6月(实际): <strong>{{ formatAmount(currentRent * 3) }}</strong></span>
-            <span>已收合计: <strong>{{ formatAmount(rentalYtd) }}</strong></span>
-          </div>
-          <div class="rental-income-summary" style="margin-top:4px">
-            <span>7-12月预估: <strong>{{ formatAmount(rentalProjected) }}</strong></span>
-            <span>全年预估: <strong>{{ formatAmount(rentalFullYear) }}</strong></span>
-          </div>
-          <div class="rental-income-note">1-3月按评估¥36,000/月，4月起按实际¥38,220/月</div>
-        </div>
-        <!-- 租金来源说明 -->
-        <div class="fixed-assets-note">
-          <div class="note-item"><span class="note-dot" style="background:#409EFF" /><strong>新湖果岭</strong> 月租金 ¥5,750 = 2-2501系列5间+车位</div>
-          <div class="note-item"><span class="note-dot" style="background:#E6A23C" /><strong>4套无证房</strong> 月租金 ¥32,470 = 其他23间房的租金合计</div>
-          <div class="note-item note-valuation"><span class="note-dot" style="background:#67C23A" /><strong>无证房估值说明</strong>：年租金¥389,640 ÷ 5% ≈ ¥779万，保守取整 <strong>¥700万</strong></div>
-        </div>
-      </template>
-      <el-empty v-else description="暂无固定资产数据" :image-size="60" />
-    </el-card>
-      </el-tab-pane>
-    </el-tabs>    <!-- 图表分析 -->
+    <!-- 图表分析 -->
     <el-card class="trend-card">
       <el-tabs v-model="activeChartTab">
         <!-- 趋势分析 -->
@@ -1148,6 +1028,116 @@ onUnmounted(() => {
               </div>
             </el-collapse-item>
           </el-collapse>
+        </el-tab-pane>
+
+        <!-- 📊 持仓组合 -->
+        <el-tab-pane label="📊 持仓组合" name="portfolio">
+          <div v-loading="itemsLoading" class="portfolio-inner">
+            <div class="portfolio-header">
+              <h3><el-icon :size="20"><PieIcon /></el-icon> 持仓组合</h3>
+              <el-button type="primary" size="small" :icon="Plus" @click="openAddItem">添加持仓</el-button>
+            </div>
+
+            <template v-if="portfolioSummary && portfolioSummary.total_amount > 0">
+              <div class="portfolio-summary">
+                <div class="portfolio-total">持仓总金额：<strong>{{ formatAmount(portfolioSummary.total_amount) }}</strong></div>
+                <div class="portfolio-pct-row">
+                  <span v-for="(pct, key) in { stock_pct: '股基', bond_pct: '债券', cash_pct: '现金', commodity_pct: '商品', fixed_income_pct: '固收', other_pct: '其他' }" :key="key"
+                    class="portfolio-pct-item" :style="{ color: (typeColors as any)[key] }">
+                    {{ pct }} <strong>{{ portfolioSummary ? formatAmount((portfolioSummary as any)[key.replace('_pct', '_amount')]) : 0 }}</strong>
+                    <span class="pct-badge" :style="{ background: (typeColors as any)[key] }">{{ portfolioSummary ? Number((portfolioSummary as any)[key]).toFixed(1) + '%' : '0%' }}</span>
+                  </span>
+                </div>
+              </div>
+
+              <div class="portfolio-content">
+                <div v-if="portfolioOption" class="portfolio-chart">
+                  <VChart :option="portfolioOption" autoresize style="width:100%;height:260px" />
+                </div>
+                <div class="portfolio-items-wrap">
+                  <div class="portfolio-filter-bar">
+                    <el-input v-model="portfolioSearch" placeholder="搜索名称/编号..." size="small" clearable :prefix-icon="Search" style="width:180px" />
+                    <el-radio-group v-model="portfolioFilterType" size="small">
+                      <el-radio-button value="">全部</el-radio-button>
+                      <el-radio-button value="stock_pct">股基</el-radio-button>
+                      <el-radio-button value="bond_pct">债券</el-radio-button>
+                      <el-radio-button value="cash_pct">现金</el-radio-button>
+                      <el-radio-button value="fixed_income_pct">固收</el-radio-button>
+                      <el-radio-button value="other_pct">其他</el-radio-button>
+                    </el-radio-group>
+                  </div>
+                  <div class="portfolio-items">
+                    <div v-for="item in filteredItems" :key="item.id" class="portfolio-item"
+                      :title="platformNameMap.get(item.platform_id) ? `所属平台：${platformNameMap.get(item.platform_id)}` : '未分配平台'">
+                      <div class="item-header">
+                        <span class="item-name">{{ item.name }}</span>
+                        <span v-if="item.code" class="item-code">#{{ item.code }}</span>
+                        <span v-if="platformNameMap.get(item.platform_id)" class="item-platform">{{ platformNameMap.get(item.platform_id) }}</span>
+                        <span v-for="(pct, key) in { stock_pct: item.stock_pct, bond_pct: item.bond_pct, cash_pct: item.cash_pct, commodity_pct: item.commodity_pct, fixed_income_pct: item.fixed_income_pct, other_pct: item.other_pct }" :key="key">
+                          <el-tag v-if="Number(pct) > 0" size="small" :color="typeColors[key]" effect="dark" style="color:#fff;border:0; scale: 0.9;">
+                            {{ typeLabels[key] }} {{ Number(pct).toFixed(0) }}%
+                          </el-tag>
+                        </span>
+                      </div>
+                      <div class="item-right">
+                        <span class="item-weight">{{ itemWeight(item).toFixed(1) }}%</span>
+                        <span class="item-amount">{{ formatAmount(item.amount) }}</span>
+                      </div>
+                      <div class="item-actions">
+                        <el-button text size="small" type="primary" @click="openEditItem(item)">编辑</el-button>
+                        <el-button text size="small" type="danger" @click="deleteItem(item.id, item.name)">删除</el-button>
+                      </div>
+                    </div>
+                    <div v-if="filteredItems.length === 0" class="portfolio-empty-filter">没有匹配的持仓</div>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <el-empty v-else description="暂无持仓数据，点击「添加持仓」开始录入" :image-size="80" />
+          </div>
+        </el-tab-pane>
+
+        <!-- 🏠 固定资产 -->
+        <el-tab-pane label="🏠 固定资产" name="fixed">
+          <div v-loading="fixedAssetsLoading" class="portfolio-inner">
+            <div class="portfolio-header">
+              <h3><el-icon :size="20"><HomeFilled /></el-icon> 固定资产</h3>
+              <span class="fixed-assets-total">估值总计 <strong>{{ formatAmount(fixedAssetsTotal) }}</strong></span>
+            </div>
+            <template v-if="fixedAssets.length > 0">
+              <div class="fixed-assets-list">
+                <div v-for="asset in fixedAssets" :key="asset.id" class="fixed-asset-row">
+                  <div class="fixed-asset-info">
+                    <span class="fixed-asset-name">{{ asset.name }}</span>
+                    <span class="fixed-asset-role">{{ asset.role }}</span>
+                  </div>
+                  <div class="fixed-asset-value">
+                    <span class="fixed-asset-estimate">{{ formatAmount(asset.estimated_value) }}</span>
+                    <span v-if="asset.monthly_rent && asset.monthly_rent > 0" class="fixed-asset-rent">月租金 {{ formatAmount(asset.monthly_rent) }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="rental-income-section">
+                <div class="rental-income-title"><el-icon :size="16"><Coin /></el-icon> 2026年租金收入概算</div>
+                <div class="rental-income-summary">
+                  <span>1-3月(评估): <strong>{{ formatAmount(estimatedRent * 3) }}</strong></span>
+                  <span>4-6月(实际): <strong>{{ formatAmount(currentRent * 3) }}</strong></span>
+                  <span>已收合计: <strong>{{ formatAmount(rentalYtd) }}</strong></span>
+                </div>
+                <div class="rental-income-summary" style="margin-top:4px">
+                  <span>7-12月预估: <strong>{{ formatAmount(rentalProjected) }}</strong></span>
+                  <span>全年预估: <strong>{{ formatAmount(rentalFullYear) }}</strong></span>
+                </div>
+                <div class="rental-income-note">1-3月按评估¥36,000/月，4月起按实际¥38,220/月</div>
+              </div>
+              <div class="fixed-assets-note">
+                <div class="note-item"><span class="note-dot" style="background:#409EFF" /><strong>新湖果岭</strong> 月租金 ¥5,750 = 2-2501系列5间+车位</div>
+                <div class="note-item"><span class="note-dot" style="background:#E6A23C" /><strong>4套无证房</strong> 月租金 ¥32,470 = 其他23间房的租金合计</div>
+                <div class="note-item note-valuation"><span class="note-dot" style="background:#67C23A" /><strong>无证房估值说明</strong>：年租金¥389,640 ÷ 5% ≈ ¥779万，保守取整 <strong>¥700万</strong></div>
+              </div>
+            </template>
+            <el-empty v-else description="暂无固定资产数据" :image-size="60" />
+          </div>
         </el-tab-pane>
       </el-tabs>
     </el-card>
@@ -1809,6 +1799,7 @@ onUnmounted(() => {
 
 
 /* 持仓组合 */
+.portfolio-inner { padding: 4px 0; }
 .portfolio-card { margin-bottom: 16px; }
 .portfolio-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .portfolio-header h3 { margin: 0; display: flex; align-items: center; gap: 6px; }

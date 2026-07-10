@@ -1,0 +1,14 @@
+#!/bin/bash
+# 检测 password_hash 是否被意外修改
+# 如果 git commit 中包含 users 表的 password_hash 变更，警告并阻止
+
+cd "$(git rev-parse --show-toplevel)"
+
+# 提取待提交版本和工作区版本的 password_hash
+STAGED_HASH=$(git show :backend/rent_management.db 2>/dev/null | strings | grep -o '\$2b\$12\$[a-zA-Z0-9./]*' | head -1 || echo "")
+if [ -n "$STAGED_HASH" ]; then
+    echo "⚠️  警告: 本次提交包含数据库文件变更"
+    echo "   如果不是故意修改密码/用户数据，请检查是否意外覆盖了 rent_management.db"
+    echo "   如需重置密码: python3 backend/tools/reset_password.py"
+    echo ""
+fi
