@@ -560,7 +560,7 @@ def renew_lease(
     # 计算新的租期结束日期（在原结束日期基础上增加月数）
     new_lease_end = old_lease_end + relativedelta(months=renew_data.months)
     
-    # 更新房间信息
+    # 更新房间信息（注意：不更新 lease_start，续租只延长结束日期）
     room.lease_end = new_lease_end
     
     # 更新月租金（如果提供）
