@@ -138,20 +138,24 @@ def get_expiring_rooms(
         # 计算下次收租日期
         # 始终使用lease_start的日（day of month）来确保付款日期一致
         
-        # 确定起点：如果有last_payment_date，使用它；否则使用lease_start
-        base_date = room.last_payment_date or room.lease_start
+        # 确定起点和下次付款日
+        lease_start_day = room.lease_start.day
         
-        # 计算下次付款：base_date + payment_cycle个月
-        next_payment = base_date + relativedelta(months=room.payment_cycle)
+        if room.last_payment_date is None:
+            # 新租约/续租，首次付款 = lease_start
+            next_payment = room.lease_start
+        else:
+            # 有交租记录：base_date + payment_cycle个月
+            base_date = room.last_payment_date
+            next_payment = base_date + relativedelta(months=room.payment_cycle)
         
         # 重要：修正付款日为lease_start的日
         # 例如：lease_start是8-23，last_payment是4-17，则下次付款应该是5-23（不是5-17）
         # 但如果base_date已经是正确的日（比如4-23），则保持不变
         lease_start_day = room.lease_start.day
         
-        # 检查next_payment的日是否正确
-        # 如果不正确，需要调整到正确的日
-        if next_payment.day != lease_start_day:
+        # 检查next_payment的日是否正确（仅当有last_payment时需要修正）
+        if room.last_payment_date is not None and next_payment.day != lease_start_day:
             # 重新计算：从base_date的年月开始，使用lease_start的日
             import calendar
             year = next_payment.year
@@ -173,6 +177,10 @@ def get_expiring_rooms(
             next_payment = adjusted
         
         # 检查是否在未来N天内需要收租
+        # 如果计算出的下次交租日已过（如续租后last_payment_date是旧的），递推到未来
+        while next_payment < today:
+            next_payment = next_payment + relativedelta(months=room.payment_cycle)
+        
         if today <= next_payment <= end_date:
             # 将Room对象转换为字典并添加next_payment_date
             room_dict = {
@@ -597,6 +605,10 @@ def renew_lease(
             owner_id=current_user.id
         )
         db.add(new_lease)
+        
+        # 更新房间的 last_payment_date 为新租约开始日
+        # 设为NULL让到期计算回退到lease_start（首次付款=lease_start）
+        room.last_payment_date = None
     
     db.commit()
     db.refresh(room)
