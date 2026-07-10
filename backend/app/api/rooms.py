@@ -136,26 +136,25 @@ def get_expiring_rooms(
             continue
         
         # 计算下次收租日期
-        # 始终使用lease_start的日（day of month）来确保付款日期一致
         
-        # 确定起点和下次付款日
-        lease_start_day = room.lease_start.day
+        # 确定付款日基准。优先用 active lease 的 lease_start（新租约可能和首次入住日期不同）
+        active_lease = db.query(LeaseRecord).filter(
+            LeaseRecord.room_id == room.id,
+            LeaseRecord.is_active == True
+        ).first()
+        ref_lease_start = active_lease.lease_start if active_lease else room.lease_start
+        payment_day = ref_lease_start.day
         
         if room.last_payment_date is None:
-            # 新租约/续租，首次付款 = lease_start
-            next_payment = room.lease_start
+            # 新租约/续租，首次付款 = 活跃租约的 lease_start
+            next_payment = ref_lease_start
         else:
             # 有交租记录：base_date + payment_cycle个月
             base_date = room.last_payment_date
             next_payment = base_date + relativedelta(months=room.payment_cycle)
         
-        # 重要：修正付款日为lease_start的日
-        # 例如：lease_start是8-23，last_payment是4-17，则下次付款应该是5-23（不是5-17）
-        # 但如果base_date已经是正确的日（比如4-23），则保持不变
-        lease_start_day = room.lease_start.day
-        
-        # 检查next_payment的日是否正确（仅当有last_payment时需要修正）
-        if room.last_payment_date is not None and next_payment.day != lease_start_day:
+        # 重要：修正付款日为活跃租约 lease_start 的日
+        if room.last_payment_date is not None and next_payment.day != payment_day:
             # 重新计算：从base_date的年月开始，使用lease_start的日
             import calendar
             year = next_payment.year
@@ -163,7 +162,7 @@ def get_expiring_rooms(
             
             # 确保日期有效（比如2月30日会变成2月28日）
             max_day = calendar.monthrange(year, month)[1]
-            day = min(lease_start_day, max_day)
+            day = min(payment_day, max_day)
             
             # 如果调整后的日期 <= base_date，说明需要加一个月
             adjusted = date(year, month, day)
@@ -171,7 +170,7 @@ def get_expiring_rooms(
                 adjusted = adjusted + relativedelta(months=1)
                 # 重新检查日
                 max_day = calendar.monthrange(adjusted.year, adjusted.month)[1]
-                day = min(lease_start_day, max_day)
+                day = min(payment_day, max_day)
                 adjusted = date(adjusted.year, adjusted.month, day)
             
             next_payment = adjusted

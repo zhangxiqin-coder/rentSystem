@@ -245,10 +245,11 @@ def renew_tenant_lease(
     )
     db.add(new_lease)
     
-    # 4. 更新房间租期
-    room.lease_start = new_lease_start
+    # 4. 更新房间租期（不更新 lease_start，仅延长结束日期和月租金）
     room.lease_end = new_lease_end
     room.monthly_rent = new_monthly_rent
+    # 续租后清空 last_payment_date，让首次付款=新租约开始日
+    room.last_payment_date = None
     
     # 5. 租客状态改为 active
     tenant.status = 'active'
