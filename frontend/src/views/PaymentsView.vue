@@ -631,9 +631,20 @@ const monthlyStats = computed(() => {
   })
 
   // 转为数组并按月份排序
-  return Object.entries(stats)
+  let result = Object.entries(stats)
     .map(([month, data]) => ({ month, ...data }))
     .sort((a, b) => a.month.localeCompare(b.month))
+
+  // 只显示最近6个月（最早从2026年4月开始）
+  const now = new Date()
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1) // 当前月+往前5个月=6个月
+  const cutoffMonth = sixMonthsAgo.toISOString().slice(0, 7) // 'YYYY-MM'
+  const minStartMonth = '2026-04'
+  const effectiveStart = cutoffMonth > minStartMonth ? cutoffMonth : minStartMonth
+
+  result = result.filter(s => s.month >= effectiveStart)
+
+  return result
 })
 
 // 图表配置
