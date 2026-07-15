@@ -586,18 +586,11 @@ def _has_paid_this_month(
         if p.payment_type != 'rent':
             continue
         if p.payment_date.year == today.year and p.payment_date.month == today.month:
-            # 如果有本月支付记录，检查下月是否即将到期
-            days_to_next = get_next_payment_days_func(room, payments)
-            if days_to_next <= expiring_days:
-                return False  # 让它出现在即将到期列表
-            return True
+            return True  # 本月已交租，不显示在到期/逾期列表
 
     # 历史导入场景：没有 payment 记录，但 last_payment_date 已更新
     if room.last_payment_date:
         if room.last_payment_date.year == today.year and room.last_payment_date.month == today.month:
-            days_to_next = get_next_payment_days_func(room, payments)
-            if days_to_next <= expiring_days:
-                return False
             return True
 
     return False
