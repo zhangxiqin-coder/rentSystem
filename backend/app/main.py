@@ -32,6 +32,9 @@ _EXPLICIT_ALLOWED_ORIGINS = {
     # 开发环境
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    # 域名访问
+    "https://fangdong.fun",
+    "http://fangdong.fun",
 }
 
 
