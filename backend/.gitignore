@@ -28,3 +28,4 @@ htmlcov/
 # Environment
 .env
 .env.local
+turso_cache.db

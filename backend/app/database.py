@@ -12,13 +12,17 @@ TURSO_URL = os.getenv("TURSO_DATABASE_URL")
 TURSO_TOKEN = os.getenv("TURSO_AUTH_TOKEN")
 
 if TURSO_URL and TURSO_TOKEN:
-    # Turso libSQL 连接
-    # 必须用 libsql.connect("remote", ...) 模式才能正确连接远程数据库
-    # 直接用 URL 作为 path 会导致连到空数据库
+    # Turso libSQL 连接（embedded replica 模式）
+    # 第一个参数是本地缓存文件路径，sync_url 指向 Turso 云端
+    # 必须调用 sync() 才能从云端拉取最新数据
     import libsql_experimental as libsql
 
+    _LOCAL_CACHE = os.path.join(os.path.dirname(__file__), "..", "turso_cache.db")
+
     def _get_libsql_connection():
-        return libsql.connect("remote", TURSO_URL, auth_token=TURSO_TOKEN)
+        conn = libsql.connect(_LOCAL_CACHE, sync_url=TURSO_URL, auth_token=TURSO_TOKEN)
+        conn.sync()
+        return conn
 
     engine = create_engine(
         "sqlite+libsql://",
