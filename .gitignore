@@ -78,3 +78,4 @@ frontend/.env.development.local
 !test-*.sh
 :memory:
 turso_cache.db*
+*.db
