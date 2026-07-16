@@ -933,7 +933,8 @@ async def create_asset_snapshot(
     ).order_by(AssetItem.platform_id, AssetItem.sort_order).all()
 
     platforms = db.query(AssetPlatform).filter(
-        AssetPlatform.owner_id == current_user.id
+        AssetPlatform.owner_id == current_user.id,
+        AssetPlatform.is_asset == True
     ).all()
     platform_balances = {p.id: float(p.current_balance or 0) for p in platforms}
 
