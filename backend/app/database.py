@@ -1,17 +1,39 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.pool import StaticPool
 from typing import Generator
 import logging
+import os
 
-# SQLite 数据库配置
-SQLALCHEMY_DATABASE_URL = "sqlite:///./rent_management.db"
+# 数据库配置：优先使用 Turso (libSQL)，回退到本地 SQLite
+# Turso 环境变量：TURSO_DATABASE_URL 和 TURSO_AUTH_TOKEN
+TURSO_URL = os.getenv("TURSO_DATABASE_URL")
+TURSO_TOKEN = os.getenv("TURSO_AUTH_TOKEN")
 
-# 创建数据库引擎
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False}
-)
+if TURSO_URL and TURSO_TOKEN:
+    # Turso libSQL 连接
+    # 必须用 libsql.connect("remote", ...) 模式才能正确连接远程数据库
+    # 直接用 URL 作为 path 会导致连到空数据库
+    import libsql_experimental as libsql
+
+    def _get_libsql_connection():
+        return libsql.connect("remote", TURSO_URL, auth_token=TURSO_TOKEN)
+
+    engine = create_engine(
+        "sqlite+libsql://",
+        creator=_get_libsql_connection,
+        poolclass=StaticPool,
+    )
+    logging.info(f"使用 Turso 云数据库: {TURSO_URL}")
+else:
+    # 本地 SQLite 回退
+    SQLALCHEMY_DATABASE_URL = "sqlite:///./rent_management.db"
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        connect_args={"check_same_thread": False}
+    )
+    logging.info("使用本地 SQLite 数据库")
 
 # 创建会话工厂
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
