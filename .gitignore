@@ -76,3 +76,5 @@ frontend/.env.development.local
 !deploy-*.sh
 !build-*.sh
 !test-*.sh
+:memory:
+turso_cache.db*
