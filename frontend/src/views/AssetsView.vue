@@ -1854,11 +1854,217 @@ onUnmounted(() => {
 .asset-group-tabs :deep(.el-tabs__header) { margin-bottom: 12px; }
 .asset-group-tabs :deep(.el-tabs__item) { font-size: 14px; font-weight: 600; }
 .header-actions { display: flex; gap: 8px; }
+
+/* ============ 移动端全面适配 ============ */
 @media (max-width: 768px) {
-  .portfolio-content { flex-direction: column; }
-  .portfolio-chart { width: 100%; }
-  .portfolio-items { grid-template-columns: 1fr; }
-  .item-actions { opacity: 1; }
+  /* 页面容器 */
+  .assets-page {
+    padding: 10px 8px;
+    max-width: 100%;
+  }
+
+  /* 页面标题 */
+  .page-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+    margin-bottom: 12px;
+  }
+  .page-header h2 {
+    font-size: 18px;
+  }
+  .header-actions {
+    justify-content: space-between;
+  }
+  .header-actions .el-button {
+    padding: 0 10px;
+    font-size: 13px;
+    flex: 1;
+  }
+
+  /* 总资产三列 → 单列纵向 */
+  .summary-cards {
+    grid-template-columns: 1fr !important;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .summary-card {
+    padding: 10px 8px !important;
+  }
+  .card-value {
+    font-size: 22px !important;
+  }
+  .total-card .card-value {
+    font-size: 26px !important;
+  }
+  .card-label {
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+  .total-earnings-row {
+    font-size: 12px;
+    gap: 4px;
+  }
+  .total-earnings-sum {
+    font-size: 13px;
+  }
+  /* 年份选择器缩小 */
+  .card-label-row .el-select {
+    width: 70px !important;
+  }
+
+  /* 图表卡片 */
+  .trend-card {
+    margin-bottom: 12px;
+  }
+  .trend-card :deep(.el-card__body) {
+    padding: 8px;
+  }
+  .trend-chart {
+    margin: 0;
+  }
+  /* Tab 字体缩小 */
+  .trend-card :deep(.el-tabs__item) {
+    font-size: 13px;
+    padding: 0 8px;
+  }
+  /* Collapse 标题缩小 */
+  .trend-card :deep(.el-collapse-item__header) {
+    font-size: 13px;
+    height: 36px;
+    line-height: 36px;
+  }
+
+  /* 持仓组合 */
+  .portfolio-inner {
+    padding: 0;
+  }
+  .portfolio-header {
+    margin-bottom: 8px;
+  }
+  .portfolio-header h3 {
+    font-size: 14px;
+  }
+  .portfolio-content {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .portfolio-chart {
+    width: 100% !important;
+  }
+  .portfolio-summary {
+    margin-bottom: 8px;
+  }
+  .portfolio-total {
+    font-size: 13px;
+  }
+  .portfolio-total strong {
+    font-size: 16px;
+  }
+  .portfolio-pct-row {
+    gap: 6px;
+    font-size: 12px;
+  }
+  .portfolio-pct-item strong {
+    font-size: 12px;
+  }
+  /* 持仓列表改单列 */
+  .portfolio-items {
+    grid-template-columns: 1fr !important;
+    max-height: none !important;
+  }
+  .portfolio-item {
+    flex-wrap: wrap;
+  }
+  .item-name {
+    font-size: 12px;
+  }
+  .item-amount {
+    font-size: 12px;
+  }
+  .item-actions {
+    opacity: 1 !important;
+  }
+  /* 筛选栏纵向 */
+  .portfolio-filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .portfolio-filter-bar .el-input {
+    width: 100% !important;
+  }
+  .portfolio-filter-bar .el-radio-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+  }
+  .portfolio-filter-bar .el-radio-button__inner {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+
+  /* 固定资产 */
+  .fixed-asset-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .fixed-asset-value {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .rental-income-summary {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .fixed-assets-note {
+    font-size: 11px;
+  }
+
+  /* 各平台概览表格 → 横向滚动 */
+  .platform-table-card {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .platform-table-card :deep(.el-card__body) {
+    padding: 8px;
+  }
+  .platform-table-card :deep(.el-table) {
+    font-size: 12px;
+    min-width: 600px;
+  }
+  .platform-table-card :deep(.el-table th),
+  .platform-table-card :deep(.el-table td) {
+    padding: 6px 4px;
+  }
+  .platform-detail-item {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .pdi-name {
+    min-width: 100px;
+    font-size: 11px;
+  }
+  .platform-record-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  /* 对话框 */
+  :deep(.el-dialog) {
+    width: 95% !important;
+    margin: 5px auto !important;
+  }
+  .report-type-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .report-type-group .el-radio-button__inner {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
 }
 
 </style>
