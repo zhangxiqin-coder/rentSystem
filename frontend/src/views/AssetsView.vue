@@ -637,6 +637,16 @@ const formatDate = (d: string) => {
   return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
+// 持仓更新日期：只显示月/日，超过30天标红
+const formatUpdateDate = (d: string) => {
+  const date = new Date(d)
+  return `${date.getMonth() + 1}/${date.getDate()}`
+}
+const isStale = (d: string) => {
+  const days = (Date.now() - new Date(d).getTime()) / 86400000
+  return days > 30
+}
+
 const recordTypeLabel = (type: string) => {
   switch (type) {
     case 'balance': return '余额+收益'
@@ -1082,6 +1092,7 @@ onUnmounted(() => {
                       <div class="item-right">
                         <span class="item-weight">{{ itemWeight(item).toFixed(1) }}%</span>
                         <span class="item-amount">{{ formatAmount(item.amount) }}</span>
+                        <span class="item-update" :class="{ stale: isStale(item.updated_at) }">{{ formatUpdateDate(item.updated_at) }}</span>
                       </div>
                       <div class="item-actions">
                         <el-button text size="small" type="primary" @click="openEditItem(item)">编辑</el-button>
@@ -1846,6 +1857,8 @@ onUnmounted(() => {
 .item-name { font-size: 13px; font-weight: 500; color: #303133; }
 .item-code { font-size: 10px; color: #909399; background: #f0f2f5; padding: 0 4px; border-radius: 2px; }
 .item-amount { font-size: 13px; color: #409EFF; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+.item-update { font-size: 10px; color: #c0c4cc; white-space: nowrap; flex-shrink: 0; }
+.item-update.stale { color: #F56C6C; font-weight: 600; }
 .portfolio-item:hover .item-actions { opacity: 1; }
 .item-actions { display: flex; gap: 2px; flex-shrink: 0; opacity: 0; transition: opacity .15s; }
 .item-types { display: inline-flex; flex-wrap: wrap; gap: 2px; }
