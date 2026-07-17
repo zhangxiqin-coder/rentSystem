@@ -502,6 +502,69 @@ const reportForm = ref({
 })
 const reportLoading = ref(false)
 
+// 批量上报
+const showBatchDialog = ref(false)
+const batchLoading = ref(false)
+const batchRows = ref<{ name: string; balance: number | undefined; earnings: number | undefined }[]>([])
+
+const openBatch = () => {
+  if (!summary.value) return
+  batchRows.value = summary.value.platforms.map(p => ({
+    name: p.name,
+    balance: undefined,
+    earnings: undefined,
+  }))
+  showBatchDialog.value = true
+}
+
+const submitBatch = async () => {
+  const filled = batchRows.value.filter(r => r.balance !== undefined || r.earnings !== undefined)
+  if (filled.length === 0) {
+    ElMessage.warning('请至少填写一个平台的数据')
+    return
+  }
+  batchLoading.value = true
+  let success = 0
+  let failed: string[] = []
+  const platforms = await assetApi.listPlatforms()
+  for (const row of filled) {
+    const pf = platforms.find(p => p.name === row.name)
+    if (!pf) { failed.push(row.name); continue }
+    try {
+      // 有余额+收益 → balance 模式；只有余额 → balance_only 模式；只有收益 → earnings 模式
+      let record_type: string
+      let data: any = { platform_id: pf.id }
+      if (row.balance !== undefined && row.earnings !== undefined) {
+        record_type = 'balance'
+        data.reported_balance = Number(row.balance)
+        data.reported_earnings = Number(row.earnings)
+      } else if (row.balance !== undefined) {
+        record_type = 'balance_only'
+        data.reported_balance = Number(row.balance)
+      } else {
+        record_type = 'earnings'
+        data.amount = Number(row.earnings)
+      }
+      data.record_type = record_type
+      await assetApi.createRecord(data)
+      success++
+    } catch {
+      failed.push(row.name)
+    }
+  }
+  batchLoading.value = false
+  if (success > 0) {
+    await loadSummary()
+    await loadTrend()
+    ElMessage.success(`${success}个平台上报成功${failed.length ? `，${failed.length}个失败：${failed.join('、')}` : ''}`)
+  } else {
+    ElMessage.error('全部上报失败')
+  }
+  if (failed.length === 0) {
+    showBatchDialog.value = false
+  }
+}
+
 // 展开记录
 const activeAssetTab = ref('portfolio')
 const expandedPlatformIds = ref<Set<number>>(new Set())
@@ -942,6 +1005,7 @@ onUnmounted(() => {
       </h2>
       <div class="header-actions">
         <el-button type="success" :icon="Plus" @click="openReport()">上报</el-button>
+        <el-button type="primary" plain @click="openBatch">批量上报</el-button>
         <el-button type="default" :icon="Download" @click="exportAssets">导出Excel</el-button>
         <el-button type="default" @click="loadSummary">刷新</el-button>
       </div>
@@ -1321,6 +1385,35 @@ onUnmounted(() => {
         <el-button type="primary" :loading="reportLoading" @click="submitReport">
           提交
         </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 批量上报对话框 -->
+    <el-dialog v-model="showBatchDialog" title="批量上报" :width="isMobile ? '95%' : '560px'" :top="isMobile ? '5px' : '10vh'">
+      <el-alert type="info" :closable="false" style="margin-bottom: 12px">
+        填写本次要更新的余额/收益，留空的不提交。填了余额+收益用完整模式，只填余额自动算差额。
+      </el-alert>
+      <div class="batch-table">
+        <div class="batch-header">
+          <span class="batch-col-name">平台</span>
+          <span class="batch-col-num">余额</span>
+          <span class="batch-col-num">收益</span>
+        </div>
+        <div v-for="(row, idx) in batchRows" :key="idx" class="batch-row">
+          <span class="batch-col-name">{{ row.name }}</span>
+          <el-input-number
+            v-model="row.balance" size="small" :controls="false" placeholder="余额"
+            class="batch-col-num" style="width: 130px"
+          />
+          <el-input-number
+            v-model="row.earnings" size="small" :controls="false" placeholder="收益"
+            class="batch-col-num" style="width: 130px"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showBatchDialog = false">取消</el-button>
+        <el-button type="primary" :loading="batchLoading" @click="submitBatch">提交</el-button>
       </template>
     </el-dialog>
 
@@ -1859,6 +1952,12 @@ onUnmounted(() => {
 .item-amount { font-size: 13px; color: #409EFF; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
 .item-update { font-size: 10px; color: #c0c4cc; white-space: nowrap; flex-shrink: 0; }
 .item-update.stale { color: #F56C6C; font-weight: 600; }
+/* 批量上报 */
+.batch-table { max-height: 420px; overflow-y: auto; }
+.batch-header, .batch-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+.batch-header { font-size: 12px; color: #909399; border-bottom: 1px solid #ebeef5; margin-bottom: 4px; }
+.batch-col-name { flex: 1; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.batch-col-num { width: 130px; text-align: center; flex-shrink: 0; }
 .portfolio-item:hover .item-actions { opacity: 1; }
 .item-actions { display: flex; gap: 2px; flex-shrink: 0; opacity: 0; transition: opacity .15s; }
 .item-types { display: inline-flex; flex-wrap: wrap; gap: 2px; }
