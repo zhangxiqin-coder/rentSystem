@@ -20,6 +20,22 @@ from app.models import User
 router = APIRouter(prefix="/utility-bills", tags=["水电账单"])
 
 
+def _get_user_series_set(db: Session, user_id: int) -> set:
+    """获取当前用户拥有的所有房子系列（用于按 series 间接隔离 UtilityBill）。
+
+    UtilityBill 表本身没有 owner_id 字段，但 series 字段值来自 Room.series，
+    而 Room 是按 owner_id 隔离的。所以只要把当前用户拥有的 series 集合算出来，
+    再用它过滤 UtilityBill，就能实现数据隔离。
+    """
+    rows = db.query(Room.series).filter(
+        Room.owner_id == user_id,
+        Room.series.isnot(None)
+    ).distinct().all()
+    return {r[0] for r in rows if r[0]}
+
+
+
+
 @router.get("/series", response_model=List[Dict[str, Any]])
 def get_series_list(
     db: Session = Depends(get_db),
@@ -75,6 +91,11 @@ def create_utility_bill(
     current_user: User = Depends(get_current_user)
 ):
     """创建水电账单"""
+    # 数据隔离：只能为自己拥有的系列创建账单
+    user_series = _get_user_series_set(db, current_user.id)
+    if bill.series not in user_series:
+        raise HTTPException(status_code=403, detail=f"无权操作系列 '{bill.series}'：该系列不属于当前用户")
+
     # 检查同系列同年月同类型是否已存在
     existing = db.query(UtilityBill).filter(
         UtilityBill.series == bill.series,
@@ -101,8 +122,14 @@ def get_utility_bills(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取水电账单列表"""
-    bills = db.query(UtilityBill).order_by(
+    """获取水电账单列表（按当前用户拥有的系列过滤）"""
+    user_series = _get_user_series_set(db, current_user.id)
+    if not user_series:
+        return []  # 当前用户没有任何系列，直接返回空
+
+    bills = db.query(UtilityBill).filter(
+        UtilityBill.series.in_(user_series)
+    ).order_by(
         UtilityBill.year.desc(),
         UtilityBill.month.desc()
     ).offset(skip).limit(limit).all()
@@ -114,9 +141,21 @@ def get_profit_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取水电收益统计"""
-    # 获取所有账单，按年月倒序
-    bills = db.query(UtilityBill).order_by(
+    """获取水电收益统计（按当前用户拥有的系列过滤）"""
+    # 数据隔离：只统计当前用户拥有的系列
+    user_series = _get_user_series_set(db, current_user.id)
+    if not user_series:
+        return {
+            "total_water_profit": 0.0,
+            "total_electric_profit": 0.0,
+            "total_profit": 0.0,
+            "monthly_breakdown": []
+        }
+
+    # 获取所有账单，按年月倒序（只取当前用户的系列）
+    bills = db.query(UtilityBill).filter(
+        UtilityBill.series.in_(user_series)
+    ).order_by(
         UtilityBill.year.desc(),
         UtilityBill.month.desc()
     ).all()
@@ -139,8 +178,11 @@ def get_profit_stats(
     monthly_breakdown = []
     
     for (series, year, month), data in grouped.items():
-        # 获取该系列的所有房间
-        rooms = db.query(Room).filter(Room.series == series).all()
+        # 获取该系列的所有房间（双保险：也加 owner_id 过滤）
+        rooms = db.query(Room).filter(
+            Room.series == series,
+            Room.owner_id == current_user.id
+        ).all()
         room_ids = [r.id for r in rooms]
         
         # 获取该月该系列从租客收取的水电费
@@ -235,7 +277,12 @@ def update_utility_bill(
     db_bill = db.query(UtilityBill).filter(UtilityBill.id == bill_id).first()
     if not db_bill:
         raise HTTPException(status_code=404, detail="账单不存在")
-    
+
+    # 数据隔离：只能更新自己系列下的账单
+    user_series = _get_user_series_set(db, current_user.id)
+    if db_bill.series not in user_series:
+        raise HTTPException(status_code=403, detail="无权操作此账单：该账单的系列不属于当前用户")
+
     update_data = bill_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_bill, key, value)
@@ -323,7 +370,12 @@ def delete_utility_bill(
     db_bill = db.query(UtilityBill).filter(UtilityBill.id == bill_id).first()
     if not db_bill:
         raise HTTPException(status_code=404, detail="账单不存在")
-    
+
+    # 数据隔离：只能删除自己系列下的账单
+    user_series = _get_user_series_set(db, current_user.id)
+    if db_bill.series not in user_series:
+        raise HTTPException(status_code=403, detail="无权操作此账单：该账单的系列不属于当前用户")
+
     db.delete(db_bill)
     db.commit()
     return {"message": "删除成功"}
