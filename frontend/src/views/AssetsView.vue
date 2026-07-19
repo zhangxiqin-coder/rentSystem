@@ -118,20 +118,29 @@ const fixedAssetsTotal = computed(() => {
   return fixedAssets.value.reduce((s, a) => s + Number(a.estimated_value), 0)
 })
 
-// 2026年租金概算
-const currentRent = 38220
-const estimatedRent = 36000
-const rentalIncome = computed(() => [
-  { period: '1月', rent: estimatedRent },
-  { period: '2月', rent: estimatedRent },
-  { period: '3月', rent: estimatedRent },
-  { period: '4月', rent: currentRent },
-  { period: '5月', rent: currentRent },
-  { period: '6月', rent: currentRent },
-])
-const rentalYtd = computed(() => rentalIncome.value.reduce((s, m) => s + m.rent, 0))
-const rentalProjected = computed(() => currentRent * 6)
-const rentalFullYear = computed(() => rentalYtd.value + rentalProjected.value)
+// 租金汇总（从后端 rooms 表实时算，替代曾经硬编码的 xiqin 专属数字）
+const rentSummary = ref<{
+  monthly_total: number
+  room_count: number
+  ytd_total: number
+  annual_projected: number
+}>({ monthly_total: 0, room_count: 0, ytd_total: 0, annual_projected: 0 })
+const rentLoading = ref(false)
+
+// 模板上仍然引用 rentalYtd / rentalFullYear，保留这两个 computed 但从后端数据派生
+const rentalYtd = computed(() => rentSummary.value.ytd_total)
+const rentalFullYear = computed(() => rentSummary.value.annual_projected)
+
+const loadRentSummary = async () => {
+  rentLoading.value = true
+  try {
+    rentSummary.value = await assetApi.getRentSummary()
+  } catch (error) {
+    console.error('加载租金汇总失败', error)
+  } finally {
+    rentLoading.value = false
+  }
+}
 
 const loadFixedAssets = async () => {
   fixedAssetsLoading.value = true
@@ -156,27 +165,10 @@ const expandedAssetCharts = ref('distribution')
 const trendData = ref<AssetTrend | null>(null)
 const trendLoading = ref(false)
 
-// 历史总资产快照（从外部记录补充，无收益数据）
-const HISTORICAL_SNAPSHOTS: { date: string; balance: number }[] = [
-  { date: '2020-12-01', balance: 3300000 },
-  { date: '2021-11-01', balance: 4104000 },
-  { date: '2022-04-01', balance: 4069000 },
-  { date: '2025-10-01', balance: 6969066 }
-]
-
-// 合并历史快照到趋势数据
+// 趋势点 = 后端返回的点（不再合并任何硬编码历史快照）
 const mergedPoints = computed(() => {
   if (!trendData.value) return []
-  const points = [...(trendData.value.points || [])]
-  for (const snap of HISTORICAL_SNAPSHOTS) {
-    const existing = points.find(p => p.date.startsWith(snap.date.slice(0, 7)))
-    if (!existing) {
-      points.push({ date: snap.date, total_balance: snap.balance, total_earnings: 0, earnings_delta: 0 } as any)
-    }
-  }
-  if (points.length === 0) return []
-  points.sort((a, b) => a.date.localeCompare(b.date))
-  return points
+  return [...(trendData.value.points || [])]
 })
 
 // 对2026年数据按3个月间隔采样，保留最新点
@@ -988,6 +980,7 @@ onMounted(() => {
   loadItems()
   loadPlatformItems()
   loadFixedAssets()
+  loadRentSummary()
   window.addEventListener('resize', checkMobile)
 })
 
@@ -1193,22 +1186,25 @@ onUnmounted(() => {
                 </div>
               </div>
               <div class="rental-income-section">
-                <div class="rental-income-title"><el-icon :size="16"><Coin /></el-icon> 2026年租金收入概算</div>
+                <div class="rental-income-title"><el-icon :size="16"><Coin /></el-icon> 当年租金收入概算</div>
                 <div class="rental-income-summary">
-                  <span>1-3月(评估): <strong>{{ formatAmount(estimatedRent * 3) }}</strong></span>
-                  <span>4-6月(实际): <strong>{{ formatAmount(currentRent * 3) }}</strong></span>
-                  <span>已收合计: <strong>{{ formatAmount(rentalYtd) }}</strong></span>
+                  <span>已出租房间: <strong>{{ rentSummary.room_count }} 间</strong></span>
+                  <span>月租金合计: <strong>{{ formatAmount(rentSummary.monthly_total) }}</strong></span>
+                  <span>当年累计({{ rentSummary.months_elapsed || 0 }}个月): <strong>{{ formatAmount(rentSummary.ytd_total) }}</strong></span>
                 </div>
                 <div class="rental-income-summary" style="margin-top:4px">
-                  <span>7-12月预估: <strong>{{ formatAmount(rentalProjected) }}</strong></span>
-                  <span>全年预估: <strong>{{ formatAmount(rentalFullYear) }}</strong></span>
+                  <span>全年预估: <strong>{{ formatAmount(rentSummary.annual_projected) }}</strong></span>
                 </div>
-                <div class="rental-income-note">1-3月按评估¥36,000/月，4月起按实际¥38,220/月</div>
+                <div v-if="rentSummary.room_count === 0" class="rental-income-note">暂无已出租房间，租金收入为 0</div>
+                <div v-else class="rental-income-note">按当前 {{ rentSummary.room_count }} 间已出租房间月租金合计估算</div>
               </div>
-              <div class="fixed-assets-note">
-                <div class="note-item"><span class="note-dot" style="background:#409EFF" /><strong>新湖果岭</strong> 月租金 ¥5,750 = 2-2501系列5间+车位</div>
-                <div class="note-item"><span class="note-dot" style="background:#E6A23C" /><strong>4套无证房</strong> 月租金 ¥32,470 = 其他23间房的租金合计</div>
-                <div class="note-item note-valuation"><span class="note-dot" style="background:#67C23A" /><strong>无证房估值说明</strong>：年租金¥389,640 ÷ 5% ≈ ¥779万，保守取整 <strong>¥700万</strong></div>
+              <div v-if="fixedAssets.length > 0" class="fixed-assets-note">
+                <div v-for="asset in fixedAssets" :key="asset.id" class="note-item">
+                  <span class="note-dot" :style="{ background: '#409EFF' }" />
+                  <strong>{{ asset.name }}</strong>
+                  <span v-if="asset.monthly_rent && asset.monthly_rent > 0"> 月租金 {{ formatAmount(asset.monthly_rent) }}</span>
+                  <span v-if="asset.notes"> · {{ asset.notes }}</span>
+                </div>
               </div>
             </template>
             <el-empty v-else description="暂无固定资产数据" :image-size="60" />

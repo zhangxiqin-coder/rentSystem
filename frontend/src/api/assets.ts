@@ -174,6 +174,17 @@ export const assetApi = {
     return authRequest({ method: 'get', url: '/api/v1/assets/fixed-assets' })
   },
 
+  // 租金汇总（从 rooms 表实时算，替代曾经硬编码的 xiqin 租金数字）
+  async getRentSummary(): Promise<{
+    monthly_total: number
+    room_count: number
+    ytd_total: number
+    annual_projected: number
+    months_elapsed: number
+  }> {
+    return authRequest({ method: 'get', url: '/api/v1/assets/rent-summary' })
+  },
+
   async createFixedAsset(data: { name: string; category: string; estimated_value: number; role?: string; monthly_rent?: number; notes?: string }): Promise<FixedAsset> {
     return authRequest({ method: 'post', url: '/api/v1/assets/fixed-assets', data })
   },

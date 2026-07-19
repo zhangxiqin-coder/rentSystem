@@ -9,12 +9,13 @@
 import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from decimal import Decimal
 from datetime import datetime, timedelta
 from typing import Optional
 
 from app.database import get_db
-from app.models import AssetPlatform, AssetRecord, User, AssetItem, AssetSnapshot, FixedAsset
+from app.models import AssetPlatform, AssetRecord, User, AssetItem, AssetSnapshot, FixedAsset, Room
 from app.schemas import (
     AssetPlatformCreate, AssetPlatformUpdate, AssetPlatformResponse,
     AssetPlatformDetailResponse, AssetRecordResponse, AssetRecordCreate,
@@ -1087,3 +1088,45 @@ async def delete_fixed_asset(
     db.delete(asset)
     db.commit()
     return {"message": "固定资产已删除"}
+
+
+# ==================== 租金汇总（从 rooms 表实时算） ====================
+
+
+@router.get("/assets/rent-summary")
+async def get_rent_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    当前用户名下所有已出租房间的月租金汇总。
+
+    用于替换前端 AssetsView 里曾经硬编码的租金数字（xiqin 专属数据）。
+    返回：
+      monthly_total: 当前列表中的月租金合计（已出租房间）
+      room_count: 已出租房间数
+      ytd_total: 当年到本月为止的累计租金（monthly_total * 已过完整月数）
+      annual_projected: 全年预估（monthly_total * 12）
+    任何用户都只看自己的房间，新用户/没房间的用户返回全 0。
+    """
+    rooms = db.query(Room).filter(
+        Room.owner_id == current_user.id,
+        Room.status == "occupied"
+    ).all()
+
+    monthly_total = sum((float(r.monthly_rent or 0) for r in rooms), 0.0)
+    room_count = len(rooms)
+
+    now = datetime.now()
+    # 当年到当前月为止的累计（按完整自然月）
+    months_elapsed: int = now.month  # 1月=1, 12月=12
+    ytd_total = round(monthly_total * months_elapsed, 2)
+    annual_projected = round(monthly_total * 12, 2)
+
+    return {
+        "monthly_total": round(monthly_total, 2),
+        "room_count": room_count,
+        "ytd_total": ytd_total,
+        "annual_projected": annual_projected,
+        "months_elapsed": months_elapsed,
+    }
