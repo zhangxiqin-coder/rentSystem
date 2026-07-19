@@ -12,7 +12,7 @@ import json
 import os
 
 from app.database import get_db
-from app.models import User
+from app.models import User, AssetPlatform
 from app.schemas import (
     UserCreate, UserResponse, LoginRequest, TokenResponse,
     ChangePasswordRequest, MessageResponse
@@ -22,6 +22,22 @@ from app.core.deps import get_current_user
 
 
 router = APIRouter(prefix="/auth", tags=["认证"])
+
+
+# 新用户注册时自动创建的默认资产平台列表
+# 所有新用户都带这套，省得手动一个个加
+DEFAULT_ASSET_PLATFORMS = [
+    "支付宝",
+    "且慢",
+    "雪球",
+    "腾讯理财通",
+    "网商银行",
+    "平安证券",
+    "东财",
+    "长桥证券",
+    "富途",
+    "其他",
+]
 
 
 # Rate limiting 配置
@@ -200,6 +216,16 @@ async def register(
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    
+    # 给新用户初始化默认资产平台列表（支付宝、东财、长桥、富途...）
+    # 这样新用户登录后资产页直接能上报，不用先手动加平台
+    for idx, name in enumerate(DEFAULT_ASSET_PLATFORMS):
+        db.add(AssetPlatform(
+            owner_id=new_user.id,
+            name=name,
+            sort_order=idx,
+        ))
+    db.commit()
     
     return {
         "message": "用户注册成功",

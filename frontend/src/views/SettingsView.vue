@@ -37,6 +37,9 @@ const ALL_PLATFORMS = [
   { key: '雪球', label: '雪球' },
   { key: '京东金融', label: '京东金融' },
   { key: '平安证券', label: '平安证券' },
+  { key: '东财', label: '东财' },
+  { key: '长桥证券', label: '长桥证券' },
+  { key: '富途', label: '富途' },
   { key: '其他', label: '其他' },
 ]
 
