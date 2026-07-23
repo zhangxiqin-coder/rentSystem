@@ -258,8 +258,19 @@ def create_payment(
         raise ValueError("房间不存在")
 
     # 如果是租金类型且未指定金额，自动计算
+    # ⚠️ 优先从租约记录取月租，避免续租后 room.monthly_rent 尚未生效导致金额错误
     if payment_type == 'rent' and amount is None:
-        amount = calculate_rent(room.monthly_rent, room.payment_cycle)
+        monthly_rent = room.monthly_rent  # 默认用房间租金
+        # 查找当前/最近一期生效的租约，按租期匹配正确的租金
+        from app.models import LeaseRecord
+        active_lease = db.query(LeaseRecord).filter(
+            LeaseRecord.room_id == room_id,
+            LeaseRecord.lease_start <= date.today(),
+            LeaseRecord.lease_end >= date.today()
+        ).order_by(LeaseRecord.lease_start.desc()).first()
+        if active_lease and active_lease.monthly_rent:
+            monthly_rent = active_lease.monthly_rent
+        amount = calculate_rent(monthly_rent, room.payment_cycle)
 
     # 如果金额仍为空，验证
     if amount is None:

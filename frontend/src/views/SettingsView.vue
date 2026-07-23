@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -63,9 +63,22 @@ const tempDisplayName = ref(authStore.user?.full_name || '')
 const savingName = ref(false)
 
 // 甲方（房东）信息
-const tempLandlordName = ref(authStore.user?.landlord_name || '张锡琴')
-const tempLandlordPhone = ref(authStore.user?.landlord_phone || '13806504936')
+// 注意：不再用硬编码默认值（'张锡琴'/'13806504936'）兜底，
+// 数据库存什么就显示什么，空就显示空。
+// 这样其他用户设置页不会再看到 xiqin 的个人信息。
+const tempLandlordName = ref(authStore.user?.landlord_name || '')
+const tempLandlordPhone = ref(authStore.user?.landlord_phone || '')
 const savingLandlordInfo = ref(false)
+
+// 页面加载时拉一次最新的用户信息（确保 landlord_name/phone 是数据库最新值，
+// 而不是 login 时缓存的旧数据）
+onMounted(async () => {
+  await authStore.getCurrentUser()
+  // authStore.user 更新后，同步到所有依赖它的输入框
+  tempDisplayName.value = authStore.user?.full_name || ''
+  tempLandlordName.value = authStore.user?.landlord_name || ''
+  tempLandlordPhone.value = authStore.user?.landlord_phone || ''
+})
 
 // 修改密码相关
 const showPasswordDialog = ref(false)

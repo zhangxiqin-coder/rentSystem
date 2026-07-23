@@ -91,7 +91,10 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null
     try {
       const response = await authApi.getCurrentUser()
-      user.value = response.data.data
+      // ⚠️ 关键：后端返回结构是 { data: { user: {...} } }，要取 .data.data.user
+      // 之前写成 .data.data 导致 user.value 实际是 { user: {...} } 包装对象，
+      // 所有字段访问都变成 undefined（landlord_name/full_name/role 全部读不到）
+      user.value = response.data.data.user
       // Update stored user data
       if (user.value) {
         localStorage.setItem('user', JSON.stringify(user.value))

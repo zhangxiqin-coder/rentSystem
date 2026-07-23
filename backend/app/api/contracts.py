@@ -227,9 +227,12 @@ async def generate_lease_contract(
         # 获取房东信息
         landlord = db.query(User).filter(User.id == lease_record.owner_id).first()
         
-        # 如果房东没有设置姓名和电话，使用默认值
-        landlord_name = landlord.landlord_name if landlord and landlord.landlord_name else "张锡琴"
-        landlord_phone = landlord.landlord_phone if landlord and landlord.landlord_phone else "13806504936"
+        # 房东信息从数据库读取（用户在设置页填的）。
+        # 不再用硬编码 '张锡琴'/'13806504936' 兜底——
+        # 那是 xiqin 的个人信息，不该作为所有用户的默认值。
+        # 用户没填就是空，合同里甲方字段显示为空。
+        landlord_name = landlord.landlord_name if landlord and landlord.landlord_name else ""
+        landlord_phone = landlord.landlord_phone if landlord and landlord.landlord_phone else ""
 
         # 获取初始水电读数：优先使用租赁记录中的读数
         if electricity_initial_reading is None:

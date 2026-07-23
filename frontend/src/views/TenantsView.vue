@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, User, Search } from '@element-plus/icons-vue'
 import { tenantsApi } from '@/api/tenants'
+import { leaseRecordsApi } from '@/api/leaseRecords'
 import { roomApi } from '@/api/room'
 import { statisticsApi } from '@/api/statistics'
 import { useAuthStore } from '@/stores/auth'
@@ -30,6 +31,41 @@ interface LeaseExpiryWarning {
 }
 
 const leaseExpiryWarnings = ref<LeaseExpiryWarning[]>([])
+
+// 租客 → 合同到期日映射
+const tenantLeaseEndMap = ref<Record<number, string>>({})
+
+// 获取活跃租约，建立 tenantId → leaseEnd 映射
+const fetchActiveLeases = async () => {
+  try {
+    // 拉全部租约（不按日期过滤），取每个租客最远的到期日
+    const records = await leaseRecordsApi.list()
+    const map: Record<number, string> = {}
+    for (const r of records) {
+      // 只要 is_active=true 的（排除已退租的），取最远到期日
+      if (r.is_active && (!map[r.tenant_id] || r.lease_end > map[r.tenant_id])) {
+        map[r.tenant_id] = r.lease_end
+      }
+    }
+    tenantLeaseEndMap.value = map
+  } catch (error) {
+    console.error('获取租约信息失败:', error)
+  }
+}
+
+// 格式化日期显示
+const formatLeaseEnd = (tenantId: number): string => {
+  const end = tenantLeaseEndMap.value[tenantId]
+  if (!end) return '-'
+  const d = new Date(end)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const daysLeft = Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+  const dateStr = d.toLocaleDateString('zh-CN')
+  if (daysLeft < 0) return `${dateStr}（已过期${Math.abs(daysLeft)}天）`
+  if (daysLeft <= 7) return `${dateStr}（${daysLeft === 0 ? '今天到期' : daysLeft + '天后'}）`
+  return dateStr
+}
 
 // 从后端获取到期提醒（基于LeaseRecord，以租客为准）
 const fetchExpiringLeases = async () => {
@@ -117,6 +153,16 @@ const handleAdd = () => {
 onMounted(() => {
   fetchExpiringLeases()
   fetchTenants()
+  fetchActiveLeases()
+})
+
+// 按合同到期日排序：最近到期的排前面，没有租约的排最后
+const sortedTenants = computed(() => {
+  return [...tenants.value].sort((a, b) => {
+    const ea = tenantLeaseEndMap.value[a.id] || '9999-12-31'
+    const eb = tenantLeaseEndMap.value[b.id] || '9999-12-31'
+    return ea.localeCompare(eb)
+  })
 })
 </script>
 
@@ -186,16 +232,18 @@ onMounted(() => {
     <!-- 电脑端：表格 -->
     <el-table
       v-loading="loading"
-      :data="tenants"
+      :data="sortedTenants"
       stripe
       style="width: 100%"
       class="hidden-mobile"
     >
       <el-table-column prop="name" label="姓名" width="120" />
       <el-table-column prop="phone" label="电话" width="160" />
-      <el-table-column prop="created_at" label="创建时间">
+      <el-table-column label="合同到期" min-width="180">
         <template #default="{ row }">
-          {{ new Date(row.created_at).toLocaleString('zh-CN') }}
+          <span :class="{ 'lease-expired': tenantLeaseEndMap[row.id] && new Date(tenantLeaseEndMap[row.id]) < new Date(), 'lease-soon': tenantLeaseEndMap[row.id] && (() => { const d = new Date(tenantLeaseEndMap[row.id]); const days = Math.ceil((d.getTime() - Date.now()) / 86400000); return days >= 0 && days <= 7 })() }">
+            {{ formatLeaseEnd(row.id) }}
+          </span>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="100" fixed="right" class-name="action-col">
@@ -225,7 +273,7 @@ onMounted(() => {
 
     <!-- 手机端：卡片列表 -->
     <div v-loading="loading" class="tenant-cards hidden-desktop">
-      <div v-for="tenant in tenants" :key="tenant.id" class="tenant-card">
+      <div v-for="tenant in sortedTenants" :key="tenant.id" class="tenant-card">
         <div class="card-info">
           <div class="card-row">
             <span class="card-label">姓名</span>
@@ -236,8 +284,8 @@ onMounted(() => {
             <span class="card-value">{{ tenant.phone }}</span>
           </div>
           <div class="card-row">
-            <span class="card-label">创建时间</span>
-            <span class="card-value">{{ new Date(tenant.created_at).toLocaleString('zh-CN') }}</span>
+            <span class="card-label">合同到期</span>
+            <span class="card-value">{{ formatLeaseEnd(tenant.id) }}</span>
           </div>
         </div>
         <div class="card-actions">
@@ -304,6 +352,16 @@ onMounted(() => {
 }
 .hidden-desktop {
   display: none;
+}
+
+/* 合同到期样式 */
+.lease-expired {
+  color: #f56c6c;
+  font-weight: 600;
+}
+.lease-soon {
+  color: #e6a23c;
+  font-weight: 600;
 }
 
 /* 手机端卡片 */

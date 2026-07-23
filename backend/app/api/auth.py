@@ -299,7 +299,10 @@ async def login(
                 "username": user.username,
                 "email": user.email,
                 "full_name": user.full_name,
-                "role": user.role
+                "role": user.role,
+                # 甲方信息：登录时一并返回，前端设置页直接可用
+                "landlord_name": user.landlord_name,
+                "landlord_phone": user.landlord_phone,
             }
         }
     }
@@ -326,7 +329,10 @@ async def get_current_user_info(
                 "email": current_user.email,
                 "full_name": current_user.full_name,
                 "role": current_user.role,
-                "created_at": current_user.created_at.isoformat()
+                "created_at": current_user.created_at.isoformat(),
+                # 甲方信息：从数据库读取，不再由前端硬编码兜底
+                "landlord_name": current_user.landlord_name,
+                "landlord_phone": current_user.landlord_phone,
             }
         }
     }
