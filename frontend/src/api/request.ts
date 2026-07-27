@@ -7,9 +7,17 @@ import axios, {
 import type { ApiResponse } from '@/types'
 import { decryptToken, encryptToken, isTokenValid } from '@/utils/crypto'
 
-// Get CSRF token from sessionStorage
+// Get CSRF token from localStorage (persistent, survives tab close)
 const getCsrfToken = (): string | null => {
-  return sessionStorage.getItem('csrf_token')
+  return localStorage.getItem('csrf_token')
+}
+
+const setCsrfToken = (token: string) => {
+  localStorage.setItem('csrf_token', token)
+}
+
+const removeCsrfToken = () => {
+  localStorage.removeItem('csrf_token')
 }
 
 // Create axios instance
@@ -45,7 +53,7 @@ const processQueue = (error: Error | null, token: string | null = null) => {
 const clearAuthData = () => {
   localStorage.removeItem('access_token')
   localStorage.removeItem('user')
-  sessionStorage.removeItem('csrf_token')
+  removeCsrfToken()
 }
 
 // Request interceptor
@@ -81,7 +89,7 @@ request.interceptors.request.use(
           })
           csrfToken = response.headers['x-csrf-token'] as string
           if (csrfToken) {
-            sessionStorage.setItem('csrf_token', csrfToken)
+            setCsrfToken(csrfToken)
             console.log('🔒 [Request] CSRF token fetched and saved')
           }
         } catch (error) {
@@ -114,7 +122,7 @@ request.interceptors.response.use(
     // Store CSRF token if present in response headers
     const csrfToken = response.headers['x-csrf-token']
     if (csrfToken) {
-      sessionStorage.setItem('csrf_token', csrfToken)
+      setCsrfToken(csrfToken)
       console.log('🔒 [Response] CSRF token updated')
     }
     return response
@@ -219,6 +227,36 @@ request.interceptors.response.use(
           return Promise.reject(refreshError)
         } finally {
           isRefreshing = false
+        }
+      }
+
+      // Handle 403 Forbidden - could be CSRF token issue
+      if (status === 403 && originalRequest && !originalRequest._retry) {
+        const errorDetail = data?.detail || data?.message || ''
+        const isCSRFError = typeof errorDetail === 'string' && errorDetail.toLowerCase().includes('csrf')
+
+        if (isCSRFError) {
+          console.log('🔒 [Response] CSRF error, refreshing token and retrying...')
+          originalRequest._retry = true
+
+          try {
+            // Clear old CSRF token
+            removeCsrfToken()
+
+            // Fetch fresh CSRF token
+            const csrfResponse = await request.get('/api/v1/auth/csrf-token', {
+              headers: { Authorization: originalRequest.headers.Authorization }
+            })
+            const newCsrfToken = csrfResponse.headers['x-csrf-token'] as string
+            if (newCsrfToken) {
+              setCsrfToken(newCsrfToken)
+              originalRequest.headers['X-CSRF-Token'] = newCsrfToken
+              console.log('🔒 [Response] CSRF token refreshed, retrying request')
+              return request(originalRequest)
+            }
+          } catch (refreshError) {
+            console.error('❌ [Response] Failed to refresh CSRF token:', refreshError)
+          }
         }
       }
 

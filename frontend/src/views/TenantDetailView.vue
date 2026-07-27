@@ -2,16 +2,18 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowDown, Edit, EditPen, Delete, Plus, House, Document, Refresh, CircleClose } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowDown, Edit, EditPen, Delete, Plus, House, Document, Refresh, CircleClose, Hide, View } from '@element-plus/icons-vue'
 import { tenantsApi } from '@/api/tenants'
 import { leaseRecordsApi } from '@/api/leaseRecords'
 import { roomApi } from '@/api/room'
 import { useAuthStore } from '@/stores/auth'
+import { usePrivacyMode } from '@/composables/usePrivacyMode'
 import type { Tenant, LeaseRecord, Room } from '@/types'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const { privacyMode, togglePrivacyMode, maskName, maskPhone, maskIdCard, maskAmount } = usePrivacyMode()
 const tenantId = computed(() => Number(route.params.id))
 
 const loading = ref(false)
@@ -334,8 +336,17 @@ onMounted(() => {
     <div v-loading="loading" class="page-content">
       <!-- 头部导航 -->
       <div class="page-header">
-        <el-button :icon="ArrowLeft" @click="goBack">返回</el-button>
+        <div class="header-left">
+          <el-button :icon="ArrowLeft" @click="goBack">返回</el-button>
+        </div>
         <div class="header-actions">
+          <el-button
+            :type="privacyMode ? 'warning' : 'default'"
+            :icon="privacyMode ? View : Hide"
+            @click="togglePrivacyMode()"
+          >
+            {{ privacyMode ? '显示信息' : '隐藏信息' }}
+          </el-button>
           <el-button
             v-if="hasActiveLease"
             type="success"
@@ -359,11 +370,11 @@ onMounted(() => {
           <h3>基本信息</h3>
         </template>
         <el-descriptions :column="2" border>
-          <el-descriptions-item label="姓名">{{ tenant.name }}</el-descriptions-item>
-          <el-descriptions-item label="电话">{{ tenant.phone }}</el-descriptions-item>
-          <el-descriptions-item label="身份证号">{{ tenant.id_card }}</el-descriptions-item>
-          <el-descriptions-item label="紧急联系人">{{ tenant.emergency_contact || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="紧急联系电话">{{ tenant.emergency_phone || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="姓名">{{ privacyMode ? maskName(tenant.name) : tenant.name }}</el-descriptions-item>
+          <el-descriptions-item label="电话">{{ privacyMode ? maskPhone(tenant.phone) : tenant.phone }}</el-descriptions-item>
+          <el-descriptions-item label="身份证号">{{ privacyMode ? maskIdCard(tenant.id_card) : tenant.id_card }}</el-descriptions-item>
+          <el-descriptions-item label="紧急联系人">{{ privacyMode ? maskName(tenant.emergency_contact || '') : (tenant.emergency_contact || '-') }}</el-descriptions-item>
+          <el-descriptions-item label="紧急联系电话">{{ privacyMode ? maskPhone(tenant.emergency_phone || '') : (tenant.emergency_phone || '-') }}</el-descriptions-item>
           <el-descriptions-item label="创建时间">
             {{ new Date(tenant.created_at).toLocaleString('zh-CN') }}
           </el-descriptions-item>
@@ -392,12 +403,12 @@ onMounted(() => {
           </el-table-column>
           <el-table-column prop="monthly_rent" label="月租金" width="100">
             <template #default="{ row }">
-              ¥{{ row.monthly_rent }}
+              {{ privacyMode ? maskAmount(row.monthly_rent) : `¥${row.monthly_rent}` }}
             </template>
           </el-table-column>
           <el-table-column prop="deposit_amount" label="押金" width="100">
             <template #default="{ row }">
-              {{ row.deposit_amount ? `¥${row.deposit_amount}` : '-' }}
+              {{ privacyMode ? maskAmount(row.deposit_amount) : (row.deposit_amount ? `¥${row.deposit_amount}` : '-') }}
             </template>
           </el-table-column>
           <el-table-column label="状态" width="110">
@@ -434,19 +445,19 @@ onMounted(() => {
                       <el-icon><EditPen /></el-icon>编辑合同
                     </el-dropdown-item>
                     <el-dropdown-item
-                      v-if="row.status_display === 'active' || row.status_display === 'pending'"
+                      v-if="row.status_display === 'active'"
                       @click.native="handleEndLease(row)"
                     >
                       <el-icon><CircleClose /></el-icon>退租
                     </el-dropdown-item>
                     <el-dropdown-item
-                      v-else
+                      v-if="row.status_display === 'expired'"
                       @click.native="handleRestore(row)"
                     >
                       <el-icon><Refresh /></el-icon>恢复
                     </el-dropdown-item>
                     <el-dropdown-item
-                      v-if="authStore.isSuperAdmin"
+                      v-if="row.status_display === 'pending'"
                       @click.native="handleDeleteRecord(row)"
                       divided
                     >

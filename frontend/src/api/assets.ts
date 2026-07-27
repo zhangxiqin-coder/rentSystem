@@ -32,7 +32,7 @@ async function authRequest<T>(config: {
 
   // 加CSRF token（非GET请求）
   if (config.method !== 'get') {
-    let csrfToken = sessionStorage.getItem('csrf_token')
+    let csrfToken = localStorage.getItem('csrf_token')
 
     // 如果没有CSRF token，主动获取
     if (!csrfToken && token) {
@@ -44,7 +44,7 @@ async function authRequest<T>(config: {
         })
         csrfToken = csrfRes.headers['x-csrf-token'] as string
         if (csrfToken) {
-          sessionStorage.setItem('csrf_token', csrfToken)
+          localStorage.setItem('csrf_token', csrfToken)
         }
       } catch {
         console.warn('⚠️ [Assets API] Failed to fetch CSRF token')

@@ -220,10 +220,9 @@ def renew_tenant_lease(
     if not room:
         raise HTTPException(status_code=404, detail="关联房间不存在")
     
-    # 1. 旧租约失效（标记is_active，但前端显示按时间计算）
-    active_lease.is_active = False
+    # 注意：不修改旧合同的 is_active，旧合同状态由时间自动判断（computed_status）
     
-    # 2. 计算新租期
+    # 1. 计算新租期
     old_lease_end = active_lease.lease_end
     new_lease_start = old_lease_end + relativedelta(days=1)  # 接着旧租约结束的下一天
     new_lease_end = new_lease_start + relativedelta(months=renew_data.months) - relativedelta(days=1)

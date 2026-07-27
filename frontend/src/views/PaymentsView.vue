@@ -1027,7 +1027,7 @@ watch(lookbackMonths, () => {
       </div>
 
       <!-- 水电收益统计 -->
-      <div v-if="!hideAmounts && utilityProfit" class="utility-profit-card">
+      <div v-if="utilityProfit" class="utility-profit-card">
         <div class="profit-header">
           <h2>💧⚡ 水电收益统计</h2>
           <el-button type="primary" size="small" @click="openBillDialog()">
@@ -1037,15 +1037,15 @@ watch(lookbackMonths, () => {
         <div class="profit-stats">
           <div class="stat-item">
             <span class="stat-label">累计水费收益</span>
-            <span class="stat-value water-profit">¥{{ utilityProfit.total_water_profit.toFixed(2) }}</span>
+            <span class="stat-value water-profit">{{ hideAmounts ? '****' : `¥${utilityProfit.total_water_profit.toFixed(2)}` }}</span>
           </div>
           <div class="stat-item">
             <span class="stat-label">累计电费收益</span>
-            <span class="stat-value electric-profit">¥{{ utilityProfit.total_electric_profit.toFixed(2) }}</span>
+            <span class="stat-value electric-profit">{{ hideAmounts ? '****' : `¥${utilityProfit.total_electric_profit.toFixed(2)}` }}</span>
           </div>
           <div class="stat-item total">
             <span class="stat-label">累计总收益</span>
-            <span class="stat-value">¥{{ utilityProfit.total_profit.toFixed(2) }}</span>
+            <span class="stat-value">{{ hideAmounts ? '****' : `¥${utilityProfit.total_profit.toFixed(2)}` }}</span>
           </div>
         </div>
         
@@ -1174,7 +1174,7 @@ watch(lookbackMonths, () => {
       </div>
 
       <!-- 已录入账单列表 -->
-      <div v-if="!hideAmounts && utilityBills.length > 0" class="utility-bills-list-card">
+      <div v-if="utilityBills.length > 0" class="utility-bills-list-card">
         <el-collapse>
           <el-collapse-item name="bills">
             <template #title>

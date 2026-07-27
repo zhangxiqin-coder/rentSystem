@@ -53,7 +53,7 @@ export const useAuthStore = defineStore('auth', () => {
         console.log('🔒 [Auth] Fetching CSRF token...')
         const csrfResponse = await authApi.getCsrfToken()
         if (csrfResponse.data.data.csrf_token) {
-          sessionStorage.setItem('csrf_token', csrfResponse.data.data.csrf_token)
+          localStorage.setItem('csrf_token', csrfResponse.data.data.csrf_token)
           console.log('✅ [Auth] CSRF token saved')
         }
       } catch (csrfError) {
@@ -121,6 +121,7 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.removeItem('access_token')
       localStorage.removeItem('user')
       sessionStorage.removeItem('csrf_token')
+      localStorage.removeItem('csrf_token')
       loading.value = false
     }
   }

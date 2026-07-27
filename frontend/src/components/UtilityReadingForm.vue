@@ -250,9 +250,15 @@ const loadRooms = async () => {
   }
 }
 
+// 请求版本号：防止多个 watch 重复触发 loadPreviousReadings 导致竞态覆盖
+let _loadVersion = 0
+
 // 加载上次读数
 const loadPreviousReadings = async (roomId: number) => {
   if (!roomId) return
+
+  // 递增版本号，本次请求只接受最新版本的结果
+  const myVersion = ++_loadVersion
 
   loadingHistory.value = true
   try {
@@ -261,6 +267,9 @@ const loadPreviousReadings = async (roomId: number) => {
       utilityApi.getReadingsByRoom(roomId, { page: 1, size: 1, utility_type: 'water' }),
       utilityApi.getReadingsByRoom(roomId, { page: 1, size: 1, utility_type: 'electricity' }),
     ])
+
+    // 竞态保护：如果有更新的请求发出，丢弃本次结果
+    if (myVersion !== _loadVersion) return
 
     if (waterRes.status === 'fulfilled' && waterRes.value.data.items.length > 0) {
       const lastWater = waterRes.value.data.items[0]
@@ -281,7 +290,9 @@ const loadPreviousReadings = async (roomId: number) => {
   } catch (error) {
     console.error('Failed to load previous readings:', error)
   } finally {
-    loadingHistory.value = false
+    if (myVersion === _loadVersion) {
+      loadingHistory.value = false
+    }
   }
 }
 
@@ -608,13 +619,14 @@ watch(
   }
 )
 
-// 监听props.roomId变化，自动设置room_id并加载历史记录
+// 监听props.roomId变化，自动设置room_id
+// 注意：只设置 formData.room_id 即可，上面的 watch(formData.room_id) 会自动加载历史记录
+// 避免重复调用 loadPreviousReadings 导致竞态
 watch(
   () => props.roomId,
   (newRoomId) => {
     if (newRoomId) {
       formData.value.room_id = newRoomId
-      loadPreviousReadings(newRoomId)
     }
   },
   { immediate: true } // 立即执行一次

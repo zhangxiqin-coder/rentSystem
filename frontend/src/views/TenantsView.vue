@@ -2,13 +2,14 @@
 import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete, User, Search } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, User, Search, Hide, View } from '@element-plus/icons-vue'
 import { tenantsApi } from '@/api/tenants'
 import { leaseRecordsApi } from '@/api/leaseRecords'
 import { roomApi } from '@/api/room'
 import { statisticsApi } from '@/api/statistics'
 import { useAuthStore } from '@/stores/auth'
 import { useOverdueConfig } from '@/composables/useOverdueConfig'
+import { usePrivacyMode } from '@/composables/usePrivacyMode'
 import type { Tenant } from '@/types'
 
 const router = useRouter()
@@ -18,6 +19,7 @@ const tenants = ref<Tenant[]>([])
 const activeTab = ref('active')  // active: 入住, unassigned: 未入住, inactive: 搬离
 const searchKeyword = ref('')
 const { leaseExpiryWarningDays } = useOverdueConfig()
+const { privacyMode, togglePrivacyMode, maskName, maskPhone } = usePrivacyMode()
 
 // 合同到期提醒接口（从后端LeaseRecord获取）
 interface LeaseExpiryWarning {
@@ -41,9 +43,10 @@ const fetchActiveLeases = async () => {
     // 拉全部租约（不按日期过滤），取每个租客最远的到期日
     const records = await leaseRecordsApi.list()
     const map: Record<number, string> = {}
+    const today = new Date().toISOString().split('T')[0]
     for (const r of records) {
-      // 只要 is_active=true 的（排除已退租的），取最远到期日
-      if (r.is_active && (!map[r.tenant_id] || r.lease_end > map[r.tenant_id])) {
+      // 按时间判断：只要租期还没结束（lease_end >= 今天），取最远到期日
+      if (r.lease_end >= today && (!map[r.tenant_id] || r.lease_end > map[r.tenant_id])) {
         map[r.tenant_id] = r.lease_end
       }
     }
@@ -170,7 +173,16 @@ const sortedTenants = computed(() => {
   <div class="tenants-page">
     <div class="page-header">
       <h2>租客管理</h2>
-      <el-button type="primary" :icon="Plus" @click="handleAdd">新增租客</el-button>
+      <div class="header-actions">
+        <el-button
+          :type="privacyMode ? 'warning' : 'default'"
+          :icon="privacyMode ? View : Hide"
+          @click="togglePrivacyMode()"
+        >
+          {{ privacyMode ? '显示信息' : '隐藏信息' }}
+        </el-button>
+        <el-button type="primary" :icon="Plus" @click="handleAdd">新增租客</el-button>
+      </div>
     </div>
 
     <!-- 合同到期提醒 -->
@@ -237,8 +249,16 @@ const sortedTenants = computed(() => {
       style="width: 100%"
       class="hidden-mobile"
     >
-      <el-table-column prop="name" label="姓名" width="120" />
-      <el-table-column prop="phone" label="电话" width="160" />
+      <el-table-column prop="name" label="姓名" width="120">
+        <template #default="{ row }">
+          {{ privacyMode ? maskName(row.name) : row.name }}
+        </template>
+      </el-table-column>
+      <el-table-column prop="phone" label="电话" width="160">
+        <template #default="{ row }">
+          {{ privacyMode ? maskPhone(row.phone) : row.phone }}
+        </template>
+      </el-table-column>
       <el-table-column label="合同到期" min-width="180">
         <template #default="{ row }">
           <span :class="{ 'lease-expired': tenantLeaseEndMap[row.id] && new Date(tenantLeaseEndMap[row.id]) < new Date(), 'lease-soon': tenantLeaseEndMap[row.id] && (() => { const d = new Date(tenantLeaseEndMap[row.id]); const days = Math.ceil((d.getTime() - Date.now()) / 86400000); return days >= 0 && days <= 7 })() }">
@@ -277,11 +297,11 @@ const sortedTenants = computed(() => {
         <div class="card-info">
           <div class="card-row">
             <span class="card-label">姓名</span>
-            <span class="card-value">{{ tenant.name }}</span>
+            <span class="card-value">{{ privacyMode ? maskName(tenant.name) : tenant.name }}</span>
           </div>
           <div class="card-row">
             <span class="card-label">电话</span>
-            <span class="card-value">{{ tenant.phone }}</span>
+            <span class="card-value">{{ privacyMode ? maskPhone(tenant.phone) : tenant.phone }}</span>
           </div>
           <div class="card-row">
             <span class="card-label">合同到期</span>
@@ -329,6 +349,12 @@ const sortedTenants = computed(() => {
   margin: 0;
   font-size: 24px;
   font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .search-bar {
