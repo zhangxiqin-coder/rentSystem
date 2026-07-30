@@ -2,10 +2,12 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { Room, Payment, UtilityReading } from '@/types'
+import type { Room, Payment, UtilityReading, RoomOccupant, Tenant } from '@/types'
 import { roomApi } from '@/api/room'
 import { paymentApi } from '@/api/payment'
 import { utilityApi } from '@/api/utility'
+import { roomOccupantsApi } from '@/api/roomOccupants'
+import { tenantsApi } from '@/api/tenants'
 import PaymentForm from '@/components/PaymentForm.vue'
 import UtilityReadingForm from '@/components/UtilityReadingForm.vue'
 
@@ -47,6 +49,134 @@ const renewForm = ref({
   monthly_rent: null as number | null,
   notes: ''
 })
+
+// ===== 居住人（多租客）=====
+const occupants = ref<RoomOccupant[]>([])
+const occupantsLoading = ref(false)
+const occupantDialogVisible = ref(false)
+const occupantSubmitting = ref(false)
+const occupantEditMode = ref<'add' | 'edit'>('add')
+const editingOccupant = ref<RoomOccupant | null>(null)
+const occupantForm = ref({
+  tenant_id: undefined as number | undefined,
+  role: 'secondary' as 'primary' | 'secondary',
+  relation: '',
+  is_active: true
+})
+// 可选的租客列表（排除已在房间的）
+const availableTenants = ref<Tenant[]>([])
+const tenantsLoading = ref(false)
+
+const loadOccupants = async () => {
+  if (!room.value) return
+  occupantsLoading.value = true
+  try {
+    occupants.value = await roomOccupantsApi.listByRoom(roomId.value)
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '加载居住人列表失败')
+  } finally {
+    occupantsLoading.value = false
+  }
+}
+
+const loadAvailableTenants = async () => {
+  tenantsLoading.value = true
+  try {
+    const all = await tenantsApi.list({ status: 'active' })
+    // 排除已在居住人列表中的租客
+    const existingIds = new Set(occupants.value.map(o => o.tenant_id))
+    availableTenants.value = all.filter(t => !existingIds.has(t.id))
+  } catch (error) {
+    console.error('获取租客列表失败:', error)
+  } finally {
+    tenantsLoading.value = false
+  }
+}
+
+const openAddOccupantDialog = () => {
+  occupantEditMode.value = 'add'
+  editingOccupant.value = null
+  occupantForm.value = {
+    tenant_id: undefined,
+    role: 'secondary',
+    relation: '',
+    is_active: true
+  }
+  loadAvailableTenants()
+  occupantDialogVisible.value = true
+}
+
+const openEditOccupantDialog = (occ: RoomOccupant) => {
+  occupantEditMode.value = 'edit'
+  editingOccupant.value = occ
+  occupantForm.value = {
+    tenant_id: occ.tenant_id,
+    role: occ.role,
+    relation: occ.relation || '',
+    is_active: occ.is_active
+  }
+  occupantDialogVisible.value = true
+}
+
+const handleSubmitOccupant = async () => {
+  if (!occupantForm.value.tenant_id) {
+    ElMessage.warning('请选择租客')
+    return
+  }
+  occupantSubmitting.value = true
+  try {
+    const data = {
+      tenant_id: occupantForm.value.tenant_id,
+      role: occupantForm.value.role,
+      relation: occupantForm.value.relation || undefined,
+      is_active: occupantForm.value.is_active
+    }
+    if (occupantEditMode.value === 'add') {
+      await roomOccupantsApi.add(roomId.value, data)
+      ElMessage.success('添加居住人成功')
+    } else if (editingOccupant.value) {
+      await roomOccupantsApi.update(editingOccupant.value.id, {
+        role: data.role,
+        relation: data.relation,
+        is_active: data.is_active
+      })
+      ElMessage.success('更新居住人成功')
+    }
+    occupantDialogVisible.value = false
+    await loadOccupants()
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '操作失败')
+  } finally {
+    occupantSubmitting.value = false
+  }
+}
+
+const handleRemoveOccupant = async (occ: RoomOccupant) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要将「${occ.tenant_name}」从居住人列表中移除吗？（不会删除该租客本身）`,
+      '移除确认',
+      { confirmButtonText: '移除', cancelButtonText: '取消', type: 'warning' }
+    )
+    await roomOccupantsApi.remove(occ.id)
+    ElMessage.success('移除成功')
+    await loadOccupants()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.response?.data?.detail || '移除失败')
+    }
+  }
+}
+
+const handleSetPrimary = async (occ: RoomOccupant) => {
+  try {
+    await roomOccupantsApi.update(occ.id, { role: 'primary' })
+    ElMessage.success(`已将「${occ.tenant_name}」设为主租客`)
+    await loadOccupants()
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '设置失败')
+  }
+}
 
 const loadRoom = async () => {
   if (!Number.isFinite(roomId.value) || roomId.value <= 0) {
@@ -326,6 +456,7 @@ onMounted(async () => {
   if (room.value) {
     await loadPayments()
     await loadUtilityReadings()
+    await loadOccupants()
   }
 })
 </script>
@@ -537,6 +668,74 @@ onMounted(async () => {
           </el-table>
         </el-card>
       </el-tab-pane>
+
+      <!-- Occupants Tab -->
+      <el-tab-pane name="occupants">
+        <template #label>
+          居住人
+          <el-badge v-if="occupants.length" :value="occupants.length" type="info" style="margin-left: 4px;" />
+        </template>
+        <el-card>
+          <template #header>
+            <div class="card-header">
+              <span>居住人（主租客 + 亲友）</span>
+              <el-button type="primary" @click="openAddOccupantDialog">
+                添加居住人
+              </el-button>
+            </div>
+          </template>
+
+          <el-table :data="occupants" v-loading="occupantsLoading" stripe style="width: 100%">
+            <el-table-column label="姓名" min-width="120">
+              <template #default="{ row }">
+                <span style="font-weight: 600;">{{ row.tenant_name || '-' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="角色" width="120">
+              <template #default="{ row }">
+                <el-tag v-if="row.role === 'primary'" type="danger" size="small">主租客</el-tag>
+                <el-tag v-else type="info" size="small">亲友</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="relation" label="关系" width="100">
+              <template #default="{ row }">
+                {{ row.relation || '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="tenant_phone" label="电话" width="150">
+              <template #default="{ row }">
+                {{ row.tenant_phone || '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="tenant_id_card" label="身份证号" min-width="160">
+              <template #default="{ row }">
+                {{ row.tenant_id_card || '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="80">
+              <template #default="{ row }">
+                <el-tag v-if="row.is_active" type="success" size="small">在住</el-tag>
+                <el-tag v-else type="info" size="small">已搬出</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="200" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  v-if="row.role !== 'primary'"
+                  size="small"
+                  type="warning"
+                  @click="handleSetPrimary(row)"
+                >
+                  设为主租客
+                </el-button>
+                <el-button size="small" @click="openEditOccupantDialog(row)">编辑</el-button>
+                <el-button type="danger" size="small" @click="handleRemoveOccupant(row)">移除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-if="!occupantsLoading && occupants.length === 0" description="暂无居住人，点击「添加居住人」来关联主租客和亲友" />
+        </el-card>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- Payment Form Dialog -->
@@ -627,6 +826,74 @@ onMounted(async () => {
         <el-button @click="renewDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="renewSubmitting" @click="handleSubmitRenewLease">
           确认续租
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 居住人对话框 -->
+    <el-dialog
+      v-model="occupantDialogVisible"
+      :title="occupantEditMode === 'add' ? '添加居住人' : '编辑居住人'"
+      width="500px"
+    >
+      <el-form :model="occupantForm" label-width="100px">
+        <el-form-item v-if="occupantEditMode === 'add'" label="选择租客" required>
+          <el-select
+            v-model="occupantForm.tenant_id"
+            placeholder="选择已有租客"
+            filterable
+            :loading="tenantsLoading"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="t in availableTenants"
+              :key="t.id"
+              :label="`${t.name}（${t.phone}）`"
+              :value="t.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-else label="租客">
+          <span style="font-weight: 600;">
+            {{ editingOccupant?.tenant_name }}
+          </span>
+        </el-form-item>
+        <el-form-item label="角色" required>
+          <el-radio-group v-model="occupantForm.role">
+            <el-radio value="primary">主租客（签合同）</el-radio>
+            <el-radio value="secondary">亲友</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="与主租客关系">
+          <el-select
+            v-model="occupantForm.relation"
+            placeholder="选择或输入关系"
+            allow-create
+            filterable
+            clearable
+            style="width: 100%"
+          >
+            <el-option label="配偶" value="配偶" />
+            <el-option label="子女" value="子女" />
+            <el-option label="父母" value="父母" />
+            <el-option label="兄弟姐妹" value="兄弟姐妹" />
+            <el-option label="朋友" value="朋友" />
+            <el-option label="同事" value="同事" />
+            <el-option label="其他" value="其他" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-switch
+            v-model="occupantForm.is_active"
+            active-text="在住"
+            inactive-text="已搬出"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="occupantDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="occupantSubmitting" @click="handleSubmitOccupant">
+          确认
         </el-button>
       </template>
     </el-dialog>

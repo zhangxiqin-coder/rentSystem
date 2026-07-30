@@ -176,7 +176,7 @@ class Tenant(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(String(100), nullable=False)
     phone = Column(String(20), nullable=False)
-    id_card = Column(String(20), unique=True, nullable=False, index=True)
+    id_card = Column(String(20), nullable=True, index=True)  # 允许为空，录入时可能暂无身份证
     emergency_contact = Column(String(100))
     emergency_phone = Column(String(20))
     notes = Column(Text)
@@ -241,6 +241,33 @@ class LeaseRecord(Base):
             return "expired"
         else:
             return "active"
+
+
+class RoomOccupant(Base):
+    """房间居住人模型：支持每个房间多个居住人（主租客 + 亲友）"""
+    __tablename__ = "room_occupants"
+    __table_args__ = (
+        Index('idx_occupant_room', 'room_id'),
+        Index('idx_occupant_tenant', 'tenant_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    room_id = Column(Integer, ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False)
+    tenant_id = Column(Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    role = Column(String(20), nullable=False, default="secondary", comment="primary=主租客(签合同), secondary=亲友")
+    relation = Column(String(50), nullable=True, comment="与主租客关系：配偶/子女/父母/朋友/同事等")
+    is_active = Column(Boolean, default=True, nullable=False, comment="是否在住")
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # 关系
+    room = relationship("Room")
+    tenant = relationship("Tenant")
+    owner = relationship("User", foreign_keys=[owner_id])
+
+    def __repr__(self):
+        return f"<RoomOccupant(id={self.id}, room_id={self.room_id}, tenant_id={self.tenant_id}, role='{self.role}')>"
 
 
 class UtilityReading(Base):

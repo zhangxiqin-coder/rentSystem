@@ -467,3 +467,34 @@ export interface FixedAsset {
   created_at: string
   updated_at: string
 }
+
+// ==================== 房间居住人（多租客）类型 ====================
+
+export interface RoomOccupant {
+  id: number
+  room_id: number
+  tenant_id: number
+  role: 'primary' | 'secondary'
+  relation?: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  // 关联租客详细信息
+  tenant_name?: string | null
+  tenant_phone?: string | null
+  tenant_id_card?: string | null
+  tenant_notes?: string | null
+}
+
+export interface RoomOccupantCreate {
+  tenant_id: number
+  role?: 'primary' | 'secondary'
+  relation?: string
+  is_active?: boolean
+}
+
+export interface RoomOccupantUpdate {
+  role?: 'primary' | 'secondary'
+  relation?: string
+  is_active?: boolean
+}

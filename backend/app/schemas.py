@@ -600,6 +600,51 @@ class TenantResponse(TenantBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+# ==================== 房间居住人（多租客）相关 ====================
+
+class RoomOccupantBase(BaseModel):
+    """房间居住人基础schema"""
+    room_id: int = Field(..., description="房间ID")
+    tenant_id: int = Field(..., description="租客ID")
+    role: str = Field(default="secondary", pattern="^(primary|secondary)$", description="primary=主租客(签合同), secondary=亲友")
+    relation: Optional[str] = Field(None, max_length=50, description="与主租客关系：配偶/子女/父母/朋友/同事等")
+    is_active: bool = Field(default=True, description="是否在住")
+
+
+class RoomOccupantCreate(BaseModel):
+    """创建房间居住人"""
+    tenant_id: int = Field(..., description="租客ID")
+    role: str = Field(default="secondary", pattern="^(primary|secondary)$", description="primary=主租客, secondary=亲友")
+    relation: Optional[str] = Field(None, max_length=50, description="与主租客关系")
+    is_active: bool = Field(default=True, description="是否在住")
+
+
+class RoomOccupantUpdate(BaseModel):
+    """更新房间居住人"""
+    role: Optional[str] = Field(None, pattern="^(primary|secondary)$", description="primary=主租客, secondary=亲友")
+    relation: Optional[str] = Field(None, max_length=50, description="与主租客关系")
+    is_active: Optional[bool] = None
+
+
+class RoomOccupantResponse(BaseModel):
+    """房间居住人响应（含租客详细信息）"""
+    id: int
+    room_id: int
+    tenant_id: int
+    role: str
+    relation: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    # 关联的租客详细信息（前端展示用）
+    tenant_name: Optional[str] = None
+    tenant_phone: Optional[str] = None
+    tenant_id_card: Optional[str] = None
+    tenant_notes: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ==================== 租赁记录相关 ====================
 
 class LeaseRecordBase(BaseModel):
