@@ -7,7 +7,7 @@ from typing import List, Optional
 from datetime import date
 
 from app.database import get_db
-from app.models import Tenant, LeaseRecord, Room, User
+from app.models import Tenant, LeaseRecord, Room, User, RoomOccupant
 from app.schemas import TenantCreate, TenantUpdate, TenantResponse, LeaseRecordCreate, LeaseRecordResponse, RenewLeaseRequest
 from app.api.auth import get_current_user
 
@@ -28,22 +28,30 @@ def list_tenants(
     query = db.query(Tenant).filter(Tenant.owner_id == current_user.id)
     
     # 状态筛选：未入住(unassigned)/入住(active)/搬离(inactive)
+    # "入住" = 有活跃租约 OR 是某房间活跃居住人（同住人/亲友）
+    active_lease_sub = db.query(LeaseRecord.id).filter(
+        LeaseRecord.tenant_id == Tenant.id,
+        LeaseRecord.lease_start <= date.today(),
+        LeaseRecord.lease_end >= date.today()
+    )
+    active_occupant_sub = db.query(RoomOccupant.id).filter(
+        RoomOccupant.tenant_id == Tenant.id,
+        RoomOccupant.is_active == True
+    )
     if status == 'unassigned':
-        # 未入住：active但没有活跃租约（根据时间判断）
-        active_subquery = db.query(LeaseRecord.id).filter(
-            LeaseRecord.tenant_id == Tenant.id,
-            LeaseRecord.lease_start <= date.today(),
-            LeaseRecord.lease_end >= date.today()
+        # 未入住：active但没有活跃租约、也不是任何房间的活跃居住人
+        query = query.filter(
+            Tenant.status == 'active',
+            ~active_lease_sub.exists(),
+            ~active_occupant_sub.exists()
         )
-        query = query.filter(Tenant.status == 'active', ~active_subquery.exists())
     elif status == 'active':
-        # 入住：active且有活跃租约（根据时间判断）
-        active_subquery = db.query(LeaseRecord.id).filter(
-            LeaseRecord.tenant_id == Tenant.id,
-            LeaseRecord.lease_start <= date.today(),
-            LeaseRecord.lease_end >= date.today()
+        # 入住：active且（有活跃租约 OR 是活跃居住人）
+        from sqlalchemy import or_
+        query = query.filter(
+            Tenant.status == 'active',
+            or_(active_lease_sub.exists(), active_occupant_sub.exists())
         )
-        query = query.filter(Tenant.status == 'active', active_subquery.exists())
     elif status == 'inactive':
         # 搬离
         query = query.filter(Tenant.status == 'inactive')
