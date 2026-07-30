@@ -82,10 +82,12 @@ const loadOccupants = async () => {
 const loadAvailableTenants = async () => {
   tenantsLoading.value = true
   try {
-    const all = await tenantsApi.list({ status: 'active' })
-    // 排除已在居住人列表中的租客
+    // 查全部active租客（不传status=active，因为后端会进一步过滤"有活跃租约"的，
+    // 新建的租客可能还没租约，需要在添加居住人时也能看到）
+    const all = await tenantsApi.list({})
+    // 只排除已搬离的，排除已在居住人列表中的租客
     const existingIds = new Set(occupants.value.map(o => o.tenant_id))
-    availableTenants.value = all.filter(t => !existingIds.has(t.id))
+    availableTenants.value = all.filter(t => !existingIds.has(t.id) && t.status !== 'inactive')
   } catch (error) {
     console.error('获取租客列表失败:', error)
   } finally {
