@@ -72,6 +72,19 @@ const loadOccupants = async () => {
   occupantsLoading.value = true
   try {
     occupants.value = await roomOccupantsApi.listByRoom(roomId.value)
+    // 如果居住人列表为空，但房间已有签约租客（room.tenant_id），自动添加为主租客
+    if (occupants.value.length === 0 && room.value.tenant_id) {
+      try {
+        await roomOccupantsApi.add(roomId.value, {
+          tenant_id: room.value.tenant_id,
+          role: 'primary',
+          is_active: true
+        })
+        occupants.value = await roomOccupantsApi.listByRoom(roomId.value)
+      } catch {
+        // 静默失败，用户可手动添加
+      }
+    }
   } catch (error: any) {
     ElMessage.error(error.response?.data?.detail || '加载居住人列表失败')
   } finally {
