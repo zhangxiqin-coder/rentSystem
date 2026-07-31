@@ -619,14 +619,15 @@ watch(
   }
 )
 
-// 监听props.roomId变化，自动设置room_id
-// 注意：只设置 formData.room_id 即可，上面的 watch(formData.room_id) 会自动加载历史记录
-// 避免重复调用 loadPreviousReadings 导致竞态
+// 监听props.roomId变化，自动设置room_id并加载历史记录
+// 注意：formData.room_id 初始值已是 props.roomId，watch(formData.room_id) 不会因值相同而触发
+// 所以这里必须直接调用 loadPreviousReadings，否则从"即将到期"列表打开表单时看不到历史记录
 watch(
   () => props.roomId,
   (newRoomId) => {
     if (newRoomId) {
       formData.value.room_id = newRoomId
+      loadPreviousReadings(newRoomId)
     }
   },
   { immediate: true } // 立即执行一次
