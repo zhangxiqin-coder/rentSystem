@@ -317,7 +317,9 @@ const rentCollectionByMonth = computed(() => {
         : false
 
       // 已收判断
-      const halfCycleMs = cycle * 15 * 86400000
+      // 使用 ±14天 窗口（与后端 _has_paid_for_target_cycle 一致）
+      // 注意：不能用 cycle*15 天，否则季付房间上个周期的付款会被误匹配到下个周期
+      const paidWindowMs = 14 * 86400000
 
       const roomRentPayments = payments.value.filter(p =>
         p.room_id === room.id &&
@@ -331,7 +333,7 @@ const rentCollectionByMonth = computed(() => {
         : roomRentPayments.some(p => {
             const d = new Date(p.payment_date!)
             d.setHours(0, 0, 0, 0)
-            return Math.abs(d.getTime() - dueDateThisMonth.getTime()) <= halfCycleMs
+            return Math.abs(d.getTime() - dueDateThisMonth.getTime()) <= paidWindowMs
           })
 
       const rentDue = Number(room.monthly_rent || 0) * cycle
