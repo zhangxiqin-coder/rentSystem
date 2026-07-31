@@ -1,10 +1,11 @@
 #!/bin/bash
-# 检测 password_hash 是否被意外修改
-# 如果 git commit 中包含 users 表的 password_hash 变更，警告并阻止
+# Pre-commit hook:
+# 1. 检测 password_hash 是否被意外修改
+# 2. 改了业务逻辑后自动跑测试
 
 cd "$(git rev-parse --show-toplevel)"
 
-# 提取待提交版本和工作区版本的 password_hash
+# ─── DB密码保护 ───
 STAGED_HASH=$(git show :backend/rent_management.db 2>/dev/null | strings | grep -o '\$2b\$12\$[a-zA-Z0-9./]*' | head -1 || echo "")
 if [ -n "$STAGED_HASH" ]; then
     echo "⚠️  警告: 本次提交包含数据库文件变更"
@@ -12,3 +13,26 @@ if [ -n "$STAGED_HASH" ]; then
     echo "   如需重置密码: python3 backend/tools/reset_password.py"
     echo ""
 fi
+
+# ─── 自动测试 ───
+# 只在有代码改动时才跑测试
+CHANGED_PY=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' | head -1)
+CHANGED_TS=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.ts$|\.vue$' | head -1)
+
+if [ -n "$CHANGED_PY" ] || [ -n "$CHANGED_TS" ]; then
+    echo "🧪 Running pytest (核心业务逻辑测试)..."
+    cd backend
+    ./venv/bin/python3 -m pytest tests/test_payment_cycle_logic.py -x -q --tb=short
+    PYTEST_EXIT=$?
+
+    if [ $PYTEST_EXIT -ne 0 ]; then
+        echo ""
+        echo "❌ 核心测试失败！commit被阻止。"
+        echo "   修复测试后重新commit，或用 'git commit --no-verify' 跳过（不推荐）。"
+        exit 1
+    fi
+
+    echo "✅ 核心测试全部通过。"
+fi
+
+exit 0

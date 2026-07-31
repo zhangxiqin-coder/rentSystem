@@ -467,4 +467,3 @@ class TestShouldIncludeRentLogic:
             {"payment_date": next_due - timedelta(days=30), "payment_type": "rent", "status": "completed"}
         ]
         assert self._should_include_rent(lease_start, cycle, payments_out) is True
-# test
