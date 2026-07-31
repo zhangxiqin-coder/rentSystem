@@ -22,7 +22,7 @@ CHANGED_TS=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.ts$|\.
 if [ -n "$CHANGED_PY" ] || [ -n "$CHANGED_TS" ]; then
     echo "🧪 Running pytest (核心业务逻辑测试)..."
     cd backend
-    ./venv/bin/python3 -m pytest tests/test_payment_cycle_logic.py -x -q --tb=short
+    ./venv/bin/python3 -m pytest tests/test_payment_cycle_logic.py tests/test_bugfixes_20260731.py -x -q --tb=short
     PYTEST_EXIT=$?
 
     if [ $PYTEST_EXIT -ne 0 ]; then
