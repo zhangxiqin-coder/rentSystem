@@ -193,8 +193,8 @@ const updateDateRange = () => {
   const months = lookbackMonths.value || 1
   // 开始日期：N个月前的1号
   startDate.value = new Date(now.getFullYear(), now.getMonth() - months + 1, 1)
-  // 结束日期：当月最后一天
-  endDate.value = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  // 结束日期：下月最后一天（包含下月，这样提前收了下月房租时能看到记录）
+  endDate.value = new Date(now.getFullYear(), now.getMonth() + 2, 0)
 }
 
 // 初始化
@@ -237,12 +237,13 @@ const rentCollectionByMonth = computed(() => {
     paidRent: number
   }> = []
 
-  for (let i = lookbackMonths.value - 1; i >= 0; i--) {
+  for (let i = lookbackMonths.value - 1; i >= -1; i--) {
     const m = currentMonth - i
     const year = currentYear + Math.floor(m / 12)
     const month = ((m % 12) + 12) % 12
     const isCurrent = (i === 0)
-    const label = isCurrent ? `${month + 1}月（本月）` : `${month + 1}月`
+    const isNext = (i === -1)
+    const label = isCurrent ? `${month + 1}月（本月）` : isNext ? `${month + 1}月（下月）` : `${month + 1}月`
     const key = `${year}-${String(month + 1).padStart(2, '0')}`
 
     const unpaidRooms: RoomItem[] = []
