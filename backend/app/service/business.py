@@ -582,11 +582,14 @@ def _has_paid_this_month(
     expiring_days: int
 ) -> bool:
     """
-    对齐前端 hasPaidThisMonth
+    "本月已付"的智能判断：
+    如果本月有payment记录，但下个周期的付款日在 expiring_days 内即将到期，
+    则不算"已付"——应该出现在到期提醒列表中。
     """
     today = date.today()
 
-    # 检查本月是否有 payment 记录
+    # 检查本月是否有 rent payment 记录
+    has_payment_this_month = False
     for p in payments:
         if p.room_id != room.id:
             continue
@@ -597,12 +600,21 @@ def _has_paid_this_month(
         if p.payment_type != 'rent':
             continue
         if p.payment_date.year == today.year and p.payment_date.month == today.month:
-            return True  # 本月已交租，不显示在到期/逾期列表
+            has_payment_this_month = True
+            break
 
     # 历史导入场景：没有 payment 记录，但 last_payment_date 已更新
-    if room.last_payment_date:
+    if not has_payment_this_month and room.last_payment_date:
         if room.last_payment_date.year == today.year and room.last_payment_date.month == today.month:
-            return True
+            has_payment_this_month = True
+
+    if has_payment_this_month:
+        # 关键修复：检查下次付款是否即将到期
+        # 如果下个周期付款日在 expiring_days 内，不视为"本月已付"
+        days_to_next = get_next_payment_days_func(room, payments)
+        if days_to_next <= expiring_days:
+            return False
+        return True
 
     return False
 
