@@ -1,4 +1,5 @@
 import type { UtilityReading, Room, Payment } from '@/types'
+import { shouldIncludeRent } from '@/utils/paymentCycle'
 
 export interface MergedReading {
   room_id: number
@@ -51,18 +52,12 @@ export function mergeReadings(
   Array.from(map.values()).forEach(merged => {
     const cycle = Math.max(1, merged.payment_cycle || 1)
 
-    // 季度付等长周期房间：判断本周期是否已收房租
+    // 季度付等长周期房间：判断是否应收房租
+    // 使用统一的 shouldIncludeRent 逻辑（基于到期日，非简单时间窗口）
     let includeRent = true
     if (cycle > 1 && allPayments && allPayments.length > 0) {
-      const thresholdDays = cycle * 30
-      const cutoff = new Date()
-      cutoff.setDate(cutoff.getDate() - thresholdDays)
-      const hasRentPayment = allPayments.some(p =>
-        p.room_id === merged.room_id &&
-        p.payment_type === 'rent' &&
-        new Date(p.payment_date) >= cutoff
-      )
-      if (hasRentPayment) includeRent = false
+      const room = roomMap.get(merged.room_id)
+      includeRent = shouldIncludeRent(room || merged, allPayments)
     }
 
     let total = includeRent ? (merged.monthly_rent || 0) * cycle : 0

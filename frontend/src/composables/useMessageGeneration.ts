@@ -3,6 +3,7 @@ import { ElMessage } from 'element-plus'
 import { utilityApi } from '@/api/utility'
 import { roomApi } from '@/api/room'
 import { paymentApi } from '@/api/payment'
+import { shouldIncludeRent } from '@/utils/paymentCycle'
 import type { Room, UtilityReading } from '@/types'
 
 interface UseMessageGenerationDeps {
@@ -83,30 +84,20 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
       }
     })
 
-    // 添加房租
+    // 判断是否包含房租（季付/半年付房间）
+    // 使用与收租到期列表一致的逻辑：计算下次到期日，检查是否有payment覆盖
     const cycle = Math.max(1, Number(room.payment_cycle || 1))
 
-    // 季度付等长周期房间：判断本周期是否已收过房租
-    // 如果已收，则只收水电，不包含房租
     let includeRent = true
     if (cycle > 1) {
       try {
-        const cutoffDate = new Date()
-        cutoffDate.setDate(cutoffDate.getDate() - (cycle * 30 - 5))
         const resp = await paymentApi.getPayments({
           room_id: roomId,
           payment_type: 'rent',
-          size: 1,
+          size: 10,
         })
         const payments = resp.data?.items || resp.data || []
-        const recentRent = Array.isArray(payments) ? payments.find((p: any) => {
-          if (!p.payment_date) return false
-          const d = new Date(p.payment_date)
-          return d >= cutoffDate && p.status !== 'cancelled'
-        }) : null
-        if (recentRent) {
-          includeRent = false
-        }
+        includeRent = shouldIncludeRent(room, Array.isArray(payments) ? payments : [])
       } catch {
         // 查询失败，默认包含房租
       }

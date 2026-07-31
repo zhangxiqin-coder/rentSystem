@@ -2,6 +2,7 @@ import { ref, computed, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { utilityApi } from '@/api/utility'
 import { paymentApi } from '@/api/payment'
+import { shouldIncludeRent } from '@/utils/paymentCycle'
 import { mergeReadings, type MergedReading } from '@/composables/useMergedReadings'
 import type { UtilityReading, Room, Payment as RentPayment } from '@/types'
 
@@ -144,19 +145,11 @@ export function useUtilityReadings(deps: {
         const room = roomMap.get(reading.room_id)
         const cycle = Math.max(1, Number(room?.payment_cycle || 1))
 
-        // 季度付等长周期房间：判断本周期是否已收房租
-        // 已收则总计不含房租，只算水电
+        // 季度付等长周期房间：判断是否应收房租
+        // 使用统一的 shouldIncludeRent 逻辑（基于到期日，非简单时间窗口）
         let includeRent = true
         if (cycle > 1) {
-          const thresholdDays = cycle * 30
-          const cutoff = new Date()
-          cutoff.setDate(cutoff.getDate() - thresholdDays)
-          const hasRentPayment = payments.value.some(p =>
-            p.room_id === reading.room_id &&
-            p.payment_type === 'rent' &&
-            new Date(p.payment_date) >= cutoff
-          )
-          if (hasRentPayment) includeRent = false
+          includeRent = shouldIncludeRent(room, payments.value)
         }
 
         map.set(key, {

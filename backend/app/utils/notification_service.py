@@ -1,8 +1,9 @@
 """
 Centralized notification service - eliminates duplicated notification logic
 """
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
+from dateutil.relativedelta import relativedelta
 
 from sqlalchemy.orm import Session
 
@@ -14,22 +15,40 @@ from app.utils.wechat import (
 )
 
 
-def _has_recent_rent_payment(db: Session, room_id: int, cycle_months: int) -> bool:
+def _has_paid_for_target_cycle(db: Session, room: Room, cycle: int) -> bool:
     """
-    检查最近 cycle_months*30-5 天内是否有 rent 类型的支付记录
-    用于判断季度付等长周期房间本周期是否已收过房租
+    判断目标到期周期是否已有rent payment覆盖。
+
+    逻辑：计算下次到期日（lease_start + cycle个月），
+    检查是否有rent payment在该到期日±14天内。
+    有 → 已付，不需再收房租
+    无 → 未付，应收房租
+
+    与前端 shouldIncludeRent / 后端 get_rent_payment_status 逻辑一致。
     """
+    if cycle <= 1:
+        return False  # 月付永不走这个判断
+
+    if not room.lease_start:
+        return False  # 无租约开始日，默认未付
+
     today = date.today()
-    threshold_days = cycle_months * 30 - 5
-    from datetime import timedelta
-    cutoff_date = today - timedelta(days=threshold_days)
+
+    # 计算下次到期日
+    next_due = room.lease_start
+    while next_due <= today:
+        next_due += relativedelta(months=cycle)
+
+    # 检查是否有rent payment在到期日±14天内
+    window_start = next_due - timedelta(days=14)
+    window_end = next_due + timedelta(days=14)
 
     payment = db.query(Payment).filter(
-        Payment.room_id == room_id,
+        Payment.room_id == room.id,
         Payment.payment_type == 'rent',
         Payment.status != 'cancelled',
-        Payment.payment_date >= cutoff_date,
-        Payment.payment_date <= today
+        Payment.payment_date >= window_start,
+        Payment.payment_date <= window_end,
     ).first()
 
     return payment is not None
@@ -61,10 +80,10 @@ async def send_rent_notification_if_complete(
         cycle = max(1, room.payment_cycle or 1)
 
         # 判断是否需要包含房租：
-        # payment_cycle > 1 的房间（季度付等），如果本周期已收过房租，则只收水电
+        # payment_cycle > 1 的房间（季度付等），检查目标到期周期是否已付房租
         include_rent = True
         if cycle > 1:
-            include_rent = not _has_recent_rent_payment(db, room.id, cycle)
+            include_rent = not _has_paid_for_target_cycle(db, room, cycle)
 
         if include_utilities:
             utility_status = check_if_both_utilities_recorded(
