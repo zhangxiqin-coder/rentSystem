@@ -575,21 +575,24 @@ def _has_rent_payment_after(room_id: int, payments: List[Payment], after_date: d
     return False
 
 
-def _has_paid_this_month(
+def _has_paid_for_target_cycle(
     room: Room,
     payments: List[Payment],
-    get_next_payment_days_func,
+    cutoff: date,
     expiring_days: int
 ) -> bool:
     """
-    "本月已付"的智能判断：
-    如果本月有payment记录，但下个周期的付款日在 expiring_days 内即将到期，
-    则不算"已付"——应该出现在到期提醒列表中。
+    判断房间的"目标到期周期"是否已被支付。
+    
+    核心逻辑：
+    1. 计算当前 target_due（= 如果当前周期已付，则 target=next_due；否则 target=current_cycle_due）
+    2. 检查是否有 rent payment 在 target_due 的合理时间窗内（±14天）
+    
+    这样无论租客是当月付、提前付还是延迟付，只要 target_due 已被覆盖，就正确识别。
     """
-    today = date.today()
-
-    # 检查本月是否有 rent payment 记录
-    has_payment_this_month = False
+    ctx = _get_payment_due_context(room, payments, cutoff, expiring_days)
+    target_due = ctx['target_due']
+    
     for p in payments:
         if p.room_id != room.id:
             continue
@@ -599,24 +602,24 @@ def _has_paid_this_month(
             continue
         if p.payment_type != 'rent':
             continue
-        if p.payment_date.year == today.year and p.payment_date.month == today.month:
-            has_payment_this_month = True
-            break
-
-    # 历史导入场景：没有 payment 记录，但 last_payment_date 已更新
-    if not has_payment_this_month and room.last_payment_date:
-        if room.last_payment_date.year == today.year and room.last_payment_date.month == today.month:
-            has_payment_this_month = True
-
-    if has_payment_this_month:
-        # 关键修复：检查下次付款是否即将到期
-        # 如果下个周期付款日在 expiring_days 内，不视为"本月已付"
-        days_to_next = get_next_payment_days_func(room, payments)
-        if days_to_next <= expiring_days:
-            return False
-        return True
-
+        if abs((p.payment_date - target_due).days) <= 14:
+            return True
+    
     return False
+
+
+def _has_paid_this_month(
+    room: Room,
+    payments: List[Payment],
+    get_next_payment_days_func,
+    expiring_days: int
+) -> bool:
+    """
+    保留向后兼容，实际逻辑已迁移到 _has_paid_for_target_cycle。
+    """
+    return _has_paid_for_target_cycle(
+        room, payments, date(2026, 4, 22), expiring_days
+    )
 
 
 def _get_payment_due_context(
@@ -819,9 +822,8 @@ def get_rent_payment_status(
     for room in rooms:
         if room.status != 'occupied':
             continue
-        if _has_paid_this_month(room, payments, _get_next_payment_days_with_config, expiring_days):
-            continue
-        if _has_recent_rent_payment(room.id, payments, max(1, room.payment_cycle or 1)):
+        # 用统一的 target_cycle 检查：如果目标周期已付，跳过
+        if _has_paid_for_target_cycle(room, payments, cutoff, expiring_days):
             continue
         # 租期未开始的不纳入逾期
         if room.lease_start and room.lease_start > today:
@@ -858,12 +860,9 @@ def get_rent_payment_status(
     for room in rooms:
         if room.status != 'occupied':
             continue
-        if _has_paid_this_month(room, payments, _get_next_payment_days_with_config, expiring_days):
+        # 用统一的 target_cycle 检查：如果目标周期已付，跳过
+        if _has_paid_for_target_cycle(room, payments, cutoff, expiring_days):
             continue
-        # 注意：不跳过 lease_start > today 的房间
-        # 因为新租约即使尚未开始，首次付款日可能在即将到期的窗口内
-        # 注意：也不使用 _has_recent_rent_payment 过滤，因为刚交了上个月的租
-        # 不代表下个月不需要交（如502-3: 6/21交了6月租，7/21到期仍应在列表中）
 
         days = _get_next_payment_days_with_config(room, payments)
         if days > advance_rent_days and days <= expiring_days:
