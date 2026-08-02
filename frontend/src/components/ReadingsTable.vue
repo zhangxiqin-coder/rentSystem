@@ -126,7 +126,7 @@ const handleDelete = (row: MergedReading) => {
             type="warning"
             class="notify-tag"
           >
-            {{ getNotifyAfterDay!(row.room_id) }}号后通知
+            {{ getNotifyAfterDay!(row.room_id) }}号收租
           </el-tag>
         </div>
       </template>

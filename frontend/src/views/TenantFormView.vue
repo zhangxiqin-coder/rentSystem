@@ -221,7 +221,7 @@ onMounted(() => {
             />
           </el-form-item>
 
-          <el-form-item label="催收通知限制">
+          <el-form-item label="约定收租日期">
             <el-input-number
               v-model="form.notify_after_day"
               :min="1"
@@ -230,7 +230,7 @@ onMounted(() => {
               controls-position="right"
               style="width: 200px"
             />
-            <span class="form-tip">约定每月几号后才能发催收消息，留空=无限制</span>
+            <span class="form-tip">约定每月几号收租，留空=按合同日</span>
           </el-form-item>
 
           <el-form-item label="备注">
