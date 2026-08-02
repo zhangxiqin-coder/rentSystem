@@ -181,6 +181,7 @@ class Tenant(Base):
     emergency_phone = Column(String(20))
     notes = Column(Text)
     status = Column(String(20), default='active', nullable=False)  # active: 在租, inactive: 已搬走
+    notify_after_day = Column(Integer, nullable=True)  # 每月最早可发催收通知的日期（1-31），null=无限制
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

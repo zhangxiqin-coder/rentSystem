@@ -54,7 +54,8 @@ const form = ref<TenantCreate>({
   id_card: '',
   emergency_contact: '',
   emergency_phone: '',
-  notes: ''
+  notes: '',
+  notify_after_day: null
 })
 
 const rules = {
@@ -80,7 +81,8 @@ const fetchTenantDetail = async () => {
       id_card: tenant.id_card,
       emergency_contact: tenant.emergency_contact || '',
       emergency_phone: tenant.emergency_phone || '',
-      notes: tenant.notes || ''
+      notes: tenant.notes || '',
+      notify_after_day: tenant.notify_after_day ?? null
     }
   } catch (error) {
     ElMessage.error('获取租客详情失败')
@@ -103,6 +105,8 @@ const handleSave = async () => {
     if (!payload.emergency_contact) payload.emergency_contact = undefined
     if (!payload.emergency_phone) payload.emergency_phone = undefined
     if (!payload.notes) payload.notes = undefined
+    // notify_after_day: 空值传null（清除限制），有值传数字
+    payload.notify_after_day = form.value.notify_after_day || null
 
     if (isEdit.value) {
       await tenantsApi.update(tenantId.value, payload as TenantUpdate)
@@ -217,6 +221,18 @@ onMounted(() => {
             />
           </el-form-item>
 
+          <el-form-item label="催收通知限制">
+            <el-input-number
+              v-model="form.notify_after_day"
+              :min="1"
+              :max="31"
+              placeholder="无限制"
+              controls-position="right"
+              style="width: 200px"
+            />
+            <span class="form-tip">约定每月几号后才能发催收消息，留空=无限制</span>
+          </el-form-item>
+
           <el-form-item label="备注">
             <el-input
               v-model="form.notes"
@@ -288,6 +304,12 @@ onMounted(() => {
 
 .smart-tip {
   margin-top: 8px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.form-tip {
+  margin-left: 10px;
   font-size: 12px;
   color: #909399;
 }

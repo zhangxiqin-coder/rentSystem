@@ -7,12 +7,32 @@ from dateutil.relativedelta import relativedelta
 
 from sqlalchemy.orm import Session
 
-from app.models import Room, Payment
+from app.models import Room, Payment, Tenant
 from app.utils.wechat import (
     check_if_both_utilities_recorded,
     generate_rent_notification,
     send_wechat_message,
 )
+
+
+def _is_tenant_notify_restricted(db: Session, room: Room) -> tuple[bool, str]:
+    """
+    检查房间关联租客是否有通知日期限制（notify_after_day）。
+    返回 (是否被限制, 原因说明)。
+    被限制 = 今天还没到该租客约定的可通知日期。
+    """
+    if not room.tenant_id:
+        return (False, "")
+
+    tenant = db.query(Tenant).filter(Tenant.id == room.tenant_id).first()
+    if not tenant or tenant.notify_after_day is None:
+        return (False, "")
+
+    today_day = date.today().day
+    if today_day < tenant.notify_after_day:
+        return (True, f"租客{tenant.name}约定每月{tenant.notify_after_day}号后才通知")
+
+    return (False, "")
 
 
 def _has_paid_for_target_cycle(db: Session, room: Room, cycle: int) -> bool:
@@ -75,6 +95,11 @@ async def send_rent_notification_if_complete(
     try:
         if include_utilities and room.room_number.startswith('2501'):
             return {"sent": False, "reason": "2501 room skipped"}
+
+        # 检查租客通知日期限制
+        restricted, reason = _is_tenant_notify_restricted(db, room)
+        if restricted:
+            return {"sent": False, "reason": reason}
 
         tenant_name = room.tenant_name or room.room_number
         cycle = max(1, room.payment_cycle or 1)

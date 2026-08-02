@@ -626,11 +626,15 @@ def _get_payment_due_context(
     room: Room,
     payments: List[Payment],
     overdue_cutoff_date: date,
-    expiring_days: int
+    expiring_days: int,
+    due_day_override: Optional[int] = None
 ) -> dict:
     """
     对齐前端 getPaymentDueContext
     计算目标到期日、是否已付当前周期
+
+    due_day_override: 如果提供（租客 notify_after_day），用它代替 lease_start 的日期作为催租日。
+    意义：催租日以约定日期为准，而非房租到期日。
     """
     today = date.today()
     cycle_months = max(1, room.payment_cycle or 1)
@@ -638,7 +642,8 @@ def _get_payment_due_context(
     # anchorSource: lease_start || last_payment_date || today
     anchor_source = room.lease_start or room.last_payment_date or today
     anchor_date = anchor_source  # date already 0:0:0
-    due_day = anchor_date.day
+    # 催租日优先级：notify_after_day > lease_start 日
+    due_day = due_day_override if due_day_override else anchor_date.day
 
     cursor = _build_due_date(anchor_date.year, anchor_date.month, due_day)
     previous_due = None
@@ -690,11 +695,11 @@ def _get_payment_due_context(
     }
 
 
-def _get_next_payment_days(room: Room, payments: List[Payment], cutoff: Optional[date] = None, expiring: int = 7) -> int:
+def _get_next_payment_days(room: Room, payments: List[Payment], cutoff: Optional[date] = None, expiring: int = 7, due_day_override: Optional[int] = None) -> int:
     """对齐前端 getNextPaymentDays"""
     if cutoff is None:
         cutoff = date(2026, 4, 22)
-    ctx = _get_payment_due_context(room, payments, cutoff, expiring)
+    ctx = _get_payment_due_context(room, payments, cutoff, expiring, due_day_override=due_day_override)
     return ctx['days_to_due']
 
 
@@ -733,6 +738,13 @@ def get_rent_payment_status(
         from sqlalchemy import or_
         query = query.filter(or_(Room.owner_id == owner_id, Room.owner_id.is_(None)))
     rooms = query.all()
+
+    # 查询相关租客的 notify_after_day（催租日限制）
+    tenant_ids = [r.tenant_id for r in rooms if r.tenant_id]
+    notify_day_map = {}
+    if tenant_ids:
+        tenants = db.query(Tenant).filter(Tenant.id.in_(tenant_ids)).all()
+        notify_day_map = {t.id: t.notify_after_day for t in tenants if t.notify_after_day}
 
     # 查询所有相关支付记录
     room_ids = [r.id for r in rooms]
@@ -815,7 +827,8 @@ def get_rent_payment_status(
 
     # 创建一个携带当前配置的 getNextPaymentDays 副本
     def _get_next_payment_days_with_config(room: Room, payments_list: List[Payment]) -> int:
-        return _get_next_payment_days(room, payments_list, cutoff, expiring_days)
+        due_day_override = notify_day_map.get(room.tenant_id) if room.tenant_id else None
+        return _get_next_payment_days(room, payments_list, cutoff, expiring_days, due_day_override=due_day_override)
 
     # 计算逾期房间
     overdue_rooms = []
@@ -829,7 +842,8 @@ def get_rent_payment_status(
         if room.lease_start and room.lease_start > today:
             continue
 
-        ctx = _get_payment_due_context(room, payments, cutoff, expiring_days)
+        due_day_override = notify_day_map.get(room.tenant_id) if room.tenant_id else None
+        ctx = _get_payment_due_context(room, payments, cutoff, expiring_days, due_day_override=due_day_override)
         days_to_due = ctx['days_to_due']
         target_due = ctx['target_due']
 

@@ -53,7 +53,7 @@ const { hideAmounts, formatAmount, maskedAmount, maskedRate, formatAmountForNoti
 // 2. Room data
 const {
   allRooms, roomOptions, roomsLoading, roomMap,
-  loadRooms, getRoomNumber, getRoomInfo, getRoom,
+  loadRooms, loadTenantNotifyInfo, getRoomNumber, getRoomInfo, getRoom, getNotifyAfterDay,
 } = useRoomData()
 
 // 3. Message generation (needs getRoomNumber, getRoomInfo, hideAmounts, formatAmount, formatAmountForNotification)
@@ -164,6 +164,7 @@ const handleShowReminder = async (row: any) => {
 // Initialize
 onMounted(async () => {
   await loadRooms()       // 先加载房间列表
+  await loadTenantNotifyInfo()  // 加载租客通知限制信息
   initializeDateRange()   // 初始化日期范围
   await loadReadings()    // 再加载水电记录（等待加载完成）
   initialized.value = true // 标记初始化完成
@@ -299,6 +300,7 @@ onMounted(async () => {
           :masked-amount="maskedAmount"
           :get-room-number="getRoomNumber"
           :get-room-info="getRoomInfo"
+          :get-notify-after-day="getNotifyAfterDay"
           @show-reminder="handleShowReminder"
           @show-payment="showPaymentDialog"
           @edit="showEditDialog"

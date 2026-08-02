@@ -16,6 +16,7 @@ const props = defineProps<{
   maskedAmount: (value: number) => string
   getRoomNumber: (roomId: number) => string
   getRoomInfo: (roomId: number) => Room | undefined
+  getNotifyAfterDay?: (roomId: number) => number | null
 }>()
 
 // 是否显示删除按钮（仅超级管理员可见）
@@ -115,9 +116,19 @@ const handleDelete = (row: MergedReading) => {
       </template>
     </el-table-column>
 
-    <el-table-column prop="room_id" label="房间号" width="120">
+    <el-table-column prop="room_id" label="房间号" width="140">
       <template #default="{ row }">
-        {{ getRoomNumber(row.room_id) }}
+        <div class="room-cell">
+          <span>{{ getRoomNumber(row.room_id) }}</span>
+          <el-tag
+            v-if="getNotifyAfterDay && getNotifyAfterDay(row.room_id)"
+            size="small"
+            type="warning"
+            class="notify-tag"
+          >
+            {{ getNotifyAfterDay!(row.room_id) }}号后通知
+          </el-tag>
+        </div>
       </template>
     </el-table-column>
 
@@ -204,6 +215,17 @@ const handleDelete = (row: MergedReading) => {
 <style scoped>
 .utility-table {
   margin-bottom: 20px;
+}
+
+.room-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notify-tag {
+  align-self: flex-start;
+  font-size: 11px;
 }
 
 .action-row {
