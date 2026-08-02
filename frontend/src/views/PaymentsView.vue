@@ -187,14 +187,25 @@ const { overdueCutoffDate, lookbackMonths } = useOverdueConfig()
 const startDate = ref<Date>(new Date())
 const endDate = ref<Date>(new Date())
 
+// 当月剩余天数（用于判断是否显示下月）
+const daysLeftInMonth = () => {
+  const now = new Date()
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  return lastDay - now.getDate()
+}
+
 // 根据lookbackMonths更新日期范围
 const updateDateRange = () => {
   const now = new Date()
   const months = lookbackMonths.value || 1
   // 开始日期：N个月前的1号
   startDate.value = new Date(now.getFullYear(), now.getMonth() - months + 1, 1)
-  // 结束日期：下月最后一天（包含下月，这样提前收了下月房租时能看到记录）
-  endDate.value = new Date(now.getFullYear(), now.getMonth() + 2, 0)
+  // 结束日期：月底前5天才包含下月，否则只到本月最后一天
+  if (daysLeftInMonth() <= 5) {
+    endDate.value = new Date(now.getFullYear(), now.getMonth() + 2, 0)
+  } else {
+    endDate.value = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  }
 }
 
 // 初始化
@@ -237,7 +248,11 @@ const rentCollectionByMonth = computed(() => {
     paidRent: number
   }> = []
 
-  for (let i = lookbackMonths.value - 1; i >= -1; i--) {
+  // 月底前5天才显示下月
+  const showNextMonth = daysLeftInMonth() <= 5
+  const loopEnd = showNextMonth ? -1 : 0
+
+  for (let i = lookbackMonths.value - 1; i >= loopEnd; i--) {
     const m = currentMonth - i
     const year = currentYear + Math.floor(m / 12)
     const month = ((m % 12) + 12) % 12
