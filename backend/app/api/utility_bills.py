@@ -6,7 +6,7 @@ from typing import List, Dict, Any
 from datetime import datetime
 
 from app.database import get_db
-from app.models import UtilityBill, UtilityReading, Room
+from app.models import UtilityBill, UtilityReading, Room, Payment, PaymentType
 from app.schemas import (
     UtilityBillCreate,
     UtilityBillUpdate,
@@ -184,16 +184,25 @@ def get_profit_stats(
             Room.owner_id == current_user.id
         ).all()
         room_ids = [r.id for r in rooms]
-        
+
         # 获取该月该系列从租客收取的水电费
-        readings = db.query(UtilityReading).filter(
-            UtilityReading.room_id.in_(room_ids),
-            extract('year', UtilityReading.reading_date) == year,
-            extract('month', UtilityReading.reading_date) == month
+        # 以实际收款日(payment_date)为准，而非抄表日(reading_date)
+        # 这样7/31抄表8/1收钱→算8月收入
+        utility_payments = db.query(Payment).filter(
+            Payment.room_id.in_(room_ids),
+            Payment.payment_type == PaymentType.UTILITY,
+            extract('year', Payment.payment_date) == year,
+            extract('month', Payment.payment_date) == month
         ).all()
-        
-        water_collected = sum((r.amount for r in readings if r.utility_type == "water"), Decimal("0")) if readings else Decimal("0")
-        electric_collected = sum((r.amount for r in readings if r.utility_type == "electricity"), Decimal("0")) if readings else Decimal("0")
+
+        water_collected = Decimal("0")
+        electric_collected = Decimal("0")
+        for p in utility_payments:
+            desc = (p.description or "").lower()
+            if "水" in (p.description or "") or "water" in desc:
+                water_collected += p.amount or Decimal("0")
+            elif "电" in (p.description or "") or "electric" in desc:
+                electric_collected += p.amount or Decimal("0")
         
         water_cost = data["water_cost"]
         electric_cost = data["electric_cost"]
@@ -244,14 +253,15 @@ def get_utility_bill(
     if not bill:
         raise HTTPException(status_code=404, detail="账单不存在")
     
-    # 获取该月从租客收取的水电费 - 从reading_date中提取年月
-    readings = db.query(UtilityReading).filter(
-        extract('year', UtilityReading.reading_date) == bill.year,
-        extract('month', UtilityReading.reading_date) == bill.month
+    # 获取该月从租客收取的水电费 - 以实际收款日(payment_date)为准
+    utility_payments = db.query(Payment).filter(
+        Payment.payment_type == PaymentType.UTILITY,
+        extract('year', Payment.payment_date) == bill.year,
+        extract('month', Payment.payment_date) == bill.month
     ).all()
-    
-    water_collected = sum(r.amount for r in readings if r.utility_type == "water") if readings else 0
-    electric_collected = sum(r.amount for r in readings if r.utility_type == "electricity") if readings else 0
+
+    water_collected = sum(p.amount for p in utility_payments if "水" in (p.description or "") or "water" in (p.description or "").lower()) if utility_payments else 0
+    electric_collected = sum(p.amount for p in utility_payments if "电" in (p.description or "") or "electric" in (p.description or "").lower()) if utility_payments else 0
     
     water_profit = water_collected - bill.water_cost
     electric_profit = electric_collected - bill.electric_cost

@@ -4,6 +4,7 @@ defineProps<{
   paymentForm: {
     room_id: number
     reading_date: string
+    payment_date: string
     rent_original: number
     rent_amount: number
     water_original: number
@@ -41,6 +42,16 @@ const emit = defineEmits<{
 
       <el-form-item label="抄表日期">
         <span>{{ paymentForm.reading_date }}</span>
+      </el-form-item>
+
+      <el-form-item label="收款日期">
+        <el-date-picker
+          v-model="paymentForm.payment_date"
+          type="date"
+          placeholder="选择收款日期"
+          value-format="YYYY-MM-DD"
+          style="width: 200px"
+        />
       </el-form-item>
 
       <el-divider content-position="left">🏠 房租</el-divider>

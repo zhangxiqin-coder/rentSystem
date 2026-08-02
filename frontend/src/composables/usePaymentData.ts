@@ -14,6 +14,7 @@ export function usePaymentData(deps: {
   const paymentForm = ref({
     room_id: 0,
     reading_date: '',
+    payment_date: new Date().toISOString().split('T')[0],
     rent_original: 0,
     rent_amount: 0,
     water_original: 0,
@@ -66,6 +67,7 @@ export function usePaymentData(deps: {
     paymentForm.value = {
       room_id: row.room_id,
       reading_date: row.reading_date,
+      payment_date: new Date().toISOString().split('T')[0],
       rent_original: rent_amount,
       rent_amount: rent_amount,
       water_original: water_amount,
@@ -87,6 +89,7 @@ export function usePaymentData(deps: {
       const payload: any = {
         room_id: paymentForm.value.room_id,
         reading_date: paymentForm.value.reading_date || new Date().toISOString().split('T')[0],
+        payment_date: paymentForm.value.payment_date || new Date().toISOString().split('T')[0],
         rent_amount: paymentForm.value.rent_amount,
         rent_original: paymentForm.value.rent_original,
         payment_method: paymentForm.value.payment_method,

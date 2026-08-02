@@ -336,30 +336,30 @@ def create_bulk_payment(
     
     # 优先使用reading_date作为检查日期，否则使用payment_date
     check_date = data.reading_date or data.payment_date
-    
+
     # 检查该房间是否有退租记录（payment_type='refund'）
     last_refund_payment = db.query(Payment).filter(
         Payment.room_id == data.room_id,
         Payment.payment_type == "refund"
     ).order_by(Payment.payment_date.desc()).first()
-    
+
     # 构建查询：检查当天的支付记录
     query = db.query(Payment).filter(
         Payment.room_id == data.room_id,
         Payment.payment_date == check_date
     )
-    
+
     # 如果有退租记录，只检查退租日期之后的记录
     # （前一个租客的记录不应该阻止新租客收租）
     if last_refund_payment:
         query = query.filter(Payment.payment_date > last_refund_payment.payment_date)
-    
+
     existing_payments = query.all()
-    
+
     # 如果当天已经有支付记录（在退租之后），拒绝重复支付
     if existing_payments:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail=f"{check_date}已存在收租记录，请勿重复操作"
         )
 
@@ -367,8 +367,9 @@ def create_bulk_payment(
     water_payment = None
     electricity_payment = None
 
-    # 确定实际使用的支付日期（优先使用reading_date）
-    actual_payment_date = check_date
+    # 实际收款日期：用 payment_date（默认今天），不用 reading_date 覆盖
+    # 这样7/31抄表8/1收钱的记录，收入归属8月
+    actual_payment_date = data.payment_date
 
     # 创建房租支付记录
     rent_payment = Payment(
