@@ -825,12 +825,12 @@ def get_rent_payment_status(
                 latest_date = sorted(paired_utility.keys(), reverse=True)[0]
                 latest_unpaid_utility[room_id] = paired_utility[latest_date]['amount']
 
-    # 创建一个携带当前配置的 getNextPaymentDays 副本
+    # 创建一个携带当前配置的 getNextPaymentDays 副本（即将到期专用，用催租日）
     def _get_next_payment_days_with_config(room: Room, payments_list: List[Payment]) -> int:
         due_day_override = notify_day_map.get(room.tenant_id) if room.tenant_id else None
         return _get_next_payment_days(room, payments_list, cutoff, expiring_days, due_day_override=due_day_override)
 
-    # 计算逾期房间
+    # 计算逾期房间（逾期始终以合同日为准，不受 notify_after_day 影响）
     overdue_rooms = []
     for room in rooms:
         if room.status != 'occupied':
@@ -842,8 +842,7 @@ def get_rent_payment_status(
         if room.lease_start and room.lease_start > today:
             continue
 
-        due_day_override = notify_day_map.get(room.tenant_id) if room.tenant_id else None
-        ctx = _get_payment_due_context(room, payments, cutoff, expiring_days, due_day_override=due_day_override)
+        ctx = _get_payment_due_context(room, payments, cutoff, expiring_days)
         days_to_due = ctx['days_to_due']
         target_due = ctx['target_due']
 
@@ -870,6 +869,8 @@ def get_rent_payment_status(
     overdue_rooms.sort(key=lambda r: r['overdue_days'], reverse=True)
 
     # 计算即将到期房间
+    # - 没设催租日的租客：合同到期前 expiring_days 天进入列表（提前提醒）
+    # - 设了催租日的租客：到了催租日当天才进入列表（当天才该催）
     expiring_rooms = []
     for room in rooms:
         if room.status != 'occupied':
@@ -878,16 +879,31 @@ def get_rent_payment_status(
         if _has_paid_for_target_cycle(room, payments, cutoff, expiring_days):
             continue
 
+        notify_day = notify_day_map.get(room.tenant_id) if room.tenant_id else None
         days = _get_next_payment_days_with_config(room, payments)
-        if days > advance_rent_days and days <= expiring_days:
-            expiring_rooms.append({
-                'room_id': room.id,
-                'room_number': room.room_number,
-                'tenant_name': room.tenant_name,
-                'days_until_payment': days,
-                'monthly_rent': float(room.monthly_rent or 0),
-                'payment_cycle': room.payment_cycle or 1,
-            })
+
+        if notify_day:
+            # 设了催租日：催租日当天或已过（但还没付）才进入列表
+            if days <= 0:
+                expiring_rooms.append({
+                    'room_id': room.id,
+                    'room_number': room.room_number,
+                    'tenant_name': room.tenant_name,
+                    'days_until_payment': days,
+                    'monthly_rent': float(room.monthly_rent or 0),
+                    'payment_cycle': room.payment_cycle or 1,
+                })
+        else:
+            # 没设催租日：提前 expiring_days 天提醒
+            if days > advance_rent_days and days <= expiring_days:
+                expiring_rooms.append({
+                    'room_id': room.id,
+                    'room_number': room.room_number,
+                    'tenant_name': room.tenant_name,
+                    'days_until_payment': days,
+                    'monthly_rent': float(room.monthly_rent or 0),
+                    'payment_cycle': room.payment_cycle or 1,
+                })
 
     # 按到期天数排序
     expiring_rooms.sort(key=lambda r: r['days_until_payment'])
