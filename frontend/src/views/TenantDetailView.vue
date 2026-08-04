@@ -101,7 +101,12 @@ const openCheckInDialog = () => {
     initial_electricity_reading: 0,
     initial_water_reading: 0,
     lease_start: new Date().toISOString().split('T')[0],
-    lease_end: '',
+    lease_end: (() => {
+      const d = new Date()
+      d.setFullYear(d.getFullYear() + 1)
+      d.setDate(d.getDate() - 1)
+      return d.toISOString().split('T')[0]
+    })(),
     monthly_rent: 0,
     deposit_amount: 0,
     notes: ''

@@ -324,8 +324,12 @@ const handle入住 = (room: Room) => {
   checkinForm.value.tenant_name = ''
   checkinForm.value.tenant_phone = ''
   checkinForm.value.tenant_id_card = ''
-  checkinForm.value.lease_start = ''
-  checkinForm.value.lease_end = ''
+  const today = new Date()
+  const nextYear = new Date(today)
+  nextYear.setFullYear(nextYear.getFullYear() + 1)
+  nextYear.setDate(nextYear.getDate() - 1)
+  checkinForm.value.lease_start = today.toISOString().split('T')[0]
+  checkinForm.value.lease_end = nextYear.toISOString().split('T')[0]
   checkinForm.value.payment_cycle = Number(room.payment_cycle) || 1
   checkinForm.value.monthly_rent = Number(room.monthly_rent) || 0
   checkinForm.value.deposit_amount = Number(room.deposit_amount) || 0
