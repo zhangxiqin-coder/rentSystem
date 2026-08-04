@@ -451,7 +451,7 @@ const handleSubmit = async (data: CreateRoomRequest | UpdateRoomRequest) => {
   try {
     // Clean up empty strings to null for optional fields
     const cleanedData: any = { ...data }
-    const optionalStringFields = ['tenant_name', 'tenant_phone', 'building', 'description']
+    const optionalStringFields = ['tenant_name', 'tenant_phone', 'building', 'description', 'lease_start', 'lease_end']
     optionalStringFields.forEach(field => {
       if (cleanedData[field] === '') {
         cleanedData[field] = null
