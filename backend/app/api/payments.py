@@ -421,13 +421,14 @@ def create_bulk_payment(
         db.refresh(payment)
 
     # 更新水电记录的payment_id
-    # 使用actual_payment_date查询水电记录
+    # 查找该房间最新的、未关联payment的水电记录（不再用日期精确匹配，
+    # 因为抄表日和收款日经常不是同一天）
     if data.water_charge and water_payment:
         water_reading = db.query(UtilityReading).filter(
             UtilityReading.room_id == data.room_id,
             UtilityReading.utility_type == 'water',
-            UtilityReading.reading_date == actual_payment_date
-        ).first()
+            UtilityReading.payment_id.is_(None)
+        ).order_by(UtilityReading.reading_date.desc()).first()
         if water_reading:
             water_reading.payment_id = water_payment.id
     
@@ -435,8 +436,8 @@ def create_bulk_payment(
         elec_reading = db.query(UtilityReading).filter(
             UtilityReading.room_id == data.room_id,
             UtilityReading.utility_type == 'electricity',
-            UtilityReading.reading_date == actual_payment_date
-        ).first()
+            UtilityReading.payment_id.is_(None)
+        ).order_by(UtilityReading.reading_date.desc()).first()
         if elec_reading:
             elec_reading.payment_id = electricity_payment.id
     
