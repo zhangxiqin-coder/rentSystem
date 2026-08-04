@@ -28,7 +28,7 @@ const formData = ref<CreateRoomRequest>({
   building: '',
   floor: undefined,
   area: undefined,
-  monthly_rent: 0,
+  monthly_rent: undefined,
   deposit_amount: 0,
   payment_cycle: 1,
   water_rate: 5.00,
@@ -50,7 +50,7 @@ const rules: FormRules<CreateRoomRequest> = {
   ],
   monthly_rent: [
     { required: true, message: '请输入租金', trigger: 'blur' },
-    { type: 'number', min: 0, message: '租金必须大于等于0', trigger: 'blur' },
+    { type: 'number', min: 0.01, message: '租金必须大于0', trigger: 'blur' },
   ],
   payment_cycle: [
     { required: true, message: '请输入付款周期', trigger: 'blur' },
@@ -188,9 +188,9 @@ const resetForm = () => {
     <el-form-item label="租金" prop="monthly_rent">
       <el-input-number
         v-model="formData.monthly_rent"
-        :min="0"
+        :min="0.01"
         :precision="2"
-        placeholder="请输入租金"
+        placeholder="请输入租金（必填，大于0）"
       />
     </el-form-item>
 
