@@ -146,9 +146,28 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     """捕获请求验证错误"""
     logger = logging.getLogger(__name__)
     logger.error(f"Validation error: {exc.errors()}")
+    # exc.errors() 的 ctx 里可能含 Decimal 等非 JSON 可序列化对象，需清洗
+    import json
+    from decimal import Decimal
+    raw_errors = exc.errors()
+    try:
+        json.dumps(raw_errors)  # 测试能否直接序列化
+        safe_errors = raw_errors
+    except (TypeError, ValueError):
+        # 逐字段清洗：把 Decimal 转成 float/str
+        def _sanitize(obj):
+            if isinstance(obj, Decimal):
+                return float(obj)
+            elif isinstance(obj, dict):
+                return {k: _sanitize(v) for k, v in obj.items()}
+            elif isinstance(obj, (list, tuple)):
+                return [_sanitize(v) for v in obj]
+            return obj
+        safe_errors = _sanitize(raw_errors)
+
     response = JSONResponse(
         status_code=422,
-        content={"detail": "Validation error", "errors": exc.errors()}
+        content={"detail": "Validation error", "errors": safe_errors}
     )
     # Add CORS headers
     origin = request.headers.get('origin')
