@@ -9,7 +9,7 @@ import io
 from io import StringIO
 
 from app.database import get_db
-from app.models import Room, Payment, UtilityReading, Tenant, LeaseRecord
+from app.models import Room, Payment, UtilityReading, Tenant, LeaseRecord, RoomOccupant
 from app.core.deps import get_current_user
 from app.models import User
 
@@ -260,6 +260,23 @@ async def export_system_overview(
         tenants = db.query(Tenant).filter(Tenant.id.in_(tenant_ids)).all()
         tenants_map = {t.id: t for t in tenants}
 
+    # 预加载同住人信息（通过 RoomOccupant 关联）
+    occupants_map = {}  # room_id -> [(name, relation, phone), ...]
+    if room_ids:
+        all_occupants = db.query(RoomOccupant).filter(
+            RoomOccupant.room_id.in_(room_ids),
+            RoomOccupant.is_active == True
+        ).all()
+        occ_tenant_ids = [o.tenant_id for o in all_occupants]
+        occ_tenants = {}
+        if occ_tenant_ids:
+            occ_tenant_list = db.query(Tenant).filter(Tenant.id.in_(occ_tenant_ids)).all()
+            occ_tenants = {t.id: t for t in occ_tenant_list}
+        for o in all_occupants:
+            t = occ_tenants.get(o.tenant_id)
+            if t:
+                occupants_map.setdefault(o.room_id, []).append(t)
+
     # 创建Excel
     wb = Workbook()
     ws = wb.active
@@ -279,7 +296,8 @@ async def export_system_overview(
         '房间号', '楼栋', '系列', '租金', '水费率', '电费率', '付款周期',
         '租客姓名', '租客电话', '身份证号', '紧急联系人', '紧急联系电话',
         '租约开始', '租约结束',
-        '上次水表读数', '上次电表读数', '上次抄表日期'
+        '上次水表读数', '上次电表读数', '上次抄表日期',
+        '同住人', '关系', '同住人电话'
     ]
     ws.append(headers)
     for col in range(1, len(headers) + 1):
@@ -318,10 +336,30 @@ async def export_system_overview(
             float(water_r.reading) if water_r else '',
             float(electric_r.reading) if electric_r else '',
             last_reading_date or '',
+            # 同住人：多个用逗号分隔（排除主租客）
+            ', '.join(t.name for t in occupants_map.get(room.id, []) if not room.tenant_id or t.id != room.tenant_id) or '',
+            '',  # 关系列占位（后面填）
+            '',  # 同住人电话占位
         ])
 
+        # 填充同住人关系和电话（第一个非主租客的同住人详情）
+        occ_list = [t for t in occupants_map.get(room.id, []) if not room.tenant_id or t.id != room.tenant_id]
+        if occ_list:
+            # 找到对应的 RoomOccupant 记录获取 relation
+            occ_details = db.query(RoomOccupant).filter(
+                RoomOccupant.room_id == room.id,
+                RoomOccupant.tenant_id.in_([t.id for t in occ_list]),
+                RoomOccupant.is_active == True
+            ).all()
+            occ_detail_map = {o.tenant_id: o for o in occ_details}
+            first = occ_list[0]
+            detail = occ_detail_map.get(first.id)
+            row_num = ws.max_row
+            ws.cell(row=row_num, column=len(headers) - 1, value=detail.relation or '' if detail else '')
+            ws.cell(row=row_num, column=len(headers), value=first.phone or '')
+
     # 设置列宽
-    col_widths = [10, 8, 10, 10, 8, 8, 10, 10, 14, 22, 10, 14, 12, 12, 14, 14, 14]
+    col_widths = [10, 8, 10, 10, 8, 8, 10, 10, 14, 22, 10, 14, 12, 12, 14, 14, 14, 14, 8, 14]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[ws.cell(1, i).column_letter].width = w
 
