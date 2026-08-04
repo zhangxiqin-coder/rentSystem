@@ -102,11 +102,17 @@ SessionLocal = _GuardedSessionLocal(autocommit=False, autoflush=False, bind=engi
 
 
 # Turso 模式下：session.commit() 之后自动 sync 到云端
-# 这样所有走 get_db() 的 API 写入都会自动同步，业务代码无需手动调用 sync_to_cloud()
+# sync 失败时记录到重试队列，后台 cron job 会自动重试
 if USE_TURSO:
     @event.listens_for(SessionLocal, "after_commit")
     def _auto_sync_after_commit(session):
-        sync_to_cloud()
+        success = sync_to_cloud()
+        if not success:
+            from app.sync_queue import record_failed_sync
+            # 提取操作上下文（帮助排查是哪次写入失败了）
+            info = session.info or {}
+            context = info.get("sync_context", "unknown_commit")
+            record_failed_sync(context)
 
 
 # 创建基类
