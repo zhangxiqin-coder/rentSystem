@@ -79,8 +79,26 @@ else:
     )
     logging.info("使用本地 SQLite 数据库")
 
+# 生产库保护：拦截直接操作生产库的 ORM 调用
+from app.prod_guard import _check_direct_orm_usage
+
+
+class _GuardedSessionLocal(sessionmaker):
+    """带生产库保护的 SessionLocal 工厂。
+
+    生产环境下直接创建 Session 会触发保护机制报错。
+    例外情况（自动放行）：
+    - TESTING=1（测试模式）
+    - ALLOW_PROD_DB=1（明确授权的脚本）
+    - 调用栈来自 conftest.py / test_*.py
+    """
+    def __call__(self, *args, **kwargs):
+        _check_direct_orm_usage()
+        return super().__call__(*args, **kwargs)
+
+
 # 创建会话工厂
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = _GuardedSessionLocal(autocommit=False, autoflush=False, bind=engine)
 
 
 # Turso 模式下：session.commit() 之后自动 sync 到云端
