@@ -231,7 +231,7 @@ const loadPayments = async () => {
     })
     payments.value = response.data.items
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '加载缴费记录失败')
+    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '加载缴费记录失败')
   } finally {
     paymentsLoading.value = false
   }
@@ -256,7 +256,7 @@ const loadUtilityReadings = async () => {
     })
     utilityReadings.value = response.data.items
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '加载水电记录失败')
+    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '加载水电记录失败')
   } finally {
     utilityLoading.value = false
   }
@@ -289,7 +289,7 @@ const handleDeletePayment = async (payment: Payment) => {
     await loadPayments()
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || '删除缴费记录失败')
+      ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '删除缴费记录失败')
     }
   }
 }
@@ -339,7 +339,7 @@ const handleSubmitPayment = async (data: any) => {
     paymentDialogVisible.value = false
     await loadPayments()
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '保存缴费记录失败')
+    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '保存缴费记录失败')
   } finally {
     paymentSubmitting.value = false
   }
@@ -372,7 +372,7 @@ const handleDeleteUtilityReading = async (reading: UtilityReading) => {
     await loadUtilityReadings()
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || '删除抄表记录失败')
+      ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '删除抄表记录失败')
     }
   }
 }
@@ -390,7 +390,7 @@ const handleSubmitUtilityReading = async (data: any) => {
     utilityDialogVisible.value = false
     await loadUtilityReadings()
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '保存抄表记录失败')
+    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '保存抄表记录失败')
   } finally {
     utilitySubmitting.value = false
   }

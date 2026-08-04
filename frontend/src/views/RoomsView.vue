@@ -121,7 +121,7 @@ const loadRooms = async () => {
     rooms.value = response.data.items
     total.value = response.data.total
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '加载房间失败')
+    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '加载房间失败')
   } finally {
     loading.value = false
   }
@@ -273,7 +273,7 @@ const handle删除 = async (room: Room) => {
     await loadRooms()
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || '删除房间失败')
+      ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '删除房间失败')
     }
   }
 }
@@ -379,7 +379,7 @@ const confirm退租 = async () => {
     checkoutDialogVisible.value = false
     await loadRooms()
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '退租失败')
+    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '退租失败')
   } finally {
     submitting.value = false
   }

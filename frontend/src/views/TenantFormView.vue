@@ -117,7 +117,7 @@ const handleSave = async () => {
     }
     router.push('/tenants')
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '保存失败')
+    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '保存失败')
     console.error(error)
   } finally {
     saving.value = false

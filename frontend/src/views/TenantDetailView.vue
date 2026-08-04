@@ -144,7 +144,7 @@ const handleCheckIn = async () => {
     checkInDialogVisible.value = false
     await fetchLeaseRecords()
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '入住失败')
+    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '入住失败')
     console.error(error)
   }
 }
