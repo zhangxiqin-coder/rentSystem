@@ -289,6 +289,144 @@ class TestBusinessLogic:
         assert len(expiring) == 1
         assert expiring[0]['room_number'] == "108"
         assert expiring[0]['days_remaining'] == 10
+
+    def test_get_expiring_leases_excludes_vacant_room(self, db):
+        """租客已搬离（房间available）但租约日期未到期的，不应出现在到期提醒"""
+        today = date.today()
+        from app.models import Tenant, LeaseRecord
+
+        user = db.query(User).first()
+        if not user:
+            user = User(username="test_owner2", password_hash="test", role="landlord")
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        tenant = Tenant(name="马帅帅", phone="15557181612", id_card="110101199001011236", owner_id=user.id)
+        db.add(tenant)
+        db.commit()
+
+        # 房间退租后 status=available（马帅帅 2-2501-C 场景）
+        room = Room(
+            room_number="VACANT-1",
+            monthly_rent=Decimal("1000"),
+            payment_cycle=1,
+            status="available",  # 已搬离
+            owner_id=user.id
+        )
+        db.add(room)
+        db.commit()
+
+        lease = LeaseRecord(
+            tenant_id=tenant.id,
+            room_id=room.id,
+            lease_start=today - timedelta(days=300),
+            lease_end=today + timedelta(days=3),  # 即将到期但人已走
+            monthly_rent=Decimal("1000"),
+            is_active=True,
+            owner_id=user.id
+        )
+        db.add(lease)
+        db.commit()
+
+        expiring = get_expiring_leases(db, days_threshold=30)
+        assert not any(e['room_number'] == "VACANT-1" for e in expiring), \
+            "已搬离（房间available）的租约不应出现在到期提醒"
+
+    def test_get_expiring_leases_excludes_terminated_lease(self, db):
+        """租约被提前终止（is_active=False）的，不应出现在到期提醒"""
+        today = date.today()
+        from app.models import Tenant, LeaseRecord
+
+        user = db.query(User).first()
+        if not user:
+            user = User(username="test_owner3", password_hash="test", role="landlord")
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        tenant = Tenant(name="王终止", phone="13900139000", id_card="110101199001011237", owner_id=user.id)
+        db.add(tenant)
+        db.commit()
+
+        room = Room(
+            room_number="TERM-1",
+            monthly_rent=Decimal("1000"),
+            payment_cycle=1,
+            status="occupied",
+            owner_id=user.id
+        )
+        db.add(room)
+        db.commit()
+
+        lease = LeaseRecord(
+            tenant_id=tenant.id,
+            room_id=room.id,
+            lease_start=today - timedelta(days=100),
+            lease_end=today + timedelta(days=5),
+            monthly_rent=Decimal("1000"),
+            is_active=False,  # 已提前终止（退租时置False）
+            owner_id=user.id
+        )
+        db.add(lease)
+        db.commit()
+
+        expiring = get_expiring_leases(db, days_threshold=30)
+        assert not any(e['room_number'] == "TERM-1" for e in expiring), \
+            "已终止（is_active=False）的租约不应出现在到期提醒"
+
+    def test_checkout_ends_active_lease(self, db, client, test_user, auth_headers):
+        """房间退租时应结束当前生效租约（is_active=False），并清空tenant_id"""
+        today = date.today()
+        from app.models import Tenant, LeaseRecord
+
+        user = test_user
+
+        tenant = Tenant(name="赵退租", phone="13700137000", id_card="110101199001011238", owner_id=user.id)
+        db.add(tenant)
+        db.commit()
+
+        room = Room(
+            room_number="CHK-1",
+            monthly_rent=Decimal("1000"),
+            payment_cycle=1,
+            status="occupied",
+            tenant_id=tenant.id,
+            tenant_name=tenant.name,
+            lease_start=today - timedelta(days=100),
+            lease_end=today + timedelta(days=60),
+            owner_id=user.id
+        )
+        db.add(room)
+        db.commit()
+
+        lease = LeaseRecord(
+            tenant_id=tenant.id,
+            room_id=room.id,
+            lease_start=today - timedelta(days=100),
+            lease_end=today + timedelta(days=60),
+            monthly_rent=Decimal("1000"),
+            is_active=True,
+            owner_id=user.id
+        )
+        db.add(lease)
+        db.commit()
+
+        # 调用退租API
+        resp = client.post(
+            f"/api/v1/rooms/{room.id}/checkout",
+            json={"refund_amount": 500, "refund_date": str(today), "payment_method": "现金"},
+            headers=auth_headers
+        )
+        assert resp.status_code == 200, resp.text
+
+        db.expire_all()
+        room_after = db.query(Room).filter(Room.id == room.id).first()
+        lease_after = db.query(LeaseRecord).filter(LeaseRecord.id == lease.id).first()
+
+        assert room_after.status == "available"
+        assert room_after.tenant_id is None  # tenant_id 也被清空
+        assert lease_after.is_active is False  # 生效租约被结束
     
     def test_get_room_statistics(self, db):
         """测试房间统计"""

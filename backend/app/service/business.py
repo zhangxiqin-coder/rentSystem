@@ -261,12 +261,13 @@ def create_payment(
     # ⚠️ 优先从租约记录取月租，避免续租后 room.monthly_rent 尚未生效导致金额错误
     if payment_type == 'rent' and amount is None:
         monthly_rent = room.monthly_rent  # 默认用房间租金
-        # 查找当前/最近一期生效的租约，按租期匹配正确的租金
+        # 查找当前/最近一期生效的租约（日期覆盖今天且未被终止），按租期匹配正确的租金
         from app.models import LeaseRecord
         active_lease = db.query(LeaseRecord).filter(
             LeaseRecord.room_id == room_id,
             LeaseRecord.lease_start <= date.today(),
-            LeaseRecord.lease_end >= date.today()
+            LeaseRecord.lease_end >= date.today(),
+            LeaseRecord.is_active == True
         ).order_by(LeaseRecord.lease_start.desc()).first()
         if active_lease and active_lease.monthly_rent:
             monthly_rent = active_lease.monthly_rent
@@ -369,7 +370,16 @@ def get_expiring_leases(
         room = db.query(Room).filter(Room.id == lease.room_id).first()
         if not tenant or not room:
             continue
-        
+
+        # 房间已空置/非在租状态：租客已搬离，不需要合同到期提醒
+        # （房间退租流程只改Room状态，不改lease_records日期，此处必须兜底）
+        if room.status != 'occupied':
+            continue
+
+        # 租约被提前终止（退租时is_active=False）：不再提醒
+        if not lease.is_active:
+            continue
+
         # 检查是否已续签：同一房间是否有后续租约在当前租约到期当天或之后开始
         has_renewal = db.query(LeaseRecord).filter(
             and_(

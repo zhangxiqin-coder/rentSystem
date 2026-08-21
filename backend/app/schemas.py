@@ -693,7 +693,10 @@ class LeaseRecordResponse(LeaseRecordBase):
 
     @model_validator(mode="after")
     def set_status_display(self):
-        """根据租期时间自动计算状态"""
+        """根据租期时间自动计算状态；被退租/终止（is_active=False）的一律显示已结束"""
+        if self.is_active is False:
+            self.status_display = "expired"
+            return self
         if self.lease_start and self.lease_end:
             today = date.today()
             if self.lease_start > today:

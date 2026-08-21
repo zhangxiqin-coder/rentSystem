@@ -28,11 +28,12 @@ def list_tenants(
     query = db.query(Tenant).filter(Tenant.owner_id == current_user.id)
     
     # 状态筛选：未入住(unassigned)/入住(active)/搬离(inactive)
-    # "入住" = 有活跃租约 OR 是某房间活跃居住人（同住人/亲友）
+    # "入住" = 有活跃租约（日期覆盖今天且未被终止） OR 是某房间活跃居住人（同住人/亲友）
     active_lease_sub = db.query(LeaseRecord.id).filter(
         LeaseRecord.tenant_id == Tenant.id,
         LeaseRecord.lease_start <= date.today(),
-        LeaseRecord.lease_end >= date.today()
+        LeaseRecord.lease_end >= date.today(),
+        LeaseRecord.is_active == True
     )
     active_occupant_sub = db.query(RoomOccupant.id).filter(
         RoomOccupant.tenant_id == Tenant.id,
@@ -171,11 +172,12 @@ def delete_tenant(
     if not tenant:
         raise HTTPException(status_code=404, detail="租客不存在")
     
-    # 检查是否有活跃的租赁记录（根据时间判断）
+    # 检查是否有活跃的租赁记录（日期覆盖今天且未被终止）
     active_leases = db.query(LeaseRecord).filter(
         LeaseRecord.tenant_id == tenant_id,
         LeaseRecord.lease_start <= date.today(),
-        LeaseRecord.lease_end >= date.today()
+        LeaseRecord.lease_end >= date.today(),
+        LeaseRecord.is_active == True
     ).count()
     
     if active_leases > 0:
@@ -213,11 +215,12 @@ def renew_tenant_lease(
     if not tenant:
         raise HTTPException(status_code=404, detail="租客不存在")
     
-    # 找到当前活跃租约（按时间判断）
+    # 找到当前活跃租约（日期覆盖今天且未被终止）
     active_lease = db.query(LeaseRecord).filter(
         LeaseRecord.tenant_id == tenant_id,
         LeaseRecord.lease_start <= date.today(),
-        LeaseRecord.lease_end >= date.today()
+        LeaseRecord.lease_end >= date.today(),
+        LeaseRecord.is_active == True
     ).order_by(LeaseRecord.lease_start.desc()).first()
     
     if not active_lease:

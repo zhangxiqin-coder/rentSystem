@@ -420,20 +420,36 @@ def checkout_room(
     previous_tenant = room.tenant_name
     checkout_date = checkout_data.refund_date
     
+    # 保存关联租客ID（清空前捕获，用于置inactive和结束租约）
+    prev_tenant_id = room.tenant_id
+
     # 更新房间状态为空房，清空租客信息
     room.status = "available"
     room.tenant_name = None
     room.tenant_phone = None
+    room.tenant_id = None
+    room.tenant_id_card = None
     room.lease_start = None
     room.lease_end = None
     room.last_payment_date = None
-    
+
     # 将关联租客置为 inactive（已搬走）
-    if room.tenant_id:
-        tenant = db.query(Tenant).filter(Tenant.id == room.tenant_id).first()
+    if prev_tenant_id:
+        tenant = db.query(Tenant).filter(Tenant.id == prev_tenant_id).first()
         if tenant:
             tenant.status = 'inactive'
-    
+
+    # 结束该房间当前生效的租约（避免已搬离租客仍触发合同到期提醒）
+    today = date.today()
+    active_leases = db.query(LeaseRecord).filter(
+        LeaseRecord.room_id == room.id,
+        LeaseRecord.lease_start <= today,
+        LeaseRecord.lease_end >= today,
+        LeaseRecord.is_active == True
+    ).all()
+    for lease in active_leases:
+        lease.is_active = False
+
     # 创建退租记录（负数金额表示退款）
     refund_payment = Payment(
         room_id=room.id,

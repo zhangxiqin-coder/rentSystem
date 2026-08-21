@@ -32,15 +32,16 @@ def list_lease_records(
         from datetime import date
         today = date.today()
         if is_active:
-            # 按时间判断"生效中"的租约
+            # 生效中：日期覆盖今天且未被终止（is_active=True）
             query = query.filter(
                 LeaseRecord.lease_start <= today,
-                LeaseRecord.lease_end >= today
+                LeaseRecord.lease_end >= today,
+                LeaseRecord.is_active == True
             )
         else:
-            # 按时间判断"已结束"或"待生效"的租约
+            # "已结束"：日期已过、未开始、或被退租/终止（is_active=False）
             query = query.filter(
-                (LeaseRecord.lease_start > today) | (LeaseRecord.lease_end < today)
+                (LeaseRecord.lease_start > today) | (LeaseRecord.lease_end < today) | (LeaseRecord.is_active == False)
             )
 
     records = query.order_by(desc(LeaseRecord.created_at)).all()
@@ -176,7 +177,8 @@ def delete_lease_record(
 def _sync_room_from_leases(db: Session, room: Room):
     """
     根据房间的有效租赁记录同步房间的租客信息和状态。
-    按时间判断（lease_start <= today <= lease_end）为生效中。
+    生效中 = 日期覆盖今天 且 is_active=True。
+    （必须过滤 is_active，否则已退租/终止的租约会把房间状态回写为"入住"）
     """
     from datetime import date
     today = date.today()
@@ -184,9 +186,10 @@ def _sync_room_from_leases(db: Session, room: Room):
     active_lease = db.query(LeaseRecord).filter(
         LeaseRecord.room_id == room.id,
         LeaseRecord.lease_start <= today,
-        LeaseRecord.lease_end >= today
+        LeaseRecord.lease_end >= today,
+        LeaseRecord.is_active == True
     ).order_by(LeaseRecord.lease_start.desc()).first()
-    
+
     if active_lease:
         tenant = db.query(Tenant).filter(Tenant.id == active_lease.tenant_id).first()
         if tenant:
