@@ -20,6 +20,7 @@ const activeTab = computed(() => {
   if (route.path.startsWith('/payments')) return 'payments'
   if (route.path.startsWith('/utility')) return 'utility'
   if (route.path.startsWith('/assets')) return 'assets'
+  if (route.path.startsWith('/grid-invest')) return 'grid-invest'
   return 'rooms'
 })
 
@@ -29,6 +30,7 @@ const handleTabChange = (name: string | number) => {
   if (name === 'payments') router.push('/payments')
   if (name === 'utility') router.push('/utility')
   if (name === 'assets') router.push('/assets')
+  if (name === 'grid-invest') router.push('/grid-invest')
 }
 
 const handleLogout = async () => {
@@ -84,6 +86,7 @@ onMounted(() => {
         <el-tab-pane label="交租记录" name="payments" />
         <el-tab-pane label="水电管理" name="utility" />
         <el-tab-pane v-if="authStore.showAssetsPage" label="资产" name="assets" />
+        <el-tab-pane v-if="authStore.showAssetsPage" label="网格定投" name="grid-invest" />
       </el-tabs>
       <div class="actions">
         <el-button type="info" plain size="small" @click="toggleHideAmounts">
@@ -143,6 +146,15 @@ onMounted(() => {
       >
         <span class="icon">💳</span>
         <span class="label">资产</span>
+      </div>
+      <div
+        v-if="authStore.showAssetsPage"
+        class="nav-item"
+        :class="{ active: activeTab === 'grid-invest' }"
+        @click="handleTabChange('grid-invest')"
+      >
+        <span class="icon">📊</span>
+        <span class="label">定投</span>
       </div>
     </nav>
   </div>
