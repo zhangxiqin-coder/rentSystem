@@ -76,16 +76,24 @@ class TestQuarterlyRentIncludeLogic:
         result = _has_paid_notif(db, q_room, cycle=3)
         assert result is False, "上次付款不在下次到期日±14天内，应返回False(未付)→应包含房租"
 
+    def _next_due(self) -> date:
+        """与实现一致的下次到期日算法（lease_start + cycle个月，动态推进），
+        让测试对运行日期免疫。"""
+        next_due = date(2025, 5, 2)
+        while next_due <= date.today():
+            next_due += relativedelta(months=3)
+        return next_due
+
     def test_payment_inside_window_should_exclude_rent(self, db, q_room):
         """
         如果在到期日附近(±14天)已有payment → 已付 → include_rent=False。
         """
-        # 在8/2前7天交租
+        # 在下次到期日前5天交租（动态计算，任意日期运行都落在窗口内）
         p = Payment(
             room_id=q_room.id,
             payment_type="rent",
             amount=Decimal("4650"),
-            payment_date=date(2026, 7, 28),  # 8/2 - 5天，在±14天窗口内
+            payment_date=self._next_due() - timedelta(days=5),
             status="completed",
         )
         db.add(p)
@@ -116,7 +124,7 @@ class TestQuarterlyRentIncludeLogic:
             room_id=q_room.id,
             payment_type="rent",
             amount=Decimal("4650"),
-            payment_date=date(2026, 7, 28),  # 在窗口内
+            payment_date=self._next_due() - timedelta(days=5),  # 在窗口内（动态）
             status="cancelled",  # 但被取消了
         )
         db.add(p)
@@ -152,11 +160,15 @@ class TestQuarterlyRentIncludeLogic:
 
     def test_business_service_with_payment_in_window(self, db, q_room):
         """business.py逻辑：到期日±14天内有rent payment → 已付"""
+        # 动态算下次到期日（lease_start=2025-05-02, cycle=3，随今天推进）
+        next_due = date(2025, 5, 2)
+        while next_due <= date.today():
+            next_due += relativedelta(months=3)
         p = Payment(
             room_id=q_room.id,
             payment_type="rent",
             amount=Decimal("4650"),
-            payment_date=date(2026, 7, 28),
+            payment_date=next_due - timedelta(days=5),  # 到期前5天，必在±14天窗口内
             status="completed",
         )
         db.add(p)
@@ -415,9 +427,12 @@ class TestShouldIncludeRentLogic:
         """本周期已付（在到期日±14天内），不包含房租。"""
         lease_start = date(2025, 5, 2)
         cycle = 3
-        # 到期日8/2，7/28付的 → 在窗口内
+        # 动态计算下次到期日，付款设在到期日前5天 → 必在窗口内（日期免疫）
+        next_due = lease_start
+        while next_due <= date.today():
+            next_due += relativedelta(months=cycle)
         payments = [
-            {"payment_date": date(2026, 7, 28), "payment_type": "rent", "status": "completed"}
+            {"payment_date": next_due - timedelta(days=5), "payment_type": "rent", "status": "completed"}
         ]
         assert self._should_include_rent(lease_start, cycle, payments) is False
 
@@ -441,8 +456,11 @@ class TestShouldIncludeRentLogic:
         """cancelled payment不算数。"""
         lease_start = date(2025, 5, 2)
         cycle = 3
+        next_due = lease_start
+        while next_due <= date.today():
+            next_due += relativedelta(months=cycle)
         payments = [
-            {"payment_date": date(2026, 7, 28), "payment_type": "rent", "status": "cancelled"}
+            {"payment_date": next_due - timedelta(days=5), "payment_type": "rent", "status": "cancelled"}
         ]
         assert self._should_include_rent(lease_start, cycle, payments) is True
 

@@ -45,8 +45,8 @@ const fetchActiveLeases = async () => {
     const map: Record<number, string> = {}
     const today = new Date().toISOString().split('T')[0]
     for (const r of records) {
-      // 按时间判断：只要租期还没结束（lease_end >= 今天），取最远到期日
-      if (r.lease_end >= today && (!map[r.tenant_id] || r.lease_end > map[r.tenant_id])) {
+      // 按时间判断：租期还没结束（lease_end >= 今天）且未被退租终止（is_active !== false）
+      if (r.lease_end >= today && r.is_active !== false && (!map[r.tenant_id] || r.lease_end > map[r.tenant_id])) {
         map[r.tenant_id] = r.lease_end
       }
     }

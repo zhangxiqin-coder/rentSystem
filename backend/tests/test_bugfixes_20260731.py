@@ -114,12 +114,16 @@ class TestBug1QuarterlyRentNotificationIntegration:
         """
         [反向场景] 到期日±14天内已交租 → 不包含房租
         """
-        # 在到期日(8/2)前3天交租 → 在窗口内
+        # 动态算下次到期日（lease_start=2025-05-02, cycle=3，随今天推进），
+        # 付款设在到期前3天 → 必在±14天窗口内（日期免疫）
+        next_due = date(2025, 5, 2)
+        while next_due <= date.today():
+            next_due += relativedelta(months=3)
         payment = Payment(
             room_id=quarterly_room.id,
             payment_type="rent",
             amount=Decimal("4650"),
-            payment_date=date(2026, 7, 30),  # 8/2 - 3天
+            payment_date=next_due - timedelta(days=3),  # 到期前3天
             status="completed",
         )
         db.add(payment)
@@ -146,11 +150,14 @@ class TestBug1QuarterlyRentNotificationIntegration:
         """
         [边界值] payment在到期日恰好14天前 → 在窗口内，已付
         """
+        next_due = date(2025, 5, 2)
+        while next_due <= date.today():
+            next_due += relativedelta(months=3)
         payment = Payment(
             room_id=quarterly_room.id,
             payment_type="rent",
             amount=Decimal("4650"),
-            payment_date=date(2026, 7, 19),  # 8/2 - 14天，恰好边界
+            payment_date=next_due - timedelta(days=14),  # 恰好边界（动态）
             status="completed",
         )
         db.add(payment)
@@ -163,11 +170,14 @@ class TestBug1QuarterlyRentNotificationIntegration:
         """
         [边界值] payment在到期日15天前 → 不在窗口内，未付
         """
+        next_due = date(2025, 5, 2)
+        while next_due <= date.today():
+            next_due += relativedelta(months=3)
         payment = Payment(
             room_id=quarterly_room.id,
             payment_type="rent",
             amount=Decimal("4650"),
-            payment_date=date(2026, 7, 18),  # 8/2 - 15天，刚好出界
+            payment_date=next_due - timedelta(days=15),  # 刚好出界（动态）
             status="completed",
         )
         db.add(payment)
