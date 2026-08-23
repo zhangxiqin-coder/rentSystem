@@ -1,8 +1,9 @@
 """
 房屋租赁合同生成API
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import HTMLResponse, StreamingResponse, Response
+from sqlalchemy.orm import Session
 from pathlib import Path
 from typing import Optional
 from datetime import date, datetime
@@ -11,6 +12,8 @@ import io
 import tempfile
 
 from weasyprint import HTML
+
+from app.database import get_db
 
 router = APIRouter()
 
@@ -191,7 +194,8 @@ async def generate_lease_contract(
     keys_count: Optional[int] = 2,
     electricity_initial_reading: Optional[float] = None,
     water_initial_reading: Optional[float] = None,
-    editable: Optional[bool] = False
+    editable: Optional[bool] = False,
+    db: Session = Depends(get_db)
 ):
     """
     生成房屋租赁合同 HTML
@@ -205,9 +209,7 @@ async def generate_lease_contract(
     返回：HTML格式的合同内容
     """
     from app.models import Room, UtilityReading, User, LeaseRecord, Tenant
-    from app.database import SessionLocal
 
-    db = SessionLocal()
     try:
         # 查询租赁记录
         lease_record = db.query(LeaseRecord).filter(LeaseRecord.id == lease_record_id).first()
@@ -348,14 +350,13 @@ async def generate_lease_contract(
         error_detail = f"生成合同失败: {str(e)}\n{traceback.format_exc()}"
         print(error_detail)
         raise HTTPException(status_code=500, detail=error_detail)
-    finally:
-        db.close()
 
 
 @router.get("/generate-contract-pdf/{lease_record_id}")
 async def generate_lease_contract_pdf(
     lease_record_id: int,
-    keys_count: Optional[int] = 2
+    keys_count: Optional[int] = 2,
+    db: Session = Depends(get_db)
 ):
     """
     生成房屋租赁合同 PDF 文件下载
@@ -364,8 +365,8 @@ async def generate_lease_contract_pdf(
     - 再用 weasyprint 转为 PDF
     - 返回 PDF 文件下载
     """
-    # 先生成 HTML 合同
-    html_content = await generate_lease_contract(lease_record_id, keys_count)
+    # 先生成 HTML 合同（复用同一个 db session，走 get_db 路径避免 prod_guard 拦截）
+    html_content = await generate_lease_contract(lease_record_id, keys_count, db=db)
 
     if isinstance(html_content, HTMLResponse):
         html_str = html_content.body.decode('utf-8')
@@ -381,14 +382,9 @@ async def generate_lease_contract_pdf(
 
         # 获取租客姓名用于文件名
         from app.models import LeaseRecord
-        from app.database import SessionLocal
-        db = SessionLocal()
-        try:
-            lease_record = db.query(LeaseRecord).filter(LeaseRecord.id == lease_record_id).first()
-            tenant_name = lease_record.tenant.name if lease_record and lease_record.tenant else "租客"
-            room_num = lease_record.room.room_number if lease_record and lease_record.room else "房间"
-        finally:
-            db.close()
+        lease_record = db.query(LeaseRecord).filter(LeaseRecord.id == lease_record_id).first()
+        tenant_name = lease_record.tenant.name if lease_record and lease_record.tenant else "租客"
+        room_num = lease_record.room.room_number if lease_record and lease_record.room else "房间"
 
         from urllib.parse import quote
         filename = f"房屋租赁合同_{room_num}_{tenant_name}.pdf"

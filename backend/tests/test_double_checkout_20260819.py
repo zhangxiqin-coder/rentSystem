@@ -83,7 +83,8 @@ class TestDoubleCheckout:
 
         resp = client.post(f"/api/v1/lease-records/{lease.id}/end-lease", headers=auth_headers)
         assert resp.status_code == 200, resp.text
-        assert resp.json()["status_display"] == "expired", \
+        # 2026-08-23 起端点返回 EndLeaseResponse 包装结构，记录在 lease_record 字段
+        assert resp.json()["lease_record"]["status_display"] == "expired", \
             "已终止租约（日期未到但is_active=False）应显示expired"
 
     def test_sync_room_ignores_terminated_lease(self, db, scenario):

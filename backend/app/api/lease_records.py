@@ -2,13 +2,18 @@
 租赁记录管理 API 路由
 """
 from typing import Optional, List
+from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.core.deps import get_db, get_current_user
-from app.models import User, LeaseRecord, Room, Tenant
-from app.schemas import LeaseRecordCreate, LeaseRecordUpdate, LeaseRecordResponse
+from app.models import User, LeaseRecord, Room, Tenant, RoomOccupant
+from app.schemas import (
+    LeaseRecordCreate, LeaseRecordUpdate, LeaseRecordResponse,
+    EndLeaseRequest, EndLeaseResponse, FinalReadingContextResponse,
+    FinalReadingItem
+)
 
 router = APIRouter(prefix="/lease-records", tags=["lease_records"])
 
@@ -218,13 +223,133 @@ def _clear_room_tenant(room: Room):
     room.status = "available"
 
 
-@router.post("/{record_id}/end-lease", response_model=LeaseRecordResponse)
-def end_lease(
+@router.get("/{record_id}/final-reading-context", response_model=FinalReadingContextResponse)
+def get_final_reading_context(
     record_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """结束租赁（退租操作）"""
+    """
+    获取退租水电上下文：上次读数 + 当前费率（供前端预填和费用预览）
+    """
+    record = db.query(LeaseRecord).filter(
+        LeaseRecord.id == record_id,
+        LeaseRecord.owner_id == current_user.id
+    ).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="租赁记录不存在")
+
+    room = db.query(Room).filter(Room.id == record.room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="房间不存在")
+
+    from app.service.business import get_previous_reading, get_active_rate
+    from datetime import date
+
+    def _item(utility_type: str):
+        prev = get_previous_reading(db, room.id, utility_type, date.today())
+        rate_record = get_active_rate(db, utility_type, date.today())
+        return FinalReadingItem(
+            previous_reading=prev,
+            rate=rate_record.rate_per_unit if rate_record else None
+        )
+
+    return FinalReadingContextResponse(
+        room_id=room.id,
+        room_number=room.room_number,
+        water=_item("water"),
+        electricity=_item("electricity")
+    )
+
+
+def _create_final_utility_settlement(
+    db: Session,
+    room: Room,
+    current_user: User,
+    final_water: Optional[Decimal],
+    final_electricity: Optional[Decimal],
+    utility_paid: bool,
+    payment_method: str
+) -> dict:
+    """
+    退租水电结算（内部函数）：
+    1. 生成 UtilityReading（自动算上次读数/用量/金额）
+    2. 已收款时生成 utility Payment 并回填 payment_id
+    3. 把退租读数写入 Room 初始读数 → 下个租客入住时若不录入，直接用这个值
+
+    返回结算摘要 dict（供 EndLeaseResponse 使用）
+    """
+    from datetime import date
+    from app.models import UtilityReading, Payment
+    from app.service.business import create_utility_reading
+
+    today = date.today()
+    result = {
+        "water_utility_id": None, "electricity_utility_id": None,
+        "water_payment_id": None, "electricity_payment_id": None,
+        "water_amount": None, "electricity_amount": None,
+    }
+
+    for utility_type, final_reading in (
+        ("water", final_water),
+        ("electricity", final_electricity),
+    ):
+        if final_reading is None:
+            continue
+
+        reading = create_utility_reading(
+            db,
+            room_id=room.id,
+            utility_type=utility_type,
+            reading=final_reading,
+            reading_date=today,
+            recorded_by=current_user.id,
+            notes="退租结算",
+            owner_id=room.owner_id or current_user.id
+        )
+        type_name = "水费" if utility_type == "water" else "电费"
+        result[f"{utility_type}_utility_id"] = reading.id
+
+        if utility_paid and reading.amount is not None:
+            payment = Payment(
+                room_id=room.id,
+                amount=reading.amount,
+                payment_type="utility",
+                payment_date=today,
+                payment_method=payment_method,
+                description=f"{type_name}（退租结算） {room.room_number}",
+                owner_id=room.owner_id or current_user.id
+            )
+            db.add(payment)
+            db.flush()  # 拿 payment.id
+            reading.payment_id = payment.id
+            result[f"{utility_type}_payment_id"] = payment.id
+
+        result[f"{utility_type}_amount"] = reading.amount
+        # 读数写入房间初始读数 → 下个租客的起点
+        if utility_type == "water":
+            room.initial_water_reading = final_reading
+        else:
+            room.initial_electricity_reading = final_reading
+
+    return result
+
+
+@router.post("/{record_id}/end-lease", response_model=EndLeaseResponse)
+def end_lease(
+    record_id: int,
+    data: Optional[EndLeaseRequest] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    结束租赁（退租操作）
+
+    可选携带退租水电结算：
+    - final_water_reading / final_electricity_reading: 退租时水电表读数
+    - utility_paid: True 时自动生成已收款的水电缴费单
+    - 退租读数会写入房间初始读数，作为下个租客首次抄表的起点
+    """
     record = db.query(LeaseRecord).filter(
         LeaseRecord.id == record_id,
         LeaseRecord.owner_id == current_user.id
@@ -237,19 +362,74 @@ def end_lease(
     if record.lease_start > date.today():
         raise HTTPException(status_code=400, detail="该租赁记录尚未生效，请直接删除")
 
+    # 水电结算（在租约标记结束前做，事务包裹）
+    settlement = {
+        "water_utility_id": None, "electricity_utility_id": None,
+        "water_payment_id": None, "electricity_payment_id": None,
+        "water_amount": None, "electricity_amount": None,
+    }
+    room = db.query(Room).filter(Room.id == record.room_id).first()
+
+    if data and room and (data.final_water_reading is not None or data.final_electricity_reading is not None):
+        try:
+            settlement = _create_final_utility_settlement(
+                db, room, current_user,
+                data.final_water_reading, data.final_electricity_reading,
+                data.utility_paid, data.payment_method
+            )
+        except ValueError as e:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=str(e))
+
     # 标记为不活跃
     record.is_active = False
 
     # 重新根据时间同步房间信息
-    room = db.query(Room).filter(Room.id == record.room_id).first()
     if room:
         record.is_active = False
         db.flush()
         _sync_room_from_leases(db, room)
 
+    # 清掉本房间的活跃居住人记录（主租客+同住人一并搬离）
+    # 否则租客在"入住/未入住/搬离"三个tab都消失
+    if room:
+        db.query(RoomOccupant).filter(
+            RoomOccupant.room_id == room.id,
+            RoomOccupant.is_active == True
+        ).update({"is_active": False})
+
+    # 租客无其他活跃租约、也不是其他房间的活跃居住人时，置为已搬离（inactive）
+    tenant = db.query(Tenant).filter(Tenant.id == record.tenant_id).first()
+    if tenant and tenant.status == 'active':
+        today = date.today()
+        other_active_lease = db.query(LeaseRecord.id).filter(
+            LeaseRecord.tenant_id == tenant.id,
+            LeaseRecord.id != record.id,
+            LeaseRecord.lease_start <= today,
+            LeaseRecord.lease_end >= today,
+            LeaseRecord.is_active == True
+        ).first()
+        active_occupant = db.query(RoomOccupant.id).filter(
+            RoomOccupant.tenant_id == tenant.id,
+            RoomOccupant.is_active == True
+        ).first()
+        if not other_active_lease and not active_occupant:
+            tenant.status = 'inactive'
+
     db.commit()
     db.refresh(record)
-    return record
+
+    parts = ["退租成功"]
+    if settlement["water_amount"] is not None:
+        parts.append(f"水费 ¥{settlement['water_amount']}（{'已收款' if settlement['water_payment_id'] else '未收款'}）")
+    if settlement["electricity_amount"] is not None:
+        parts.append(f"电费 ¥{settlement['electricity_amount']}（{'已收款' if settlement['electricity_payment_id'] else '未收款'}）")
+
+    return EndLeaseResponse(
+        message="，".join(parts),
+        lease_record=record,
+        **settlement
+    )
 
 
 @router.post("/{record_id}/restore", response_model=LeaseRecordResponse)
@@ -280,6 +460,25 @@ def restore_lease(
         record.is_active = True
         db.flush()
         _sync_room_from_leases(db, room)
+
+    # 恢复入住时把租客拉回 active（对齐 end-lease 置 inactive 的反向操作）
+    tenant = db.query(Tenant).filter(Tenant.id == record.tenant_id).first()
+    if tenant and tenant.status == 'inactive':
+        tenant.status = 'active'
+
+    # 恢复主租客在本房间的居住人记录（end-lease 清除的反向操作）
+    if room and tenant:
+        existing = db.query(RoomOccupant).filter(
+            RoomOccupant.room_id == room.id,
+            RoomOccupant.tenant_id == tenant.id
+        ).first()
+        if existing:
+            existing.is_active = True
+        else:
+            db.add(RoomOccupant(
+                room_id=room.id, tenant_id=tenant.id,
+                role="primary", is_active=True, owner_id=record.owner_id
+            ))
 
     db.commit()
     db.refresh(record)

@@ -714,6 +714,42 @@ class LeaseRecordWithRoom(LeaseRecordResponse):
     total_profit: float = Field(description="总收益")
 
 
+# ==================== 退租结算 Schemas ====================
+
+class EndLeaseRequest(BaseModel):
+    """退租请求 schema（可选携带退租水电结算）"""
+    final_water_reading: Optional[Decimal] = Field(None, ge=0, description="退租时水表读数（可选）")
+    final_electricity_reading: Optional[Decimal] = Field(None, ge=0, description="退租时电表读数（可选）")
+    utility_paid: bool = Field(True, description="水电费是否已收（True生成已收款缴费单，False只记欠费）")
+    payment_method: str = Field("微信支付", description="收款方式")
+
+
+class EndLeaseResponse(BaseModel):
+    """退租响应 schema"""
+    message: str
+    lease_record: LeaseRecordResponse
+    water_utility_id: Optional[int] = None
+    electricity_utility_id: Optional[int] = None
+    water_payment_id: Optional[int] = None
+    electricity_payment_id: Optional[int] = None
+    water_amount: Optional[Decimal] = None
+    electricity_amount: Optional[Decimal] = None
+
+
+class FinalReadingItem(BaseModel):
+    """退租水电预览单项"""
+    previous_reading: Optional[Decimal] = None
+    rate: Optional[Decimal] = None
+
+
+class FinalReadingContextResponse(BaseModel):
+    """退租水电上下文（上次读数+费率，供前端预填和预览）"""
+    room_id: int
+    room_number: str
+    water: FinalReadingItem
+    electricity: FinalReadingItem
+
+
 # ==================== 个人资产 ====================
 
 class AssetPlatformCreate(BaseModel):

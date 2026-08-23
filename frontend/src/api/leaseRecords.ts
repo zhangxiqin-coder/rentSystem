@@ -35,10 +35,21 @@ export const leaseRecordsApi = {
     return response.data.data
   },
 
-  // 结束租赁（退租操作）
-  endLease: async (id: number) => {
-    const response = await request.post<ApiResponse<LeaseRecord>>(`/api/v1/lease-records/${id}/end-lease`)
+  // 结束租赁（退租操作，可选携带水电结算）
+  endLease: async (id: number, data?: {
+    final_water_reading?: number
+    final_electricity_reading?: number
+    utility_paid?: boolean
+    payment_method?: string
+  }) => {
+    const response = await request.post<ApiResponse<LeaseRecord>>(`/api/v1/lease-records/${id}/end-lease`, data || {})
     return response.data.data
+  },
+
+  // 获取退租水电上下文（上次读数+费率）
+  getFinalReadingContext: async (id: number) => {
+    const response = await request.get<any>(`/api/v1/lease-records/${id}/final-reading-context`)
+    return response.data
   },
 
   // 恢复租赁（恢复入住操作）

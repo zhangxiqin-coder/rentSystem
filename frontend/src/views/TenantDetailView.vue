@@ -115,6 +115,18 @@ const openCheckInDialog = () => {
   fetchAvailableRooms()
 }
 
+// 选房后预填初始水电读数：优先用房间的初始读数
+// （上个租客退租时录入的读数会写进房间，这里自动带出，没抄表就先用它）
+const onCheckInRoomChange = (roomId: number | undefined) => {
+  if (roomId == null) return
+  const room = availableRooms.value.find(r => r.id === roomId)
+  if (!room) return
+  const prevElec = Number(room.initial_electricity_reading) || 0
+  const prevWater = Number(room.initial_water_reading) || 0
+  checkInForm.value.initial_electricity_reading = prevElec
+  checkInForm.value.initial_water_reading = prevWater
+}
+
 // 确认入住
 const handleCheckIn = async () => {
   if (!checkInForm.value.room_id) {
@@ -166,27 +178,105 @@ const handle编辑合同 = (record: LeaseRecord) => {
   window.open(editUrl, '_blank')
 }
 
-// 结束租赁（退租）
-const handleEndLease = async (record: LeaseRecord) => {
-  try {
-    await ElMessageBox.confirm(
-      `确定要结束该租赁记录吗？房间将标记为空闲。`,
-      '退租确认',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
+// 退租对话框
+const endLeaseDialogVisible = ref(false)
+const endLeaseSubmitting = ref(false)
+const endLeaseForm = ref({
+  record_id: 0,
+  room_number: '',
+  final_water_reading: undefined as number | undefined,
+  final_electricity_reading: undefined as number | undefined,
+  utility_paid: true,
+  payment_method: '微信支付'
+})
+// 上次读数+费率（费用预览用）
+const endLeaseContext = ref<{
+  water: { previous_reading: number | null; rate: number | null }
+  electricity: { previous_reading: number | null; rate: number | null }
+} | null>(null)
 
-    await leaseRecordsApi.endLease(record.id)
-    ElMessage.success('退租成功')
-    await fetchLeaseRecords()
+// 水费预览
+const waterCostPreview = computed(() => {
+  const ctx = endLeaseContext.value
+  if (!ctx || endLeaseForm.value.final_water_reading == null) return null
+  const prev = Number(ctx.water.previous_reading ?? 0)
+  const rate = Number(ctx.water.rate ?? 0)
+  const usage = endLeaseForm.value.final_water_reading - prev
+  if (usage < 0) return { error: '读数不能小于上次读数' }
+  return { usage, amount: usage * rate }
+})
+
+// 电费预览
+const electricityCostPreview = computed(() => {
+  const ctx = endLeaseContext.value
+  if (!ctx || endLeaseForm.value.final_electricity_reading == null) return null
+  const prev = Number(ctx.electricity.previous_reading ?? 0)
+  const rate = Number(ctx.electricity.rate ?? 0)
+  const usage = endLeaseForm.value.final_electricity_reading - prev
+  if (usage < 0) return { error: '读数不能小于上次读数' }
+  return { usage, amount: usage * rate }
+})
+
+// 打开退租对话框（拉取上次读数和费率）
+const handleEndLease = async (record: LeaseRecord) => {
+  endLeaseForm.value = {
+    record_id: record.id,
+    room_number: record.room?.room_number || '',
+    final_water_reading: undefined,
+    final_electricity_reading: undefined,
+    utility_paid: true,
+    payment_method: '微信支付'
+  }
+  endLeaseContext.value = null
+  endLeaseDialogVisible.value = true
+  try {
+    endLeaseContext.value = await leaseRecordsApi.getFinalReadingContext(record.id)
   } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('退租失败')
-      console.error(error)
-    }
+    console.error('获取退租水电上下文失败:', error)
+  }
+}
+
+// 确认退租（带水电结算）
+const confirmEndLease = async () => {
+  const form = endLeaseForm.value
+  if (waterCostPreview.value?.error) {
+    ElMessage.warning(`水费：${waterCostPreview.value.error}`)
+    return
+  }
+  if (electricityCostPreview.value?.error) {
+    ElMessage.warning(`电费：${electricityCostPreview.value.error}`)
+    return
+  }
+
+  const hasUtility = form.final_water_reading != null || form.final_electricity_reading != null
+  const tip = hasUtility
+    ? `退租后房间标记为空闲。将按读数生成水电记录${form.utility_paid ? '及已收款缴费单' : '（未收款）'}，退租读数将作为下个租客的初始读数。`
+    : '退租后房间将标记为空闲。'
+
+  try {
+    await ElMessageBox.confirm(tip, '退租确认', {
+      confirmButtonText: '确定退租',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+
+  endLeaseSubmitting.value = true
+  try {
+    const payload: Record<string, unknown> = { utility_paid: form.utility_paid, payment_method: form.payment_method }
+    if (form.final_water_reading != null) payload.final_water_reading = form.final_water_reading
+    if (form.final_electricity_reading != null) payload.final_electricity_reading = form.final_electricity_reading
+    await leaseRecordsApi.endLease(form.record_id, payload)
+    ElMessage.success('退租成功')
+    endLeaseDialogVisible.value = false
+    await fetchLeaseRecords()
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.detail || '退租失败')
+    console.error(error)
+  } finally {
+    endLeaseSubmitting.value = false
   }
 }
 
@@ -489,6 +579,7 @@ onMounted(() => {
             v-model="checkInForm.room_id"
             placeholder="请选择房间"
             style="width: 100%"
+            @change="onCheckInRoomChange"
           >
             <el-option
               v-for="room in availableRooms"
@@ -682,6 +773,86 @@ onMounted(() => {
         <el-button type="primary" :loading="renewLoading" @click="submitRenew">确认续租</el-button>
       </template>
     </el-dialog>
+
+    <!-- 退租对话框 -->
+    <el-dialog
+      v-model="endLeaseDialogVisible"
+      title="退租结算"
+      width="520px"
+      :close-on-click-modal="false"
+    >
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+      >
+        退租时录入当前水电表读数，系统自动生成水电缴费单；该读数将作为下个租客的初始读数。不填则跳过水电结算。
+      </el-alert>
+      <el-form :model="endLeaseForm" label-width="120px">
+        <el-form-item label="房间">
+          <span>{{ endLeaseForm.room_number }}</span>
+        </el-form-item>
+        <el-form-item label="当前水表读数">
+          <el-input-number
+            v-model="endLeaseForm.final_water_reading"
+            :min="0"
+            :precision="2"
+            :step="1"
+            placeholder="退租时水表读数"
+            style="width: 100%"
+          />
+          <div v-if="endLeaseContext" class="reading-hint">
+            上次：{{ endLeaseContext.water.previous_reading ?? '无记录' }}
+            <template v-if="waterCostPreview && !waterCostPreview.error">
+              ｜用量 {{ waterCostPreview.usage }} 吨 ｜水费 ¥{{ waterCostPreview.amount.toFixed(2) }}
+            </template>
+            <span v-else-if="waterCostPreview?.error" class="error-text">{{ waterCostPreview.error }}</span>
+          </div>
+        </el-form-item>
+        <el-form-item label="当前电表读数">
+          <el-input-number
+            v-model="endLeaseForm.final_electricity_reading"
+            :min="0"
+            :precision="2"
+            :step="10"
+            placeholder="退租时电表读数"
+            style="width: 100%"
+          />
+          <div v-if="endLeaseContext" class="reading-hint">
+            上次：{{ endLeaseContext.electricity.previous_reading ?? '无记录' }}
+            <template v-if="electricityCostPreview && !electricityCostPreview.error">
+              ｜用量 {{ electricityCostPreview.usage }} 度 ｜电费 ¥{{ electricityCostPreview.amount.toFixed(2) }}
+            </template>
+            <span v-else-if="electricityCostPreview?.error" class="error-text">{{ electricityCostPreview.error }}</span>
+          </div>
+        </el-form-item>
+        <el-form-item v-if="endLeaseForm.final_water_reading != null || endLeaseForm.final_electricity_reading != null" label="水电费">
+          <el-radio-group v-model="endLeaseForm.utility_paid">
+            <el-radio :value="true">已收款</el-radio>
+            <el-radio :value="false">未收款</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="(endLeaseForm.final_water_reading != null || endLeaseForm.final_electricity_reading != null) && endLeaseForm.utility_paid" label="收款方式">
+          <el-select v-model="endLeaseForm.payment_method" style="width: 100%">
+            <el-option label="微信支付" value="微信支付" />
+            <el-option label="支付宝" value="支付宝" />
+            <el-option label="现金" value="现金" />
+            <el-option label="银行转账" value="银行转账" />
+          </el-select>
+        </el-form-item>
+        <el-form-item
+          v-if="waterCostPreview && !waterCostPreview.error && electricityCostPreview && !electricityCostPreview.error"
+          label="合计"
+        >
+          <span class="total-amount">¥{{ (waterCostPreview.amount + electricityCostPreview.amount).toFixed(2) }}</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="endLeaseDialogVisible = false">取消</el-button>
+        <el-button type="danger" :loading="endLeaseSubmitting" @click="confirmEndLease">确认退租</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -727,5 +898,22 @@ onMounted(() => {
 
 .renew-info p {
   margin: 4px 0;
+}
+
+.reading-hint {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.6;
+  width: 100%;
+}
+
+.error-text {
+  color: #f56c6c;
+}
+
+.total-amount {
+  font-size: 18px;
+  font-weight: 600;
+  color: #f56c6c;
 }
 </style>

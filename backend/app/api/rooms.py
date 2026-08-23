@@ -11,7 +11,7 @@ import io
 
 from app.core.deps import get_db, get_current_user
 from app.core.permissions import apply_room_filter
-from app.models import User, Room, Payment, UtilityReading, Tenant, LeaseRecord
+from app.models import User, Room, Payment, UtilityReading, Tenant, LeaseRecord, RoomOccupant
 from app.schemas import (
     RoomCreate, RoomUpdate, RoomResponse, PaginatedResponse,
     PaymentResponse, UtilityReadingResponse,
@@ -434,10 +434,30 @@ def checkout_room(
     room.last_payment_date = None
 
     # 将关联租客置为 inactive（已搬走）
+    # 只有当租客没有其他活跃租约、也不是其他房间的活跃居住人时才置 inactive
     if prev_tenant_id:
         tenant = db.query(Tenant).filter(Tenant.id == prev_tenant_id).first()
         if tenant:
-            tenant.status = 'inactive'
+            today = date.today()
+            other_active_lease = db.query(LeaseRecord.id).filter(
+                LeaseRecord.tenant_id == tenant.id,
+                LeaseRecord.lease_start <= today,
+                LeaseRecord.lease_end >= today,
+                LeaseRecord.is_active == True
+            ).first()
+            other_active_occupant = db.query(RoomOccupant.id).filter(
+                RoomOccupant.tenant_id == tenant.id,
+                RoomOccupant.room_id != room.id,
+                RoomOccupant.is_active == True
+            ).first()
+            if not other_active_lease and not other_active_occupant:
+                tenant.status = 'inactive'
+
+    # 清掉本房间的活跃居住人记录（主租客+同住人一并搬离）
+    db.query(RoomOccupant).filter(
+        RoomOccupant.room_id == room.id,
+        RoomOccupant.is_active == True
+    ).update({"is_active": False})
 
     # 结束该房间当前生效的租约（避免已搬离租客仍触发合同到期提醒）
     today = date.today()
@@ -493,13 +513,13 @@ def checkin_room(
     room = db.query(Room).filter(Room.id == room_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="房间不存在")
-    
+
     check_room_permission(current_user, room)
-    
+
     # 检查房间是否为空
     if room.status != "available":
         raise HTTPException(status_code=400, detail="只有空房才能办理入住")
-    
+
     # 更新房间信息
     room.status = "occupied"
     # 姓名可为空：为空时默认使用房间号
@@ -507,15 +527,26 @@ def checkin_room(
     room.tenant_phone = checkin_data.tenant_phone
     room.lease_start = checkin_data.lease_start
     room.lease_end = checkin_data.lease_end
-    
-    # 自动关联租客ID
-    from app.models import Tenant
+
+    # 自动关联或创建租客
+    # 优先按 owner 名下同名租客匹配（不重复建租客档案），
+    # 匹配不到才新建——房间页入住通常没有租客档案，需要落库才能创建租约。
+    from app.models import Tenant, LeaseRecord
     tenant = db.query(Tenant).filter(
         Tenant.name == room.tenant_name.strip(),
         Tenant.owner_id == current_user.id
     ).first()
-    if tenant:
-        room.tenant_id = tenant.id
+    if not tenant:
+        tenant = Tenant(
+            name=room.tenant_name.strip(),
+            phone=checkin_data.tenant_phone,
+            id_card=checkin_data.tenant_id_card,
+            status="active",
+            owner_id=current_user.id
+        )
+        db.add(tenant)
+        db.flush()  # 拿到 tenant.id
+    room.tenant_id = tenant.id
     
     # 更新租金、押金和付款周期（如果提供）
     if checkin_data.monthly_rent is not None:
@@ -530,6 +561,28 @@ def checkin_room(
         room.initial_electricity_reading = checkin_data.initial_electricity_reading
     if checkin_data.initial_water_reading is not None:
         room.initial_water_reading = checkin_data.initial_water_reading
+    
+    # 同步创建租赁记录（LeaseRecord）
+    # 房间页入住如果不落 lease_records，租客详情页的"租赁历史"就是空的。
+    # 幂等保护：该房间已有生效/待生效租约时跳过，避免重复入住产生重复租约。
+    existing_lease = db.query(LeaseRecord).filter(
+        LeaseRecord.room_id == room.id,
+        LeaseRecord.lease_end >= date.today()
+    ).first()
+    if not existing_lease:
+        lease_record = LeaseRecord(
+            tenant_id=tenant.id,
+            room_id=room.id,
+            lease_start=checkin_data.lease_start,
+            lease_end=checkin_data.lease_end,
+            monthly_rent=checkin_data.monthly_rent if checkin_data.monthly_rent is not None else room.monthly_rent,
+            deposit_amount=checkin_data.deposit_amount if checkin_data.deposit_amount is not None else room.deposit_amount,
+            is_active=True,
+            owner_id=current_user.id if current_user.role != "admin" else room.owner_id,
+            initial_electricity_reading=checkin_data.initial_electricity_reading if checkin_data.initial_electricity_reading is not None else 0,
+            initial_water_reading=checkin_data.initial_water_reading if checkin_data.initial_water_reading is not None else 0,
+        )
+        db.add(lease_record)
     
     db.commit()
     db.refresh(room)

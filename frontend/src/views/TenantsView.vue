@@ -36,29 +36,44 @@ const leaseExpiryWarnings = ref<LeaseExpiryWarning[]>([])
 
 // 租客 → 合同到期日映射
 const tenantLeaseEndMap = ref<Record<number, string>>({})
+// 租客 → 搬离日期映射（已终止租约，取最近一次终止时间）
+const tenantMovedOutMap = ref<Record<number, string>>({})
 
-// 获取活跃租约，建立 tenantId → leaseEnd 映射
+// 获取活跃租约，建立 tenantId → leaseEnd 映射；同时建立搬离映射
 const fetchActiveLeases = async () => {
   try {
     // 拉全部租约（不按日期过滤），取每个租客最远的到期日
     const records = await leaseRecordsApi.list()
     const map: Record<number, string> = {}
+    const movedOut: Record<number, string> = {}
     const today = new Date().toISOString().split('T')[0]
     for (const r of records) {
       // 按时间判断：租期还没结束（lease_end >= 今天）且未被退租终止（is_active !== false）
       if (r.lease_end >= today && r.is_active !== false && (!map[r.tenant_id] || r.lease_end > map[r.tenant_id])) {
         map[r.tenant_id] = r.lease_end
       }
+      // 已终止租约：搬离日 = 记录最后更新日（退租置 is_active=false 那天）
+      if (r.is_active === false && r.updated_at) {
+        const day = r.updated_at.split('T')[0]
+        if (!movedOut[r.tenant_id] || day > movedOut[r.tenant_id]) {
+          movedOut[r.tenant_id] = day
+        }
+      }
     }
     tenantLeaseEndMap.value = map
+    tenantMovedOutMap.value = movedOut
   } catch (error) {
     console.error('获取租约信息失败:', error)
   }
 }
 
-// 格式化日期显示
-const formatLeaseEnd = (tenantId: number): string => {
-  const end = tenantLeaseEndMap.value[tenantId]
+// 格式化日期显示（搬离租客显示搬离日，其余显示合同到期）
+const formatLeaseEnd = (tenant: { id: number; status?: string }): string => {
+  if (tenant.status === 'inactive') {
+    const day = tenantMovedOutMap.value[tenant.id]
+    return day ? `${day} 已搬离` : '已搬离'
+  }
+  const end = tenantLeaseEndMap.value[tenant.id]
   if (!end) return '-'
   const d = new Date(end)
   const today = new Date()
@@ -162,6 +177,12 @@ onMounted(() => {
 // 按合同到期日排序：最近到期的排前面，没有租约的排最后
 const sortedTenants = computed(() => {
   return [...tenants.value].sort((a, b) => {
+    // 搬离tab：按搬离日期倒序（最近搬离的排最前，没日期的最后）
+    if (activeTab.value === 'inactive') {
+      const ma = tenantMovedOutMap.value[a.id] || '0000-01-01'
+      const mb = tenantMovedOutMap.value[b.id] || '0000-01-01'
+      return mb.localeCompare(ma)
+    }
     const ea = tenantLeaseEndMap.value[a.id] || '9999-12-31'
     const eb = tenantLeaseEndMap.value[b.id] || '9999-12-31'
     return ea.localeCompare(eb)
@@ -262,7 +283,7 @@ const sortedTenants = computed(() => {
       <el-table-column label="合同到期" min-width="180">
         <template #default="{ row }">
           <span :class="{ 'lease-expired': tenantLeaseEndMap[row.id] && new Date(tenantLeaseEndMap[row.id]) < new Date(), 'lease-soon': tenantLeaseEndMap[row.id] && (() => { const d = new Date(tenantLeaseEndMap[row.id]); const days = Math.ceil((d.getTime() - Date.now()) / 86400000); return days >= 0 && days <= 7 })() }">
-            {{ formatLeaseEnd(row.id) }}
+            {{ formatLeaseEnd(row) }}
           </span>
         </template>
       </el-table-column>
@@ -305,7 +326,7 @@ const sortedTenants = computed(() => {
           </div>
           <div class="card-row">
             <span class="card-label">合同到期</span>
-            <span class="card-value">{{ formatLeaseEnd(tenant.id) }}</span>
+            <span class="card-value">{{ formatLeaseEnd(tenant) }}</span>
           </div>
         </div>
         <div class="card-actions">
