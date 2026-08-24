@@ -25,15 +25,52 @@ def _get_libsql_conn():
     """获取模块级缓存的 libsql 连接单例（embedded replica 模式）。
 
     首次调用时创建连接并从云端拉取最新数据，后续复用同一连接。
+    缓存文件损坏（malformed）时自动删除缓存重建（云端是 source of truth）。
     """
     global _libsql_conn
     if _libsql_conn is None:
         import libsql_experimental as libsql
-        local_cache = os.path.join(os.path.dirname(__file__), "..", "turso_cache.db")
-        _libsql_conn = libsql.connect(local_cache, sync_url=TURSO_URL, auth_token=TURSO_TOKEN)
-        # 连接建立时先拉一次云端最新数据
-        _libsql_conn.sync()
+        # 缓存路径可用环境变量覆盖：并行进程（cron 脚本等）必须用独立缓存文件，
+        # 多进程共享同一 embedded replica 缓存会导致文件损坏（malformed）。
+        local_cache = os.environ.get(
+            "TURSO_CACHE_PATH",
+            os.path.join(os.path.dirname(__file__), "..", "turso_cache.db"),
+        )
+        try:
+            _libsql_conn = libsql.connect(local_cache, sync_url=TURSO_URL, auth_token=TURSO_TOKEN)
+            # 连接建立时先拉一次云端最新数据
+            _libsql_conn.sync()
+        except Exception as e:
+            if "malformed" in str(e) or "corrupt" in str(e):
+                # 缓存文件损坏：删除缓存三件套，从云端全量重建
+                # （embedded replica 模式下云端是 source of truth，缓存随时可重建）
+                logging.warning(f"turso 缓存损坏（{type(e).__name__}），删除缓存重建: {e}")
+                _delete_local_cache()
+                _libsql_conn = libsql.connect(local_cache, sync_url=TURSO_URL, auth_token=TURSO_TOKEN)
+                _libsql_conn.sync()
+            else:
+                raise
     return _libsql_conn
+
+
+def _delete_local_cache():
+    """删除本地缓存文件（db/-wal/-shm/-info 四件套）。
+
+    只删缓存文件不删云端数据；下次连接自动从云端全量拉取重建。
+    删除失败（权限等）不抛错——重建路径会再次暴露问题。
+    """
+    base = os.environ.get(
+        "TURSO_CACHE_PATH",
+        os.path.join(os.path.dirname(__file__), "..", "turso_cache.db"),
+    )
+    for suffix in ["", "-wal", "-shm", "-info"]:
+        p = base + suffix
+        if os.path.exists(p):
+            try:
+                os.remove(p)
+                logging.warning(f"已删除损坏缓存: {p}")
+            except OSError as oe:
+                logging.error(f"删除缓存失败 {p}: {oe}")
 
 
 def _reset_libsql_conn(reason: str = ""):
@@ -94,6 +131,16 @@ def _ensure_conn_alive():
         if _is_hrana_error(e):
             _reset_libsql_conn(f"健康检查探测失败: {type(e).__name__}")
             _get_libsql_conn()  # 立即重建；重建失败则抛错让上层感知
+        elif "malformed" in str(e) or "corrupt" in str(e):
+            # 缓存文件损坏（运行中损坏或外部进程写坏）：丢弃连接+删缓存+全量重建
+            logging.warning(f"运行中检测到缓存损坏，删缓存重建: {type(e).__name__}: {e}")
+            try:
+                _libsql_conn.close()
+            except Exception:
+                pass
+            _libsql_conn = None
+            _delete_local_cache()
+            _get_libsql_conn()
 
 
 def sync_to_cloud() -> bool:
@@ -121,6 +168,24 @@ def sync_to_cloud() -> bool:
         _get_libsql_conn().sync()
         return True
     except Exception as e:
+        if "malformed" in str(e) or "corrupt" in str(e):
+            # 缓存损坏：删缓存全量重建后再试一次
+            logging.warning(f"sync 遇到缓存损坏，删缓存重建后重试: {e}")
+            global _libsql_conn
+            if _libsql_conn is not None:
+                try:
+                    _libsql_conn.close()
+                except Exception:
+                    pass
+            _libsql_conn = None
+            _delete_local_cache()
+            try:
+                _get_libsql_conn().sync()
+                logging.warning("缓存重建后 sync 重试成功")
+                return True
+            except Exception as e2:
+                logging.error(f"缓存重建后 sync 仍失败: {type(e2).__name__}: {e2}", exc_info=True)
+                return False
         if _is_hrana_error(e):
             logging.warning(f"sync 遇到 Hrana 连接失效，重置连接后重试: {e}")
             _reset_libsql_conn(f"sync 失败: {type(e).__name__}")
