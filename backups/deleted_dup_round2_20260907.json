@@ -1,0 +1,59 @@
+{
+  "time": "2026-09-07 21:00:46.623991",
+  "reason": "全库重复清理第2轮：302-2游离读数331(25元)；102A-4重复房租283(3-28 x2保211)；102A-2重复房租369(4-9 x2保337)",
+  "utility_readings": [
+    {
+      "id": 331,
+      "room_id": 25,
+      "utility_type": "water",
+      "reading": 189.0,
+      "reading_date": "2026-08-23",
+      "previous_reading": 184.0,
+      "usage": 5.0,
+      "amount": 25.0,
+      "rate_used": 5.0,
+      "recorded_by": 8,
+      "payment_id": null,
+      "notes": "",
+      "owner_id": 8,
+      "created_at": "2026-08-23 10:49:04",
+      "updated_at": "2026-08-23 10:49:04"
+    }
+  ],
+  "payments": [
+    {
+      "id": 283,
+      "room_id": 24,
+      "amount": 850.0,
+      "payment_type": "rent",
+      "payment_date": "2026-03-28",
+      "due_date": null,
+      "period_start": null,
+      "period_end": null,
+      "status": "completed",
+      "payment_method": "现金",
+      "description": "房租 102A-4",
+      "receipt_image": null,
+      "owner_id": 8,
+      "created_at": "2026-04-29 13:18:45",
+      "updated_at": "2026-04-29 13:18:45"
+    },
+    {
+      "id": 369,
+      "room_id": 39,
+      "amount": 1400.0,
+      "payment_type": "rent",
+      "payment_date": "2026-04-09",
+      "due_date": null,
+      "period_start": null,
+      "period_end": null,
+      "status": "completed",
+      "payment_method": "cash",
+      "description": null,
+      "receipt_image": null,
+      "owner_id": 8,
+      "created_at": "2026-04-29 06:04:28",
+      "updated_at": "2026-04-29 06:04:28"
+    }
+  ]
+}

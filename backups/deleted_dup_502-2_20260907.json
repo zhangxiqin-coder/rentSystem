@@ -1,0 +1,76 @@
+{
+  "time": "2026-09-07 20:56:25.892865",
+  "reason": "502-2 退租结算重复录入：读数340/341+支付676/677 为第一批（保留），342/343+678/679 为第二批（删除）",
+  "utility_readings": [
+    {
+      "id": 342,
+      "room_id": 26,
+      "utility_type": "water",
+      "reading": 406.0,
+      "reading_date": "2026-08-27",
+      "previous_reading": 405.0,
+      "usage": 1.0,
+      "amount": 5.0,
+      "rate_used": 5.0,
+      "recorded_by": 8,
+      "payment_id": 678,
+      "notes": "退租结算",
+      "owner_id": 8,
+      "created_at": "2026-08-27 06:54:28",
+      "updated_at": "2026-08-27 06:54:30"
+    },
+    {
+      "id": 343,
+      "room_id": 26,
+      "utility_type": "electricity",
+      "reading": 11532.0,
+      "reading_date": "2026-08-27",
+      "previous_reading": 11151.0,
+      "usage": 381.0,
+      "amount": 381.0,
+      "rate_used": 1.0,
+      "recorded_by": 8,
+      "payment_id": 679,
+      "notes": "退租结算",
+      "owner_id": 8,
+      "created_at": "2026-08-27 06:54:31",
+      "updated_at": "2026-08-27 06:54:33"
+    }
+  ],
+  "payments": [
+    {
+      "id": 678,
+      "room_id": 26,
+      "amount": 5.0,
+      "payment_type": "utility",
+      "payment_date": "2026-08-27",
+      "due_date": null,
+      "period_start": null,
+      "period_end": null,
+      "status": "completed",
+      "payment_method": "微信支付",
+      "description": "水费（退租结算） 502-2",
+      "receipt_image": null,
+      "owner_id": 8,
+      "created_at": "2026-08-27 06:54:29",
+      "updated_at": "2026-08-27 06:54:29"
+    },
+    {
+      "id": 679,
+      "room_id": 26,
+      "amount": 381.0,
+      "payment_type": "utility",
+      "payment_date": "2026-08-27",
+      "due_date": null,
+      "period_start": null,
+      "period_end": null,
+      "status": "completed",
+      "payment_method": "微信支付",
+      "description": "电费（退租结算） 502-2",
+      "receipt_image": null,
+      "owner_id": 8,
+      "created_at": "2026-08-27 06:54:32",
+      "updated_at": "2026-08-27 06:54:32"
+    }
+  ]
+}
