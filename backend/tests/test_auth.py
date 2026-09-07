@@ -37,11 +37,14 @@ class TestSecurity:
         assert payload["sub"] == "testuser"
     
     def test_decode_invalid_token(self):
-        """测试解码无效令牌"""
-        # decode_access_token 会捕获异常返回 None
+        """测试解码无效令牌：抛401（行为变更：原返回None，现抛HTTPException供deps使用）"""
+        import pytest
+        from fastapi import HTTPException
         from app.core.security import decode_access_token
-        payload = decode_access_token("invalid_token")
-        assert payload is None
+        with pytest.raises(HTTPException) as exc_info:
+            decode_access_token("invalid_token")
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail["error_code"] == "AUTH_003"
 
 
 class TestAuthEndpoints:

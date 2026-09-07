@@ -3,7 +3,7 @@
 """
 import pytest
 from fastapi.testclient import TestClient
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from app.main import app
@@ -151,7 +151,7 @@ class TestRoomsAPI:
             "tenant_name": "张三",
             "tenant_phone": "13800138000",
             "lease_start": str(date.today()),
-            "lease_end": "2025-12-31"
+            "lease_end": str(date.today() + timedelta(days=365))
         }
         
         response = client.put(f"/api/v1/rooms/{room.id}", json=update_data, headers=auth_headers)

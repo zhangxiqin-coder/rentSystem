@@ -149,6 +149,24 @@ def create_utility_reading(
         if previous_reading is None:
             previous_reading = Decimal('0')
 
+    # 1.5 同日防重复：同房间+同类型+同日期已存在读数时拒绝创建。
+    # 背景：退租结算/抄表双击或重试会生成两套读数+支付，导致收益统计虚增
+    # （2026-08-27 502-2 退租结算重复，8月电费虚增 381）。
+    # 例外：完全相同的读数视为重复提交，直接拒绝；刻意补录修正（读数不同）
+    # 也不会走到这里——因为读数必须 >= 上次读数，同日二次录入读数不同必然 > 第一次，
+    # 属于抄错后同日重抄的场景，此时仍拒绝，让用户先删旧记录再录。
+    dup = db.query(UtilityReading).filter(
+        UtilityReading.room_id == room_id,
+        UtilityReading.utility_type == utility_type,
+        UtilityReading.reading_date == reading_date,
+    ).first()
+    if dup is not None:
+        raise ValueError(
+            f"该房间 {reading_date} 已存在{('水表' if utility_type == 'water' else '电表')}"
+            f"读数记录（id={dup.id}，读数={dup.reading}），请勿重复录入；"
+            f"如需修正请先删除旧记录"
+        )
+
     # 2. 验证当前读数
     if reading < previous_reading:
         raise ValueError("当前读数不能小于上次读数")

@@ -263,38 +263,40 @@ class TestPaymentDueContext:
         assert 'days_to_due' in context
     
     def test_has_paid_this_month(self, db):
-        """测试本月是否已支付"""
+        """测试目标到期周期支付判定（语义演进：原'本月已付'，现'目标周期已付'）
+        
+        lease_start=本月1号 → 本月周期已付时目标滚动到下月1号：
+        - 支付日期靠近下月1号（提前付下期）→ True
+        - 仅月初支付、离下月1号还很远 → False（下期未付）
+        """
         today = date.today()
-        room = Room(
-            room_number="302",
-            monthly_rent=Decimal("1000"),
-            payment_cycle=1,
-            id=1
-        )
-        db.add(room)
-        db.commit()
-        
-        # 创建本月的支付记录
-        payment = Payment(
-            room_id=room.id,
-            payment_type="rent",
-            amount=Decimal("1000"),
-            payment_date=today.replace(day=5),  # 本月5号支付
-            status="completed"
-        )
-        db.add(payment)
-        db.commit()
-        
-        payments = [payment]
-        cutoff = today - timedelta(days=90)
-        expiring_days = 7
-        
-        # 模拟_get_next_payment_days函数
-        def mock_get_next_payment_days(r, p):
-            return 25  # 假设还有25天到期
-        
-        result = _has_paid_this_month(room, payments, mock_get_next_payment_days, expiring_days)
-        assert result is True
+        month_start = today.replace(day=1)
+        next_due = month_start + timedelta(days=32)
+        next_due = next_due.replace(day=1)  # 下月1号
+
+        def _mk(number, pay_date):
+            room = Room(room_number=number, monthly_rent=Decimal("1000"),
+                        payment_cycle=1, lease_start=month_start)
+            db.add(room)
+            db.commit()
+            payment = Payment(
+                room_id=room.id, payment_type="rent",
+                amount=Decimal("1000"), payment_date=pay_date,
+                status="completed",
+            )
+            db.add(payment)
+            db.commit()
+            return room, payment
+
+        # 场景1：提前付下期（支付日在目标到期日前7天内）→ True
+        room_a, pay_a = _mk("302", next_due - timedelta(days=7))
+        assert _has_paid_this_month(
+            room_a, [pay_a], lambda r, p: 25, 7) is True
+
+        # 场景2：仅月初付了本期，离下月1号还很远 → False
+        room_b, pay_b = _mk("302b", month_start + timedelta(days=2))
+        assert _has_paid_this_month(
+            room_b, [pay_b], lambda r, p: 25, 7) is False
     
     def test_has_recent_rent_payment(self, db):
         """测试是否有近期租金支付"""
