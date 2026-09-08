@@ -439,8 +439,11 @@ def checkout_room(
         tenant = db.query(Tenant).filter(Tenant.id == prev_tenant_id).first()
         if tenant:
             today = date.today()
+            # 排除本房间自己的租约（下面马上会结束它们），否则本房间
+            # 在租约被误判为"其他活跃租约"，租客永远置不了 inactive
             other_active_lease = db.query(LeaseRecord.id).filter(
                 LeaseRecord.tenant_id == tenant.id,
+                LeaseRecord.room_id != room.id,
                 LeaseRecord.lease_start <= today,
                 LeaseRecord.lease_end >= today,
                 LeaseRecord.is_active == True

@@ -1,0 +1,9 @@
+{
+  "time": "2026-09-08T13:37:37.128796",
+  "reason": "房间页退租漏置inactive修复：叶大展退租(9-8 13:26 room41)后status停留active，误显示在未入住tab",
+  "tenant": {
+    "id": 11,
+    "name": "叶大展",
+    "status": "active"
+  }
+}
