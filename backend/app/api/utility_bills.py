@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import extract, or_
+from sqlalchemy.exc import IntegrityError
 from typing import List, Dict, Any
 from datetime import datetime
 
@@ -110,7 +111,22 @@ def create_utility_bill(
     
     db_bill = UtilityBill(**bill.model_dump())
     db.add(db_bill)
-    db.commit()
+    try:
+        db.commit()
+    except (IntegrityError, ValueError) as e:
+        # 兜底：本地缓存副本落后时上面的查重看不到云端已有记录
+        #（embedded replica 读旧数据），INSERT 会在云端撞
+        # UNIQUE(series, year, month, utility_type) 约束。
+        # libsql 把约束错误包成 ValueError，SQLite 直抛 IntegrityError。
+        db.rollback()
+        err_text = str(e)
+        if "UNIQUE constraint" in err_text or "SQLITE_CONSTRAINT" in err_text:
+            type_name = "水费" if bill.utility_type == "water" else "电费"
+            raise HTTPException(
+                status_code=400,
+                detail=f"该系列{bill.year}-{bill.month:02d}的{type_name}账单已存在（云端已有记录，请刷新后查看；如需修改请编辑现有账单）",
+            )
+        raise
     db.refresh(db_bill)
     return db_bill
 
