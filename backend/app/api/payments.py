@@ -371,20 +371,24 @@ def create_bulk_payment(
     # 这样7/31抄表8/1收钱的记录，收入归属8月
     actual_payment_date = data.payment_date
 
-    # 创建房租支付记录
-    rent_payment = Payment(
-        room_id=data.room_id,
-        amount=data.rent_amount,
-        payment_type=PaymentType.RENT,
-        payment_date=actual_payment_date,
-        payment_method=data.payment_method,
-        description=f"房租 {room.room_number}",
-        period_start=data.period_start,
-        period_end=data.period_end,
-        owner_id=current_user.id
-    )
-    db.add(rent_payment)
-    payments.append(rent_payment)
+    # 房租为0（季付/半年付房间本周期房租已收、只收水电）时不创建0元rent记录——
+    # 0元记录若落在到期日±14天窗口内会污染shouldIncludeRent/_has_paid_for_target_cycle
+    # 的判断，导致下个周期真正该收的房租被误判"已收"而漏收
+    rent_payment = None
+    if data.rent_amount > 0:
+        rent_payment = Payment(
+            room_id=data.room_id,
+            amount=data.rent_amount,
+            payment_type=PaymentType.RENT,
+            payment_date=actual_payment_date,
+            payment_method=data.payment_method,
+            description=f"房租 {room.room_number}",
+            period_start=data.period_start,
+            period_end=data.period_end,
+            owner_id=current_user.id
+        )
+        db.add(rent_payment)
+        payments.append(rent_payment)
 
     # 创建水费支付记录（如果有）
     if data.water_charge:

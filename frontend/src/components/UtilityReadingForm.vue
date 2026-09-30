@@ -126,7 +126,9 @@ const hasThisMonthReading = async (roomId: number): Promise<boolean> => {
     const year = now.getFullYear()
     const month = now.getMonth() + 1
     const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
-    const monthEnd = `${year}-${String(month).padStart(2, '0')}-31`
+    // 动态计算当月最后一天（9月/2月/4月等没有31号，写死-31会得到无效日期）
+    const lastDay = new Date(year, month, 0).getDate()
+    const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
     // 检查水和电是否都有本月记录
     const [waterRes, electricRes] = await Promise.allSettled([
@@ -398,8 +400,20 @@ const submitForm = async () => {
       notes: formData.value.notes,
     }
     console.log('水表请求数据:', JSON.stringify(waterData, null, 2))
-    results.push(await utilityApi.createReading(waterData))
-    console.log('水表记录创建成功')
+    // 水表撞"同日已存在"（如上次提交超时但后端实际写库成功）时跳过，继续提交电表，
+    // 否则电表永远录不上（2026-09-27 102A-1 事故：水表400阻断电表4次）
+    try {
+      results.push(await utilityApi.createReading(waterData))
+      console.log('水表记录创建成功')
+    } catch (waterError: any) {
+      const waterDetail = waterError?.response?.data?.detail || ''
+      if (waterError?.response?.status === 400 && waterDetail.includes('已存在') && waterDetail.includes('读数记录')) {
+        console.warn('水表记录已存在，跳过继续提交电表:', waterDetail)
+        ElMessage.warning('水表：' + waterDetail + '（已跳过，继续提交电表）')
+      } else {
+        throw waterError
+      }
+    }
 
     console.log('准备创建电表记录...')
     const electricData = {
@@ -411,10 +425,23 @@ const submitForm = async () => {
       notes: formData.value.notes,
     }
     console.log('电表请求数据:', JSON.stringify(electricData, null, 2))
-    results.push(await utilityApi.createReading(electricData))
-    console.log('电表记录创建成功')
+    // 电表撞"同日已存在"时同样跳过（对称容错：水电此时都已入库，照常走成功流程）
+    let electricitySkipped = false
+    try {
+      results.push(await utilityApi.createReading(electricData))
+      console.log('电表记录创建成功')
+    } catch (electricError: any) {
+      const electricDetail = electricError?.response?.data?.detail || ''
+      if (electricError?.response?.status === 400 && electricDetail.includes('已存在') && electricDetail.includes('读数记录')) {
+        console.warn('电表记录已存在，跳过:', electricDetail)
+        electricitySkipped = true
+        ElMessage.warning('电表：' + electricDetail + '（已跳过）')
+      } else {
+        throw electricError
+      }
+    }
 
-    ElMessage.success('水电录入成功')
+    ElMessage.success(electricitySkipped ? '水电录入完成（部分记录已存在，已跳过）' : '水电录入成功')
 
     // 更新该房间的录入状态
     roomReadingStatus.value[formData.value.room_id] = true

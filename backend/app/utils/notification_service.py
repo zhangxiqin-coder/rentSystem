@@ -39,12 +39,17 @@ def _has_paid_for_target_cycle(db: Session, room: Room, cycle: int) -> bool:
     """
     判断目标到期周期是否已有rent payment覆盖。
 
-    逻辑：计算下次到期日（lease_start + cycle个月），
+    逻辑：计算当前周期到期日（lease_start + cycle个月，最后一个<=今天），
     检查是否有rent payment在该到期日±14天内。
     有 → 已付，不需再收房租
     无 → 未付，应收房租
 
-    与前端 shouldIncludeRent / 后端 get_rent_payment_status 逻辑一致。
+    ⚠️ 必须检查"当前周期到期日"而非"下次到期日"：
+    季付提前交租后（如8/1交了8/2季度的房租），下次到期日（11/2）±14天内
+    自然没有支付，查下次到期日会误判"未付"→房租重复计入
+    （2026-09-27 102-2 事故：8-01已交4650，9-27录水电时账单又含4650房租）
+
+    与前端 shouldIncludeRent（paymentCycle.ts）逻辑一致。
     """
     if cycle <= 1:
         return False  # 月付永不走这个判断
@@ -54,14 +59,19 @@ def _has_paid_for_target_cycle(db: Session, room: Room, cycle: int) -> bool:
 
     today = date.today()
 
-    # 计算下次到期日
-    next_due = room.lease_start
-    while next_due <= today:
-        next_due += relativedelta(months=cycle)
+    # 计算当前周期到期日：最后一个 <= 今天的到期日
+    if room.lease_start > today:
+        return False  # 租约尚未开始
+    current_due = room.lease_start
+    while True:
+        nxt = current_due + relativedelta(months=cycle)
+        if nxt > today:
+            break
+        current_due = nxt
 
-    # 检查是否有rent payment在到期日±14天内
-    window_start = next_due - timedelta(days=14)
-    window_end = next_due + timedelta(days=14)
+    # 检查是否有rent payment在当前周期到期日±14天内
+    window_start = current_due - timedelta(days=14)
+    window_end = current_due + timedelta(days=14)
 
     payment = db.query(Payment).filter(
         Payment.room_id == room.id,

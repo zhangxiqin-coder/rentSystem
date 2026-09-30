@@ -23,7 +23,9 @@ const removeCsrfToken = () => {
 // Create axios instance
 const request: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
-  timeout: 10000,
+  // 30s：写操作要等 Turso 云端 sync（Hrana），偶发慢时 10s 会导致前端超时报错
+  // 但后端实际已写库成功（2026-09-27 102A-1 水表 499 事故）
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },

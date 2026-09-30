@@ -36,6 +36,9 @@ export function mergeReadings(
         electricity_reading: reading.utility_type === 'electricity' ? reading : undefined,
         monthly_rent: room?.monthly_rent || 0,
         payment_cycle: room?.payment_cycle || 1,
+        // ⚠️ 必须拷贝：弹窗预填走 shouldIncludeRent(row)，缺 lease_start 会
+        // 走"无租约开始日→默认包含房租"分支静默放行（2026-09-30 102-2 二次事故）
+        lease_start: room?.lease_start,
         total_amount: 0,
         notes: '',
       })

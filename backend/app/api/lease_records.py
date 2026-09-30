@@ -101,7 +101,7 @@ def create_lease_record(
         raise HTTPException(status_code=400, detail="租期结束日期必须大于开始日期")
 
     # 创建租赁记录
-    new_record = LeaseRecord(**record.model_dump(), owner_id=current_user.id)
+    new_record = LeaseRecord(**record.model_dump(exclude={"first_payment_made", "first_payment_amount"}), owner_id=current_user.id)
     db.add(new_record)
 
     # 更新房间的当前租客信息
@@ -120,6 +120,19 @@ def create_lease_record(
         room.initial_electricity_reading = record.initial_electricity_reading
     if record.initial_water_reading:
         room.initial_water_reading = record.initial_water_reading
+
+    # 入住当天通常已收首期房租：自动落一笔 rent 记录（幂等，可关闭）
+    if record.first_payment_made:
+        from app.service.business import create_first_rent_payment
+        create_first_rent_payment(
+            db,
+            room,
+            payment_date=record.lease_start,
+            amount=record.first_payment_amount,
+            monthly_rent=record.monthly_rent,
+            payment_cycle=room.payment_cycle or 1,
+            owner_id=current_user.id,
+        )
 
     db.commit()
     db.refresh(new_record)

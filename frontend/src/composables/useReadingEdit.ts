@@ -1,7 +1,8 @@
 import { ref, type Ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { utilityApi } from '@/api/utility'
 import type { UtilityReading } from '@/types'
+import type { MergedReading } from '@/composables/useMergedReadings'
 
 interface UseReadingEditDeps {
   loadReadings: () => Promise<void>
@@ -72,6 +73,53 @@ export function useReadingEdit(deps: UseReadingEditDeps) {
     }
   }
 
+  // 删除合并行（水表+电表记录一起删）
+  // 背景：2026-09-27 102A-1 删除失败——表格行是水+电合并行，把整行对象传给
+  // 只收 readingId 的 handleDelete，URL 变成 /readings/[object Object] → 422
+  const handleDeleteMergedRow = async (row: MergedReading) => {
+    const ids: number[] = []
+    const parts: string[] = []
+    if (row.water_reading?.id) {
+      ids.push(row.water_reading.id)
+      parts.push(`水表#${row.water_reading.id}`)
+    }
+    if (row.electricity_reading?.id) {
+      ids.push(row.electricity_reading.id)
+      parts.push(`电表#${row.electricity_reading.id}`)
+    }
+    if (ids.length === 0) {
+      ElMessage.warning('该行没有可删除的抄表记录')
+      return
+    }
+
+    try {
+      await ElMessageBox.confirm(
+        `将删除 ${row.reading_date} 的 ${parts.join('、')}，删除后不可恢复，是否继续？`,
+        '删除确认',
+        { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+      )
+    } catch {
+      return // 用户取消
+    }
+
+    const failed: string[] = []
+    for (const id of ids) {
+      try {
+        await utilityApi.deleteReading(id)
+      } catch (error: any) {
+        console.error(`Failed to delete reading ${id}:`, error)
+        const detail = error?.response?.data?.detail || ''
+        failed.push(detail || `记录#${id}`)
+      }
+    }
+    if (failed.length === 0) {
+      ElMessage.success(`已删除 ${parts.join('、')}`)
+    } else {
+      ElMessage.error(`部分删除失败：${failed.join('；')}`)
+    }
+    await loadReadings()
+  }
+
   return {
     editDialogVisible,
     editLoading,
@@ -79,5 +127,6 @@ export function useReadingEdit(deps: UseReadingEditDeps) {
     showEditDialog,
     saveEdit,
     handleDelete,
+    handleDeleteMergedRow,
   }
 }

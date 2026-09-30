@@ -112,25 +112,29 @@ class TestBug1QuarterlyRentNotificationIntegration:
 
     def test_e2e_already_paid_for_next_cycle_should_exclude_rent(self, db, quarterly_room):
         """
-        [反向场景] 到期日±14天内已交租 → 不包含房租
+        [反向场景] 当前周期到期日±14天内已交租 → 不包含房租
+        （v3语义：锚定当前周期到期日，2026-09-27 修复后行为）
         """
-        # 动态算下次到期日（lease_start=2025-05-02, cycle=3，随今天推进），
+        # 动态算当前周期到期日（lease_start=2025-05-02, cycle=3，随今天推进），
         # 付款设在到期前3天 → 必在±14天窗口内（日期免疫）
-        next_due = date(2025, 5, 2)
-        while next_due <= date.today():
-            next_due += relativedelta(months=3)
+        current_due = date(2025, 5, 2)
+        while True:
+            nxt = current_due + relativedelta(months=3)
+            if nxt > date.today():
+                break
+            current_due = nxt
         payment = Payment(
             room_id=quarterly_room.id,
             payment_type="rent",
             amount=Decimal("4650"),
-            payment_date=next_due - timedelta(days=3),  # 到期前3天
+            payment_date=current_due - timedelta(days=3),  # 到期前3天
             status="completed",
         )
         db.add(payment)
         db.commit()
 
         has_paid = _has_paid_for_target_cycle(db, quarterly_room, cycle=3)
-        assert has_paid is True, "7/30在8/2±14天窗口内，应判定已付"
+        assert has_paid is True, "付款在当前周期到期日±14天窗口内，应判定已付"
 
         include_rent = not has_paid
         assert include_rent is False
@@ -148,16 +152,20 @@ class TestBug1QuarterlyRentNotificationIntegration:
 
     def test_e2e_boundary_14_days_exact(self, db, quarterly_room):
         """
-        [边界值] payment在到期日恰好14天前 → 在窗口内，已付
+        [边界值] payment在当前周期到期日恰好14天前 → 在窗口内，已付
+        （v3语义：锚定当前周期到期日，2026-09-27 修复后行为）
         """
-        next_due = date(2025, 5, 2)
-        while next_due <= date.today():
-            next_due += relativedelta(months=3)
+        current_due = date(2025, 5, 2)
+        while True:
+            nxt = current_due + relativedelta(months=3)
+            if nxt > date.today():
+                break
+            current_due = nxt
         payment = Payment(
             room_id=quarterly_room.id,
             payment_type="rent",
             amount=Decimal("4650"),
-            payment_date=next_due - timedelta(days=14),  # 恰好边界（动态）
+            payment_date=current_due - timedelta(days=14),  # 恰好边界（动态）
             status="completed",
         )
         db.add(payment)

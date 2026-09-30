@@ -99,7 +99,7 @@ const initializeDateRange = () => {
 const {
   paymentDialogVisible, paymentForm, paymentLoading,
   showPaymentDialog, submitPayment,
-} = usePaymentData({ formatAmount, loadReadings, loadRooms })
+} = usePaymentData({ formatAmount, loadReadings, loadRooms, payments })
 
 // 6. Overdue management (needs allRooms, payments, allReadings, roomOptions, formatAmount, formatAmountForNotification, mergedReadings, showPaymentDialog)
 const {
@@ -114,7 +114,7 @@ const {
 // 7. Reading edit (needs loadReadings, autoGenerateAndSendWechat)
 const {
   editDialogVisible, editLoading, editForm,
-  showEditDialog, saveEdit, handleDelete,
+  showEditDialog, saveEdit, handleDelete, handleDeleteMergedRow,
 } = useReadingEdit({ loadReadings, autoGenerateAndSendWechat })
 
 // 8. Reading form (needs roomOptions, getRoomNumber, getRoomInfo, hideAmounts, formatAmount, loadReadings, generateRentReminder, autoGenerateAndSendWechat)
@@ -304,7 +304,7 @@ onMounted(async () => {
           @show-reminder="handleShowReminder"
           @show-payment="showPaymentDialog"
           @edit="showEditDialog"
-          @delete="handleDelete"
+          @delete="handleDeleteMergedRow"
           @selection-change="handleSelectionChange"
         />
 

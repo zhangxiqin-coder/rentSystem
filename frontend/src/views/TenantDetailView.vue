@@ -31,7 +31,18 @@ const checkInForm = ref({
   lease_end: '',
   monthly_rent: 0,
   deposit_amount: 0,
-  notes: ''
+  notes: '',
+  // 入住首期收款：租客入住当天通常已交首期房租
+  first_payment_made: true,
+  first_payment_amount: null as number | null
+})
+
+// 首期收款金额预览（月租 × 付款周期，付款周期取所选房间的）
+const firstPaymentPreview = computed(() => {
+  const room = availableRooms.value.find(r => r.id === checkInForm.value.room_id)
+  const rent = Number(checkInForm.value.monthly_rent) || 0
+  const cycle = Number((room as any)?.payment_cycle) || 1
+  return rent * cycle
 })
 
 // 编辑租赁记录对话框
@@ -109,7 +120,9 @@ const openCheckInDialog = () => {
     })(),
     monthly_rent: 0,
     deposit_amount: 0,
-    notes: ''
+    notes: '',
+    first_payment_made: true,
+    first_payment_amount: null
   }
   checkInDialogVisible.value = true
   fetchAvailableRooms()
@@ -154,10 +167,18 @@ const handleCheckIn = async () => {
       lease_end: checkInForm.value.lease_end,
       monthly_rent: checkInForm.value.monthly_rent,
       deposit_amount: checkInForm.value.deposit_amount || undefined,
-      notes: checkInForm.value.notes
+      notes: checkInForm.value.notes,
+      first_payment_made: checkInForm.value.first_payment_made,
+      first_payment_amount: checkInForm.value.first_payment_made && Number(checkInForm.value.first_payment_amount) > 0
+        ? Number(checkInForm.value.first_payment_amount)
+        : undefined
     })
 
-    ElMessage.success('入住成功')
+    ElMessage.success(
+      checkInForm.value.first_payment_made
+        ? `入住成功，已记入住收款 ¥${firstPaymentPreview.value}`
+        : '入住成功'
+    )
     checkInDialogVisible.value = false
     await fetchLeaseRecords()
   } catch (error: any) {
@@ -642,6 +663,22 @@ onMounted(() => {
             :precision="2"
             style="width: 100%"
           />
+        </el-form-item>
+        <el-form-item label="入住收款">
+          <el-switch v-model="checkInForm.first_payment_made" />
+        </el-form-item>
+        <el-form-item v-if="checkInForm.first_payment_made" label="收款金额">
+          <el-input-number
+            v-model="checkInForm.first_payment_amount"
+            :min="0"
+            :precision="2"
+            :step="100"
+            :placeholder="`默认 ${firstPaymentPreview}`"
+            style="width: 100%"
+          />
+          <div style="font-size: 12px; color: #909399; line-height: 1.5; margin-top: 4px;">
+            不填默认 {{ firstPaymentPreview }} 元（月租×付款周期），入住当天自动记一笔房租收款
+          </div>
         </el-form-item>
         <el-form-item label="备注">
           <el-input

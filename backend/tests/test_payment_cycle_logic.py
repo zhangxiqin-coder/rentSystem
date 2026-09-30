@@ -84,23 +84,35 @@ class TestQuarterlyRentIncludeLogic:
             next_due += relativedelta(months=3)
         return next_due
 
+    def _current_due(self) -> date:
+        """与实现一致的当前周期到期日算法（最后一个<=今天的到期日，v3语义）。
+        9-27 修复后 _has_paid_for_target_cycle 检查的是当前周期而非下次到期日。"""
+        current_due = date(2025, 5, 2)
+        while True:
+            nxt = current_due + relativedelta(months=3)
+            if nxt > date.today():
+                break
+            current_due = nxt
+        return current_due
+
     def test_payment_inside_window_should_exclude_rent(self, db, q_room):
         """
-        如果在到期日附近(±14天)已有payment → 已付 → include_rent=False。
+        如果在当前周期到期日附近(±14天)已有payment → 已付 → include_rent=False。
+        （v3语义：锚定当前周期到期日，2026-09-27 修复后行为）
         """
-        # 在下次到期日前5天交租（动态计算，任意日期运行都落在窗口内）
+        # 在当前周期到期日前5天交租（动态计算，任意日期运行都落在窗口内）
         p = Payment(
             room_id=q_room.id,
             payment_type="rent",
             amount=Decimal("4650"),
-            payment_date=self._next_due() - timedelta(days=5),
+            payment_date=self._current_due() - timedelta(days=5),
             status="completed",
         )
         db.add(p)
         db.commit()
 
         result = _has_paid_notif(db, q_room, cycle=3)
-        assert result is True, "到期日±14天内有payment，应返回True(已付)→不包含房租"
+        assert result is True, "当前周期到期日±14天内有payment，应返回True(已付)→不包含房租"
 
     def test_monthly_room_always_include_rent(self, db, q_room):
         """月付房间(cycle=1)不走该判断，永远包含房租。"""

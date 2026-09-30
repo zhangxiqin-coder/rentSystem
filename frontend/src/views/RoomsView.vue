@@ -308,7 +308,17 @@ const checkinForm = ref({
   lease_end: '',
   monthly_rent: 0,
   deposit_amount: 0,
-  payment_cycle: 1
+  payment_cycle: 1,
+  // 入住首期收款：租客入住当天通常已交首期房租（押一付一等）
+  first_payment_made: true,
+  first_payment_amount: null as number | null  // null=默认月租×付款周期
+})
+
+// 首期收款金额实时预览（月租 × 付款周期）
+const firstPaymentPreview = computed(() => {
+  const rent = Number(checkinForm.value.monthly_rent) || 0
+  const cycle = Number(checkinForm.value.payment_cycle) || 1
+  return rent * cycle
 })
 
 const handle退租 = (room: Room) => {
@@ -333,6 +343,8 @@ const handle入住 = (room: Room) => {
   checkinForm.value.payment_cycle = Number(room.payment_cycle) || 1
   checkinForm.value.monthly_rent = Number(room.monthly_rent) || 0
   checkinForm.value.deposit_amount = Number(room.deposit_amount) || 0
+  checkinForm.value.first_payment_made = true
+  checkinForm.value.first_payment_amount = null
   checkinDialogVisible.value = true
 }
 
@@ -427,14 +439,22 @@ const confirm入住 = async () => {
       tenant_id_card: checkinForm.value.tenant_id_card?.trim() || undefined,
       monthly_rent: Number(checkinForm.value.monthly_rent) > 0 ? Number(checkinForm.value.monthly_rent) : undefined,
       lease_start: startDateStr,
-      lease_end: endDateStr
+      lease_end: endDateStr,
+      first_payment_amount: checkinForm.value.first_payment_made && Number(checkinForm.value.first_payment_amount) > 0
+        ? Number(checkinForm.value.first_payment_amount)
+        : undefined  // 不填=后端默认月租×付款周期
     }
     
     console.log('📤 Checkin form data (raw):', JSON.stringify(checkinForm.value, null, 2))
     console.log('📤 Checkin submit data (formatted):', JSON.stringify(submitData, null, 2))
     
-    await roomApi.checkinRoom(currentRoom.value.id, submitData)
-    ElMessage.success('入住成功')
+    const resp = await roomApi.checkinRoom(currentRoom.value.id, submitData)
+    const respData = resp?.data || {}
+    if (respData.first_payment_amount != null) {
+      ElMessage.success(`入住成功，已记入住收款 ¥${respData.first_payment_amount}`)
+    } else {
+      ElMessage.success('入住成功')
+    }
     checkinDialogVisible.value = false
     await loadRooms()
   } catch (error: any) {
@@ -934,6 +954,22 @@ onMounted(() => {
             :max="12"
             style="width: 100%"
           />
+        </el-form-item>
+        <el-form-item label="入住收款">
+          <el-switch v-model="checkinForm.first_payment_made" />
+        </el-form-item>
+        <el-form-item v-if="checkinForm.first_payment_made" label="收款金额">
+          <el-input-number
+            v-model="checkinForm.first_payment_amount"
+            :min="0"
+            :precision="2"
+            :step="100"
+            :placeholder="`默认 ${firstPaymentPreview}`"
+            style="width: 100%"
+          />
+          <div class="first-payment-hint" style="font-size: 12px; color: #909399; line-height: 1.5; margin-top: 4px;">
+            不填默认 {{ firstPaymentPreview }} 元（月租×付款周期），入住当天自动记一笔房租收款
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>

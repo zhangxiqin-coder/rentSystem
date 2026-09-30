@@ -208,13 +208,21 @@ if USE_TURSO:
     )
     logging.info(f"使用 Turso 云数据库: {TURSO_URL}")
 else:
-    # 本地 SQLite 回退
-    SQLALCHEMY_DATABASE_URL = "sqlite:///./rent_management.db"
+    # 本地 SQLite 回退（仅限测试模式）
+    # ⚠️ 生产环境禁止静默回退：.env 未加载/凭据缺失时若静默落到本地文件，
+    # 会读到停更的旧数据（2026-09-23 误诊事故：脚本没 load_dotenv 连到
+    # 化石库 rent_management.db，产生"本地副本落后"假象）。必须显式报错。
+    if not os.environ.get("TESTING"):
+        raise RuntimeError(
+            "Turso 配置缺失（TURSO_DATABASE_URL / TURSO_AUTH_TOKEN）且非测试模式，"
+            "拒绝回退到本地 SQLite。请检查 .env 是否加载。"
+        )
+    SQLALCHEMY_DATABASE_URL = "sqlite:///./test_rent_management.db"
     engine = create_engine(
         SQLALCHEMY_DATABASE_URL,
         connect_args={"check_same_thread": False}
     )
-    logging.info("使用本地 SQLite 数据库")
+    logging.warning("TESTING 模式：使用本地测试 SQLite 数据库")
 
 # 生产库保护：拦截直接操作生产库的 ORM 调用
 from app.prod_guard import _check_direct_orm_usage

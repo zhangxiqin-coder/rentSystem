@@ -1,6 +1,7 @@
 import { ref, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Room } from '@/types'
+import { utilityApi } from '@/api/utility'
 
 interface UseBatchOperationsDeps {
   allRooms: Ref<Room[]>
@@ -171,7 +172,7 @@ export function useBatchOperations(deps: UseBatchOperationsDeps) {
 
     try {
       await ElMessageBox.confirm(
-        `确定要删除选中的 ${selectedRows.value.length} 条记录吗？`,
+        `确定要删除选中的 ${selectedRows.value.length} 行记录吗（每行含水表+电表，删除后不可恢复）？`,
         '批量删除',
         {
           confirmButtonText: '确定',
@@ -179,17 +180,36 @@ export function useBatchOperations(deps: UseBatchOperationsDeps) {
           type: 'warning',
         }
       )
+    } catch {
+      return // 用户取消
+    }
 
-      // TODO: 实现批量删除逻辑
-      ElMessage.success('批量删除成功')
-      clearSelection()
-      await loadReadings()
-    } catch (error) {
-      if (error !== 'cancel') {
-        console.error('Failed to batch delete:', error)
-        ElMessage.error('批量删除失败')
+    // 收集所有选中的合并行的水表/电表记录 id
+    const ids: number[] = []
+    for (const row of selectedRows.value) {
+      if (row.water_reading?.id) ids.push(row.water_reading.id)
+      if (row.electricity_reading?.id) ids.push(row.electricity_reading.id)
+    }
+
+    let okCount = 0
+    const failed: string[] = []
+    for (const id of ids) {
+      try {
+        await utilityApi.deleteReading(id)
+        okCount++
+      } catch (error: any) {
+        console.error(`Failed to delete reading ${id}:`, error)
+        failed.push(error?.response?.data?.detail || `记录#${id}`)
       }
     }
+
+    if (failed.length === 0) {
+      ElMessage.success(`批量删除成功（共 ${okCount} 条记录）`)
+    } else {
+      ElMessage.error(`删除 ${okCount} 条成功，${failed.length} 条失败：${failed.join('；')}`)
+    }
+    clearSelection()
+    await loadReadings()
   }
 
   return {

@@ -363,6 +363,8 @@ def get_room_utility_readings(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
     utility_type: Optional[str] = Query(None, description="水电类型: water 或 electricity"),
+    start_date: Optional[date] = Query(None, description="开始日期（含）"),
+    end_date: Optional[date] = Query(None, description="结束日期（含）"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -379,8 +381,16 @@ def get_room_utility_readings(
     if utility_type:
         query = query.filter(UtilityReading.utility_type == utility_type)
     
+    # 根据抄表日期范围过滤（前端用于判断"本月是否已录入"）
+    if start_date:
+        query = query.filter(UtilityReading.reading_date >= start_date)
+    if end_date:
+        query = query.filter(UtilityReading.reading_date <= end_date)
+    
     total = query.count()
-    items = query.order_by(UtilityReading.created_at.desc()).offset((page - 1) * size).limit(size).all()
+    items = query.order_by(
+        UtilityReading.reading_date.desc(), UtilityReading.id.desc()
+    ).offset((page - 1) * size).limit(size).all()
     
     return {
         "items": items,
@@ -542,7 +552,8 @@ def checkin_room(
     if not tenant:
         tenant = Tenant(
             name=room.tenant_name.strip(),
-            phone=checkin_data.tenant_phone,
+            # phone 非空约束：未提供时用占位号码兜底（与批量导入一致）
+            phone=checkin_data.tenant_phone or "13800000000",
             id_card=checkin_data.tenant_id_card,
             status="active",
             owner_id=current_user.id
@@ -586,6 +597,28 @@ def checkin_room(
             initial_water_reading=checkin_data.initial_water_reading if checkin_data.initial_water_reading is not None else 0,
         )
         db.add(lease_record)
+
+        # 入住当天通常已收首期房租：自动落一笔 rent 记录（幂等，可关闭）
+        first_payment = None
+        first_amount = None
+        if checkin_data.first_payment_made:
+            from app.service.business import create_first_rent_payment
+            effective_rent = checkin_data.monthly_rent if checkin_data.monthly_rent is not None else room.monthly_rent
+            first_payment, status = create_first_rent_payment(
+                db,
+                room,
+                payment_date=checkin_data.lease_start,
+                amount=checkin_data.first_payment_amount,
+                monthly_rent=effective_rent,
+                payment_cycle=checkin_data.payment_cycle or room.payment_cycle or 1,
+                owner_id=current_user.id if current_user.role != "admin" else room.owner_id,
+            )
+            if first_payment is not None:
+                first_amount = first_payment.amount
+                print(f"[checkin] 房间 {room.room_number} 首期收款 ¥{first_amount}，记录 id={first_payment.id}（{status}）")
+    else:
+        first_payment = None
+        first_amount = None
     
     db.commit()
     db.refresh(room)
@@ -595,7 +628,9 @@ def checkin_room(
         "room_id": room.id,
         "tenant_name": room.tenant_name,
         "lease_start": room.lease_start,
-        "lease_end": room.lease_end
+        "lease_end": room.lease_end,
+        "first_payment_id": first_payment.id if first_payment is not None else None,
+        "first_payment_amount": float(first_amount) if first_amount is not None else None,
     }
 
 

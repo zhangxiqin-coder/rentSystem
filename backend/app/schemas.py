@@ -223,6 +223,9 @@ class CheckinRequest(BaseModel):
     payment_cycle: Optional[int] = Field(1, gt=0, le=12, description="付款周期（月）")
     initial_electricity_reading: Optional[Decimal] = Field(None, ge=0, description="初始电表读数（可选）")
     initial_water_reading: Optional[Decimal] = Field(None, ge=0, description="初始水表读数（可选）")
+    # 入住首期收款：租客入住当天通常已交首期房租，自动落一笔 rent 记录
+    first_payment_made: bool = Field(True, description="入住时是否已收首期房租（默认已收）")
+    first_payment_amount: Optional[Decimal] = Field(None, gt=0, description="首期收款金额（不传=月租×付款周期）")
 
     @model_validator(mode='after')
     def validate_lease_dates(self):
@@ -265,6 +268,8 @@ class CheckinResponse(BaseModel):
     tenant_name: str
     lease_start: date
     lease_end: date
+    first_payment_id: Optional[int] = Field(None, description="入住首期收款记录ID（未收款时为空）")
+    first_payment_amount: Optional[Decimal] = Field(None, description="入住首期收款金额（未收款时为空）")
 
 
 # ==================== Payment Schemas ====================
@@ -665,7 +670,9 @@ class LeaseRecordBase(BaseModel):
 
 class LeaseRecordCreate(LeaseRecordBase):
     """创建租赁记录"""
-    pass
+    # 入住首期收款：租客入住当天通常已交首期房租，自动落一笔 rent 记录
+    first_payment_made: bool = Field(True, description="入住时是否已收首期房租（默认已收）")
+    first_payment_amount: Optional[Decimal] = Field(None, gt=0, description="首期收款金额（不传=月租金）")
 
 
 class LeaseRecordUpdate(BaseModel):

@@ -27,6 +27,75 @@ def calculate_rent(monthly_rent: Decimal, payment_cycle: int) -> Decimal:
     return monthly_rent * payment_cycle
 
 
+def create_first_rent_payment(
+    db: Session,
+    room: Room,
+    *,
+    payment_date: date,
+    amount: Optional[Decimal] = None,
+    monthly_rent: Decimal,
+    payment_cycle: int = 1,
+    owner_id: Optional[int] = None,
+    payment_method: str = "微信支付",
+) -> Tuple[Optional[Payment], str]:
+    """
+    入住登记时自动创建首期房租收款记录。
+
+    背景：租客办理入住时通常已当场交了首期房租（押一付一/押一付三），
+    但系统里没有这笔记录 → 交租记录缺失、到期计算把首期当"未收"。
+    此函数在入住事务内落一笔 payment_type='rent' 的 Payment。
+
+    幂等：该房间在入住日(lease_start)当天已有 rent 记录则跳过，不重复创建。
+
+    Args:
+        db: 数据库会话（调用方负责 commit）
+        room: 房间对象
+        payment_date: 收款日期（= lease_start）
+        amount: 收款金额（None 时 = monthly_rent × payment_cycle）
+        monthly_rent: 月租金（计算默认金额用）
+        payment_cycle: 付款周期（默认1）
+        owner_id: 归属用户（None 时取 room.owner_id）
+        payment_method: 收款方式
+
+    Returns:
+        (payment, status)：
+        - payment 为新建的 Payment 对象；跳过时为 None
+        - status: "created" 已创建 / "skipped_duplicate" 幂等跳过 / "skipped_zero" 金额为0跳过
+    """
+    # 幂等：入住日当天已有房租记录则不重复
+    existing = db.query(Payment).filter(
+        Payment.room_id == room.id,
+        Payment.payment_type == "rent",
+        Payment.payment_date == payment_date,
+    ).first()
+    if existing:
+        return None, "skipped_duplicate"
+
+    if amount is None:
+        amount = Decimal(str(monthly_rent)) * int(payment_cycle or 1)
+    amount = Decimal(str(amount))
+    if amount <= 0:
+        return None, "skipped_zero"
+
+    payment = Payment(
+        room_id=room.id,
+        amount=amount,
+        payment_type="rent",
+        payment_date=payment_date,
+        payment_method=payment_method,
+        description=f"房租 {room.room_number}",
+        status="completed",
+        owner_id=owner_id if owner_id is not None else room.owner_id,
+    )
+    db.add(payment)
+    db.flush()  # 拿 id
+
+    # 更新房间最后收款日期：下次收租日 = last_payment_date + payment_cycle 个月
+    room.last_payment_date = payment_date
+
+    return payment, "created"
+
+
 # ==================== 水电费计算 ====================
 
 def get_previous_reading(

@@ -7,6 +7,7 @@ defineProps<{
     payment_date: string
     rent_original: number
     rent_amount: number
+    rentCyclePaid?: boolean
     water_original: number
     water_amount: number
     electricity_original: number
@@ -55,6 +56,16 @@ const emit = defineEmits<{
       </el-form-item>
 
       <el-divider content-position="left">🏠 房租</el-divider>
+
+      <el-alert
+        v-if="paymentForm.rentCyclePaid"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 12px;"
+      >
+        本周期房租已收，本次只收水电
+      </el-alert>
 
       <el-form-item v-if="paymentForm.period_start" label="覆盖周期">
         <span style="font-weight: 500;">{{ paymentForm.period_start }} 至 {{ paymentForm.period_end }}</span>

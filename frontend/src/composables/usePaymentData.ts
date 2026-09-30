@@ -2,13 +2,15 @@ import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { paymentApi } from '@/api/payment'
 import type { MergedReading } from '@/composables/useMergedReadings'
+import { shouldIncludeRent } from '@/utils/paymentCycle'
 
 export function usePaymentData(deps: {
   formatAmount: (value: number, currency?: string) => string
   loadReadings: () => Promise<void>
   loadRooms: () => Promise<void>
+  payments?: { value: import('@/types').Payment[] }
 }) {
-  const { formatAmount, loadReadings, loadRooms } = deps
+  const { formatAmount, loadReadings, loadRooms, payments } = deps
 
   const paymentDialogVisible = ref(false)
   const paymentForm = ref({
@@ -17,6 +19,7 @@ export function usePaymentData(deps: {
     payment_date: new Date().toISOString().split('T')[0],
     rent_original: 0,
     rent_amount: 0,
+    rentCyclePaid: false,
     water_original: 0,
     water_amount: 0,
     electricity_original: 0,
@@ -32,7 +35,15 @@ export function usePaymentData(deps: {
     const water_amount = Number(row.water_reading?.amount || 0)
     const electricity_amount = Number(row.electricity_reading?.amount || 0)
     const cycle = Math.max(1, Number(row.payment_cycle || 1))
-    const rent_amount = Number(row.monthly_rent || 0) * cycle
+
+    // 季付/半年付：本周期房租已收过则房租=0，只收水电
+    // （2026-09-30 102-2 事故：8-01已交4650，9-27标记已收弹窗又预填了房租）
+    let rent_amount = Number(row.monthly_rent || 0) * cycle
+    let rent_already_paid = false
+    if (cycle > 1 && payments && !shouldIncludeRent(row, payments.value)) {
+      rent_amount = 0
+      rent_already_paid = true
+    }
 
     // 计算覆盖周期
     let periodStart = ''
@@ -68,8 +79,11 @@ export function usePaymentData(deps: {
       room_id: row.room_id,
       reading_date: row.reading_date,
       payment_date: new Date().toISOString().split('T')[0],
+      // 归零时 original 一并归 0：否则底部"原始总额/总折扣"会显示 4650，
+      // 误导为打折。信息由 rentCyclePaid 提示条承担（"本周期房租已收"）
       rent_original: rent_amount,
       rent_amount: rent_amount,
+      rentCyclePaid: rent_already_paid,
       water_original: water_amount,
       water_amount: water_amount,
       electricity_original: electricity_amount,
