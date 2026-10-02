@@ -7,8 +7,10 @@ from decimal import Decimal
 from typing import Optional, Tuple, List
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
+from dateutil.relativedelta import relativedelta
 
 from app.models import Room, Payment, UtilityReading, UtilityRate, User, LeaseRecord, Tenant
+from app.utils import lease_grid
 
 
 # ==================== 房租计算 ====================
@@ -672,24 +674,12 @@ def _has_rent_payment_after(room_id: int, payments: List[Payment], after_date: d
     return False
 
 
-def _has_paid_for_target_cycle(
-    room: Room,
-    payments: List[Payment],
-    cutoff: date,
-    expiring_days: int
-) -> bool:
-    """
-    判断房间的"目标到期周期"是否已被支付。
-    
-    核心逻辑：
-    1. 计算当前 target_due（= 如果当前周期已付，则 target=next_due；否则 target=current_cycle_due）
-    2. 检查是否有 rent payment 在 target_due 的合理时间窗内（±14天）
-    
-    这样无论租客是当月付、提前付还是延迟付，只要 target_due 已被覆盖，就正确识别。
-    """
-    ctx = _get_payment_due_context(room, payments, cutoff, expiring_days)
-    target_due = ctx['target_due']
-    
+def _room_rent_pay_dates(room: Room, payments: List[Payment]) -> List[date]:
+    """本租约期内有效的 rent 实付日列表（换租隔离 + cancelled 过滤）。"""
+    if not room.lease_start:
+        return []
+    earliest = room.lease_start - timedelta(days=lease_grid.EARLY_PAY_DAYS)
+    out = []
     for p in payments:
         if p.room_id != room.id:
             continue
@@ -699,10 +689,50 @@ def _has_paid_for_target_cycle(
             continue
         if p.payment_type != 'rent':
             continue
-        if abs((p.payment_date - target_due).days) <= 14:
-            return True
-    
-    return False
+        if p.payment_date < earliest:
+            continue
+        out.append(p.payment_date)
+    # 兜底：无任何 Payment 明细时用 rooms.last_payment_date（收款时同步更新）。
+    # 网格分配自带换租隔离（早于 lease_start-14 的日期会被忽略），安全。
+    if not out and room.last_payment_date and room.last_payment_date >= earliest:
+        out.append(room.last_payment_date)
+    return out
+
+
+def _has_paid_for_target_cycle(
+    room: Room,
+    payments: List[Payment],
+    cutoff: date,
+    expiring_days: int
+) -> bool:
+    """
+    判断房间的当前应收期是否已付（v5 起租日网格引擎，2026-10-02）。
+
+    口径（用户裁决）：应收日从 lease_start 按周期推网格，付款不改期界；
+    付款落在 [期初-14天, 下期初) 内即抵付该期（租客惯常提前2-5天预付，
+    分配时优先抵付前方14天内即将开始的期）。本月应收日在未来 → 已收。
+
+    引擎：app/utils/lease_grid.py（与 notification_service、前端 paymentCycle.ts 一致）。
+
+    历史：
+    - v3 ±14天固定窗口：收款日漂移>14天必误判（2-2501-A 事故）。
+    - v4 支付锚定（付款日X覆盖[X, X+cycle月)）：应收日随付款日漂移，
+      2026-10-02 用户否决——标准=起租日网格；且月付被排除在判定外
+      （302-4 刚交完仍显示"即将到期"）。
+    """
+    if not room.lease_start:
+        return False
+
+    today = date.today()
+    if room.lease_start > today:
+        return False  # 租约尚未开始
+
+    pay_dates = _room_rent_pay_dates(room, payments)
+    return lease_grid.is_paid_through(
+        room.lease_start, room.payment_cycle or 1, pay_dates, today,
+        cutoff=cutoff,
+    )
+
 
 
 def _has_paid_this_month(
@@ -727,60 +757,57 @@ def _get_payment_due_context(
     due_day_override: Optional[int] = None
 ) -> dict:
     """
-    对齐前端 getPaymentDueContext
-    计算目标到期日、是否已付当前周期
+    网格化应收上下文（v5 起租日网格，2026-10-02）。
 
-    due_day_override: 如果提供（租客 notify_after_day），用它代替 lease_start 的日期作为催租日。
-    意义：催租日以约定日期为准，而非房租到期日。
+    应收日 = lease_start 网格上"最后已付期+1"（或首期）；
+    付款在 [期初-14天, 下期初) 窗口内抵付该期，优先抵付前方14天内
+    即将开始的期（预付惯例）。engine: app/utils/lease_grid.py。
+
+    due_day_override: 租客 notify_after_day（催租日）。仅用于"何时该催"的
+    展示层提醒（expiring 列表），不改变应收日本身的网格。
+
+    Returns:
+        target_due: 应收日（已付→下一期期初；未付→本期期初）
+        next_due: 网格上的下一期期初
+        current_cycle_due: 本期期初
+        paid_current_cycle: 本期是否已付
+        days_to_due: 距应收日天数（负=已欠）
     """
     today = date.today()
     cycle_months = max(1, room.payment_cycle or 1)
 
-    # anchorSource: lease_start || last_payment_date || today
-    anchor_source = room.lease_start or room.last_payment_date or today
-    anchor_date = anchor_source  # date already 0:0:0
-    # 催租日优先级：notify_after_day > lease_start 日
-    due_day = due_day_override if due_day_override else anchor_date.day
-
-    cursor = _build_due_date(anchor_date.year, anchor_date.month, due_day)
-    previous_due = None
-    prev_prev_due = None
-
-    while cursor <= today:
-        prev_prev_due = previous_due
-        previous_due = cursor
-        cursor = _add_months_by_due_day(cursor, cycle_months, due_day)
-
-    next_due = cursor
-    current_cycle_due = previous_due or _build_due_date(today.year, today.month, due_day)
-
-    last_paid = room.last_payment_date
-
-    # paidByRentRecord
-    if prev_prev_due:
-        paid_by_rent = _has_rent_payment_after(
-            room.id, payments,
-            date.fromordinal(current_cycle_due.toordinal() - 14)
-        )
-    else:
-        paid_by_rent = _has_any_rent_payment(room.id, payments)
-
-    # paidCurrentCycle
-    paid_current_cycle = (
-        _has_recent_rent_payment(room.id, payments, cycle_months)
-        or (
-            last_paid is not None
-            and previous_due is not None
-            and abs((last_paid - previous_due).days) <= 14
-        )
-        or paid_by_rent
-        or (
-            room.room_number != '502-2'
-            and current_cycle_due.toordinal() < overdue_cutoff_date.toordinal()
-        )
+    pay_dates = _room_rent_pay_dates(room, payments)
+    status = lease_grid.grid_status(
+        room.lease_start, cycle_months, pay_dates, today, cutoff=overdue_cutoff_date,
     )
 
-    target_due = next_due if paid_current_cycle else current_cycle_due
+    next_due = status['next_due']
+
+    if next_due is None:
+        # 无 lease_start：退回旧逻辑锚点（last_payment_date||today）
+        anchor_source = room.last_payment_date or today
+        due_day = due_day_override if due_day_override else anchor_source.day
+        current_cycle_due = _build_due_date(anchor_source.year, anchor_source.month, due_day)
+        next_due = _add_months_by_due_day(current_cycle_due, cycle_months, due_day)
+        target_due = next_due
+        paid_current_cycle = _has_any_rent_payment(room.id, payments)
+    else:
+        # 网格引擎结果：next_due 是"最后已付/豁免期的下一期"
+        current_cycle_due = next_due
+        # 本期已付：应收日在未来（网格上的下一期）
+        paid_current_cycle = next_due > today
+        target_due = next_due
+
+        # 催租日（notify_after_day）：仅平移提醒时点，不改应收网格。
+        # 租客约定"每月N号后才通知"→ 提醒日 = 应收日所在月的N号
+        # （不足则顺延到下月N号）。
+        if due_day_override:
+            rem = _build_due_date(target_due.year, target_due.month, due_day_override)
+            if rem < target_due:
+                nxt_month = _add_months_by_due_day(target_due, 1, due_day_override)
+                rem = nxt_month
+            target_due = rem
+
     days_to_due = (target_due - today).days
 
     return {
@@ -968,12 +995,12 @@ def get_rent_payment_status(
     # 计算即将到期房间
     # - 没设催租日的租客：合同到期前 expiring_days 天进入列表（提前提醒）
     # - 设了催租日的租客：到了催租日当天才进入列表（当天才该催）
+    # v5 网格语义：不按"本期已付"排除——已付房的 next_due=下一期期初，
+    # days 窗口天然过滤（如 302-1 9月期已付但10-04期临近 days=2 → 该提醒；
+    # 302-4 10-02已预付10月期 days=31 → 自然不进列表）
     expiring_rooms = []
     for room in rooms:
         if room.status != 'occupied':
-            continue
-        # 用统一的 target_cycle 检查：如果目标周期已付，跳过
-        if _has_paid_for_target_cycle(room, payments, cutoff, expiring_days):
             continue
 
         notify_day = notify_day_map.get(room.tenant_id) if room.tenant_id else None

@@ -8,6 +8,7 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session
 
 from app.models import Room, Payment, Tenant
+from app.utils import lease_grid
 from app.utils.wechat import (
     check_if_both_utilities_recorded,
     generate_rent_notification,
@@ -37,51 +38,38 @@ def _is_tenant_notify_restricted(db: Session, room: Room) -> tuple[bool, str]:
 
 def _has_paid_for_target_cycle(db: Session, room: Room, cycle: int) -> bool:
     """
-    判断目标到期周期是否已有rent payment覆盖。
+    判断当前应收期是否已付（v5 起租日网格引擎，2026-10-02）。
 
-    逻辑：计算当前周期到期日（lease_start + cycle个月，最后一个<=今天），
-    检查是否有rent payment在该到期日±14天内。
-    有 → 已付，不需再收房租
-    无 → 未付，应收房租
+    口径（用户裁决）：应收日从 lease_start 按周期推网格，付款不改变期界；
+    付款落在 [期初-14天, 下期初) 内抵付该期。租客惯常提前2-5天预付，
+    分配时优先抵付前方14天内即将开始的期。月付同样参与判定。
 
-    ⚠️ 必须检查"当前周期到期日"而非"下次到期日"：
-    季付提前交租后（如8/1交了8/2季度的房租），下次到期日（11/2）±14天内
-    自然没有支付，查下次到期日会误判"未付"→房租重复计入
-    （2026-09-27 102-2 事故：8-01已交4650，9-27录水电时账单又含4650房租）
+    引擎：app/utils/lease_grid.py（与 business.py、前端 paymentCycle.ts 一致）。
 
-    与前端 shouldIncludeRent（paymentCycle.ts）逻辑一致。
+    历史：
+    - v3 ±14天固定窗口：收款日漂移>14天必误判（2-2501-A 事故）。
+    - v4 支付锚定：应收日随付款日漂移，2026-10-02 用户否决；且月付
+      被排除在判定外（302-4 刚交完仍显示"即将到期"）。
     """
-    if cycle <= 1:
-        return False  # 月付永不走这个判断
-
     if not room.lease_start:
         return False  # 无租约开始日，默认未付
 
     today = date.today()
 
-    # 计算当前周期到期日：最后一个 <= 今天的到期日
     if room.lease_start > today:
         return False  # 租约尚未开始
-    current_due = room.lease_start
-    while True:
-        nxt = current_due + relativedelta(months=cycle)
-        if nxt > today:
-            break
-        current_due = nxt
 
-    # 检查是否有rent payment在当前周期到期日±14天内
-    window_start = current_due - timedelta(days=14)
-    window_end = current_due + timedelta(days=14)
-
-    payment = db.query(Payment).filter(
+    # 本租约期内有效 rent 实付（换租隔离：起租日前>14天的旧款不算）
+    earliest = room.lease_start - timedelta(days=lease_grid.EARLY_PAY_DAYS)
+    rows = db.query(Payment.payment_date).filter(
         Payment.room_id == room.id,
         Payment.payment_type == 'rent',
         Payment.status != 'cancelled',
-        Payment.payment_date >= window_start,
-        Payment.payment_date <= window_end,
-    ).first()
+        Payment.payment_date >= earliest,
+    ).all()
+    pay_dates = [r[0] for r in rows if r[0]]
 
-    return payment is not None
+    return lease_grid.is_paid_through(room.lease_start, cycle, pay_dates, today)
 
 
 async def send_rent_notification_if_complete(
@@ -114,11 +102,9 @@ async def send_rent_notification_if_complete(
         tenant_name = room.tenant_name or room.room_number
         cycle = max(1, room.payment_cycle or 1)
 
-        # 判断是否需要包含房租：
-        # payment_cycle > 1 的房间（季度付等），检查目标到期周期是否已付房租
-        include_rent = True
-        if cycle > 1:
-            include_rent = not _has_paid_for_target_cycle(db, room, cycle)
+        # 判断是否需要包含房租：v5 网格引擎判定当前期是否已付
+        # （月付也参与——302-4 刚交完仍被催就是旧版把月付排除所致）
+        include_rent = not _has_paid_for_target_cycle(db, room, cycle)
 
         if include_utilities:
             utility_status = check_if_both_utilities_recorded(

@@ -117,6 +117,9 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
     if (waterText) message += `${waterText}\n`
     if (electricityText) message += `${electricityText}\n`
 
+    // 委婉确认请求（2026-09-30 用户要求：不是催租，只是确认收到）
+    message += '\n麻烦看到后回复一下"收到"就好，方便我确认信息已经传达到，谢谢啦～'
+
     // 移除最后一个换行符
     message = message.trim()
 

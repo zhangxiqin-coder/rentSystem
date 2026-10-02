@@ -263,11 +263,12 @@ class TestPaymentDueContext:
         assert 'days_to_due' in context
     
     def test_has_paid_this_month(self, db):
-        """测试目标到期周期支付判定（语义演进：原'本月已付'，现'目标周期已付'）
-        
-        lease_start=本月1号 → 本月周期已付时目标滚动到下月1号：
-        - 支付日期靠近下月1号（提前付下期）→ True
-        - 仅月初支付、离下月1号还很远 → False（下期未付）
+        """测试目标到期周期支付判定（v5 起租日网格，2026-10-02）
+
+        lease_start=本月1号，网格期=[本月1号, 下月1号)：
+        - 支付日期靠近下月1号（提前付下期）→ True（下期已预付）
+        - 仅月初支付（付本期）→ True（v5 语义：本期已付即 True；
+          应收日滚动到下月1号，days 窗口负责提醒，不再用 False 表达"下期未付"）
         """
         today = date.today()
         month_start = today.replace(day=1)
@@ -293,10 +294,19 @@ class TestPaymentDueContext:
         assert _has_paid_this_month(
             room_a, [pay_a], lambda r, p: 25, 7) is True
 
-        # 场景2：仅月初付了本期，离下月1号还很远 → False
+        # 场景2：仅月初付了本期 → True（本期[1号,下月1号)已付；
+        # 下期未付由 next_due=下月1号 + days 窗口表达）
         room_b, pay_b = _mk("302b", month_start + timedelta(days=2))
         assert _has_paid_this_month(
-            room_b, [pay_b], lambda r, p: 25, 7) is False
+            room_b, [pay_b], lambda r, p: 25, 7) is True
+
+        # 场景3：无任何付款 → False（首期未付，应收=lease_start）
+        room_c = Room(room_number="302c", monthly_rent=Decimal("1000"),
+                      payment_cycle=1, lease_start=month_start)
+        db.add(room_c)
+        db.commit()
+        assert _has_paid_this_month(
+            room_c, [], lambda r, p: 25, 7) is False
     
     def test_has_recent_rent_payment(self, db):
         """测试是否有近期租金支付"""

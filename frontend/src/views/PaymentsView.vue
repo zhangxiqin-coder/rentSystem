@@ -6,6 +6,7 @@ import { roomApi } from '@/api/room'
 import * as utilityBillApi from '@/api/utility_bills'
 import { useOverdueConfig } from '@/composables/useOverdueConfig'
 import { useAmountVisibility } from '@/composables/useAmountVisibility'
+import { getMonthGridStatus } from '@/utils/paymentCycle'
 import { useAuthStore } from '@/stores/auth'
 import type { Payment } from '@/types'
 import type { Room } from '@/types'
@@ -289,79 +290,34 @@ const rentCollectionByMonth = computed(() => {
         return
       }
 
-      const dueDateThisMonth = buildDue(year, month, dueDay)
+      // ── v5 起租日网格（2026-10-02）─────────────────────────────
+      // 应收日从 lease_start 按周期推网格，付款不改变期界。
+      // 期初落在该月 → 该月应收（月付每月一期；季付每3个月一期）。
+      // 付款落在 [期初-14, 下期初) 抵付该期；落在下期初前14天内算预付下期。
       const cutoffDate = new Date(overdueCutoffDate.value)
       cutoffDate.setHours(0, 0, 0, 0)
+      const st = getMonthGridStatus(room, payments.value, year, month, cutoffDate)
 
-      if (dueDateThisMonth < cutoffDate) {
-        skippedRooms.push({ room, reason: '豁免日期之前' })
+      const cycleLabel = cycle > 1 ? `${cycle}个月` : ''
+      const rentDueFull = Number(room.monthly_rent || 0) * cycle
+
+      if (st.kind === 'skipped') {
+        skippedRooms.push({ room, reason: st.reason || '非收租月' })
         return
       }
 
-      // 租期未开始
-      if (anchorSource) {
-        const leaseStart = new Date(anchorSource)
-        leaseStart.setHours(0, 0, 0, 0)
-        if (leaseStart > dueDateThisMonth) {
-          skippedRooms.push({ room, reason: '租期未开始' })
-          return
-        }
+      const item: RoomItem = {
+        room, cycle, cycleLabel,
+        rentDue: rentDueFull,
+        dueDay: st.dueDay!,
+        dueDateStr: `${st.dueDay}号`,
       }
-
-      // 季付/半年付：非周期月
-      if (cycle > 1) {
-        if (!anchorSource) {
-          skippedRooms.push({ room, reason: '无租期信息' })
-          return
-        }
-        const anchorMonth = anchor!.getMonth()
-        const diff = ((month - anchorMonth) % 12 + 12) % 12
-        if (diff % cycle !== 0) {
-          const monthsUntilNext = cycle - (diff % cycle)
-          const nextCycleDiff = diff + monthsUntilNext
-          const nextCycleMonthNum = (anchorMonth + nextCycleDiff) % 12
-          const cycleName = cycle === 3 ? '季付' : cycle === 6 ? '半年付' : `${cycle}个月付`
-          skippedRooms.push({ room, reason: `${cycleName}（下次${nextCycleMonthNum + 1}月收）` })
-          return
-        }
-      }
-
-      // 判断是否首个账单周期（新签租客）
-      const isFirstCycle = anchorSource
-        ? Math.abs(dueDateThisMonth.getTime() - new Date(anchorSource).setHours(0, 0, 0, 0)) < 86400000
-        : false
-
-      // 已收判断
-      // 使用 ±14天 窗口（与后端 _has_paid_for_target_cycle 一致）
-      // 注意：不能用 cycle*15 天，否则季付房间上个周期的付款会被误匹配到下个周期
-      const paidWindowMs = 14 * 86400000
-
-      const roomRentPayments = payments.value.filter(p =>
-        p.room_id === room.id &&
-        p.payment_type === 'rent' &&
-        p.status !== 'cancelled' &&
-        p.payment_date
-      )
-
-      const isPaid = isFirstCycle
-        ? roomRentPayments.length > 0
-        : roomRentPayments.some(p => {
-            const d = new Date(p.payment_date!)
-            d.setHours(0, 0, 0, 0)
-            return Math.abs(d.getTime() - dueDateThisMonth.getTime()) <= paidWindowMs
-          })
-
-      const rentDue = Number(room.monthly_rent || 0) * cycle
-      const cycleLabel = cycle > 1 ? `${cycle}个月` : ''
-      const item: RoomItem = { room, cycle, cycleLabel, rentDue, dueDay, dueDateStr: `${dueDay}号` }
-
-      if (isPaid) {
+      if (st.kind === 'paid') {
         paidRooms.push(item)
       } else {
         unpaidRooms.push(item)
       }
     })
-
     if (unpaidRooms.length > 0 || paidRooms.length > 0 || skippedRooms.length > 0) {
       unpaidRooms.sort((a, b) => a.dueDay - b.dueDay)
       paidRooms.sort((a, b) => a.dueDay - b.dueDay)

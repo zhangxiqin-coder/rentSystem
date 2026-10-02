@@ -19,6 +19,7 @@ from app.schemas import (
     RenewLeaseRequest, RenewLeaseResponse
 )
 from app.service.business import update_room_status
+from app.utils import lease_grid
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
@@ -101,7 +102,7 @@ def get_expiring_rooms(
     current_user: User = Depends(get_current_user)
 ):
     """
-    获取即将需要收租的房间（根据上次付款日期 + 付款周期计算）
+    获取即将需要收租的房间（v5 起租日网格：lease_start 按周期推网格，付款不改期界）
     """
     today = date.today()
     end_date = today + timedelta(days=days)
@@ -118,98 +119,60 @@ def get_expiring_rooms(
         elif current_user.role == "landlord" and room.owner_id == current_user.id:
             filtered_rooms.append(room)
 
-    # 计算每个房间的下次收租日期
+    # 计算每个房间的下次收租日期（v5 起租日网格引擎，2026-10-02）
+    # 应收日从 lease_start 按周期推网格，付款不改期界
     expiring_rooms = []
     for room in filtered_rooms:
-        # 检查是否在前后N天内已收租（避免重复显示）
-        start_date = today - timedelta(days=days)
-        recent_payment = db.query(Payment).filter(
+        if not room.lease_start or not room.monthly_rent:
+            continue
+        if room.lease_start > today:
+            continue  # 租约未开始
+
+        # 本租约期内 rent 实付日（换租隔离）
+        earliest = room.lease_start - timedelta(days=lease_grid.EARLY_PAY_DAYS)
+        rows = db.query(Payment.payment_date).filter(
             Payment.room_id == room.id,
             Payment.payment_type == "rent",
-            Payment.status == "completed",
-            Payment.payment_date >= start_date,
-            Payment.payment_date <= end_date
-        ).first()
-        
-        # 如果近期已收租，跳过这个房间
-        if recent_payment:
+            Payment.status != "cancelled",
+            Payment.payment_date >= earliest,
+        ).all()
+        pay_dates = [r[0] for r in rows if r[0]]
+
+        next_payment = lease_grid.next_due_date(
+            room.lease_start, room.payment_cycle or 1, pay_dates, today,
+        )
+
+        if next_payment is None or not (today <= next_payment <= end_date):
             continue
-        
-        # 计算下次收租日期
-        
-        # 确定付款日基准。优先用 active lease 的 lease_start（新租约可能和首次入住日期不同）
-        active_lease = db.query(LeaseRecord).filter(
-            LeaseRecord.room_id == room.id,
-            LeaseRecord.is_active == True
-        ).first()
-        ref_lease_start = active_lease.lease_start if active_lease else room.lease_start
-        payment_day = ref_lease_start.day
-        
-        if room.last_payment_date is None:
-            # 新租约/续租，首次付款 = 活跃租约的 lease_start
-            next_payment = ref_lease_start
-        else:
-            # 有交租记录：base_date + payment_cycle个月
-            base_date = room.last_payment_date
-            next_payment = base_date + relativedelta(months=room.payment_cycle)
-        
-        # 重要：修正付款日为活跃租约 lease_start 的日
-        if room.last_payment_date is not None and next_payment.day != payment_day:
-            # 重新计算：从base_date的年月开始，使用lease_start的日
-            import calendar
-            year = next_payment.year
-            month = next_payment.month
-            
-            # 确保日期有效（比如2月30日会变成2月28日）
-            max_day = calendar.monthrange(year, month)[1]
-            day = min(payment_day, max_day)
-            
-            # 如果调整后的日期 <= base_date，说明需要加一个月
-            adjusted = date(year, month, day)
-            if adjusted <= base_date:
-                adjusted = adjusted + relativedelta(months=1)
-                # 重新检查日
-                max_day = calendar.monthrange(adjusted.year, adjusted.month)[1]
-                day = min(payment_day, max_day)
-                adjusted = date(adjusted.year, adjusted.month, day)
-            
-            next_payment = adjusted
-        
-        # 检查是否在未来N天内需要收租
-        # 如果计算出的下次交租日已过（如续租后last_payment_date是旧的），递推到未来
-        while next_payment < today:
-            next_payment = next_payment + relativedelta(months=room.payment_cycle)
-        
-        if today <= next_payment <= end_date:
-            # 将Room对象转换为字典并添加next_payment_date
-            room_dict = {
-                "id": room.id,
-                "room_number": room.room_number,
-                "building": room.building,
-                "floor": room.floor,
-                "area": str(room.area) if room.area else None,
-                "monthly_rent": str(room.monthly_rent),
-                "deposit_amount": str(room.deposit_amount) if room.deposit_amount else None,
-                "payment_cycle": room.payment_cycle,
-                "water_rate": str(room.water_rate) if room.water_rate else None,
-                "electricity_rate": str(room.electricity_rate) if room.electricity_rate else None,
-                "status": room.status,
-                "tenant_name": room.tenant_name,
-                "tenant_phone": room.tenant_phone,
-                "lease_start": str(room.lease_start),
-                "lease_end": str(room.lease_end),
-                "last_payment_date": str(room.last_payment_date) if room.last_payment_date else None,
-                "description": room.description,
-                "created_at": room.created_at.isoformat() if room.created_at else None,
-                "updated_at": room.updated_at.isoformat() if room.updated_at else None,
-                "next_payment_date": str(next_payment),  # 添加计算的下次付款日期
-                "days_until_payment": (next_payment - today).days  # 添加距离天数
-            }
-            expiring_rooms.append(room_dict)
-    
+
+        room_dict = {
+            "id": room.id,
+            "room_number": room.room_number,
+            "building": room.building,
+            "floor": room.floor,
+            "area": str(room.area) if room.area else None,
+            "monthly_rent": str(room.monthly_rent),
+            "deposit_amount": str(room.deposit_amount) if room.deposit_amount else None,
+            "payment_cycle": room.payment_cycle,
+            "water_rate": str(room.water_rate) if room.water_rate else None,
+            "electricity_rate": str(room.electricity_rate) if room.electricity_rate else None,
+            "status": room.status,
+            "tenant_name": room.tenant_name,
+            "tenant_phone": room.tenant_phone,
+            "lease_start": str(room.lease_start),
+            "lease_end": str(room.lease_end),
+            "last_payment_date": str(room.last_payment_date) if room.last_payment_date else None,
+            "description": room.description,
+            "created_at": room.created_at.isoformat() if room.created_at else None,
+            "updated_at": room.updated_at.isoformat() if room.updated_at else None,
+            "next_payment_date": str(next_payment),
+            "days_until_payment": (next_payment - today).days,
+        }
+        expiring_rooms.append(room_dict)
+
     # 按下次收租日期排序
     expiring_rooms.sort(key=lambda r: r["next_payment_date"])
-    
+
     return expiring_rooms
 
 
@@ -277,9 +240,36 @@ def update_room(
         raise HTTPException(status_code=404, detail="房间不存在")
     
     # 更新字段（注意：RoomUpdate schema 不包含 room_number，所以房间号不会被修改）
+    # 先记录原值：用于判断租约日期是否被手动修改（同步活跃租约用）
+    old_lease_start = room.lease_start
+    old_lease_end = room.lease_end
     update_data = room_data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(room, key, value)
+
+    # 端点级日期校验（schema校验只在同请求同时含两个日期时生效；
+    # 这里用合并后的最终状态校验，防止只改一个日期导致起止倒挂）
+    if 'lease_start' in update_data or 'lease_end' in update_data:
+        if room.lease_start and room.lease_end and room.lease_start >= room.lease_end:
+            raise HTTPException(status_code=400, detail="租约开始日期必须早于结束日期")
+
+    # 手动修改租约日期时，同步到正在生效的租约记录
+    # （2026-10-02 2-2501-A事故：房间编辑改了lease_start但租约未同步，
+    #   收租周期锚点脱节→房租误判。rooms.lease_start 是收租算法锚点，两处必须一致）
+    date_changed = (
+        (update_data.get('lease_start') is not None and update_data['lease_start'] != old_lease_start)
+        or (update_data.get('lease_end') is not None and update_data['lease_end'] != old_lease_end)
+    )
+    if date_changed and room.tenant_id:
+        active_lease = db.query(LeaseRecord).filter(
+            LeaseRecord.room_id == room.id,
+            LeaseRecord.is_active == True,
+        ).order_by(LeaseRecord.lease_start.desc()).first()
+        if active_lease:
+            if update_data.get('lease_start') is not None:
+                active_lease.lease_start = room.lease_start
+            if update_data.get('lease_end') is not None:
+                active_lease.lease_end = room.lease_end
     
     # 如果 tenant_id 为空但有 tenant_name，自动从 tenants 表回填
     if not room.tenant_id and room.tenant_name:

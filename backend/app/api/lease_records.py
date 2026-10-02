@@ -159,6 +159,25 @@ def update_lease_record(
     for key, value in update_data.items():
         setattr(existing, key, value)
 
+    # 同步房间表冗余字段（2026-10-02 2-2501-A事故根因之一：
+    # 改租约不回写房间表，收租周期锚点 rooms.lease_start 与租约脱节→房租误判）
+    # 仅当该租约生效中且覆盖今天时同步（历史/未来租约不动房间当前状态）
+    from datetime import date as _date
+    if existing.is_active and existing.lease_start <= _date.today() <= existing.lease_end:
+        room = db.query(Room).filter(Room.id == existing.room_id).first()
+        if room:
+            tenant = db.query(Tenant).filter(Tenant.id == existing.tenant_id).first() if existing.tenant_id else None
+            if tenant:
+                room.tenant_id = tenant.id
+                room.tenant_name = tenant.name
+                room.tenant_phone = tenant.phone
+                room.tenant_id_card = tenant.id_card
+            room.lease_start = existing.lease_start
+            room.lease_end = existing.lease_end
+            room.monthly_rent = existing.monthly_rent
+            room.deposit_amount = existing.deposit_amount
+            room.status = "occupied"
+
     db.commit()
     db.refresh(existing)
     return existing

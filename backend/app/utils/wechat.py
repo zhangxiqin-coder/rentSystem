@@ -126,6 +126,7 @@ def generate_rent_notification(
         total = water_amount + electricity_amount
         title = f"**{room_number} 本月水电：{int(total)} 元**"
         lines = [title] + _build_utility_lines()
+        lines.append('麻烦看到后回复一下"收到"就好，方便我确认信息已经传达到，谢谢啦～')
         return "\n".join(lines)
 
     if include_utilities:
@@ -140,13 +141,15 @@ def generate_rent_notification(
 
         # 房租
         lines.append(f"{rent_label}：{int(rent_due)}元")
+        lines.append('麻烦看到后回复一下"收到"就好，方便我确认信息已经传达到，谢谢啦～')
 
         return "\n".join(lines)
     else:
         # 2501等不分摊水电的房间
         lines = [
             f"**{room_number} 本月收租：{int(rent_due)} 元**",
-            f"{rent_label}：{int(rent_due)}元"
+            f"{rent_label}：{int(rent_due)}元",
+            '麻烦看到后回复一下"收到"就好，方便我确认信息已经传达到，谢谢啦～'
         ]
         return "\n".join(lines)
 

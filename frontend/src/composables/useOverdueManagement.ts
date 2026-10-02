@@ -172,7 +172,9 @@ export function useOverdueManagement(deps: {
 💰 合计：${formatAmountForNotification(rentDue)}
 🏠 ${rentLabel}：${formatAmountForNotification(rentDue)}
 💧 水费：暂无抄表记录
-⚡ 电费：暂无抄表记录`
+⚡ 电费：暂无抄表记录
+
+麻烦看到后回复一下"收到"就好，方便我确认信息已经传达到，谢谢啦～`
 
       const date = new Date(latest.reading_date).toLocaleDateString('zh-CN')
       const rent = rentDue
@@ -206,7 +208,9 @@ export function useOverdueManagement(deps: {
 💰 合计：${formatAmountForNotification(total)}
 🏠 ${rentLabel}：${formatAmountForNotification(rent)}
 ${waterLine}
-${electricLine}`
+${electricLine}
+
+麻烦看到后回复一下"收到"就好，方便我确认信息已经传达到，谢谢啦～`
     } catch {
       const cycle = Math.max(1, Number(room.payment_cycle || 1))
       const rentDue = Number(room.monthly_rent || 0) * cycle
@@ -217,7 +221,9 @@ ${electricLine}`
 💰 合计：${formatAmountForNotification(rentDue)}
 🏠 ${rentLabel}：${formatAmountForNotification(rentDue)}
 💧 水费：获取失败
-⚡ 电费：获取失败`
+⚡ 电费：获取失败
+
+麻烦看到后回复一下"收到"就好，方便我确认信息已经传达到，谢谢啦～`
     }
   }
 

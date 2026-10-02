@@ -176,7 +176,14 @@ class TestBug1QuarterlyRentNotificationIntegration:
 
     def test_e2e_boundary_15_days_outside(self, db, quarterly_room):
         """
-        [边界值] payment在到期日15天前 → 不在窗口内，未付
+        [边界值] payment在下期到期日前15天 → 提前交租，覆盖下期 → 已付
+
+        语义演进（2026-10-02 支付锚定算法）：
+        - 旧算法（±14天固定窗口）：15天前付款超出窗口 → 判"未付" → 继续催租。
+          这正是 2-2501-A 事故根因：实际收款日与锚点日漂移>14天时，
+          付款永远落不进窗口，付款后仍被判未付 → 重复计租。
+        - 新算法：锚点=最近一次实付日，付款日X覆盖[X, X+cycle个月)。
+          下期到期日前15天的付款 = 提前交租，覆盖至付款日+3个月 → 判"已付"。
         """
         next_due = date(2025, 5, 2)
         while next_due <= date.today():
@@ -185,14 +192,14 @@ class TestBug1QuarterlyRentNotificationIntegration:
             room_id=quarterly_room.id,
             payment_type="rent",
             amount=Decimal("4650"),
-            payment_date=next_due - timedelta(days=15),  # 刚好出界（动态）
+            payment_date=next_due - timedelta(days=15),  # 下期到期日前15天（动态）
             status="completed",
         )
         db.add(payment)
         db.commit()
 
         has_paid = _has_paid_for_target_cycle(db, quarterly_room, cycle=3)
-        assert has_paid is False, "15天前付款，超出窗口，应判定未付"
+        assert has_paid is True, "下期到期前15天付款=提前交租，应覆盖当前应收周期"
 
 
 # ════════════════════════════════════════════════════
