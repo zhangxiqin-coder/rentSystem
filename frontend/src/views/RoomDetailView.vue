@@ -265,6 +265,15 @@ const loadUtilityReadings = async () => {
 const handleCreatePayment = () => {
   editingPayment.value = undefined
   paymentDialogVisible.value = true
+  // 覆盖周期推算需要完整付款史（默认列表只拉60天；欠租>60天的房间
+  // recent 为空，网格会误判"从未收租"），打开弹窗时补拉全量付款
+  paymentApi.getPaymentsByRoom(roomId.value, { page: 1, size: 500 })
+    .then(res => {
+      if (paymentDialogVisible.value && !editingPayment.value && res.data.items) {
+        payments.value = res.data.items
+      }
+    })
+    .catch(() => {})
 }
 
 const handleEditPayment = (payment: Payment) => {
@@ -765,6 +774,7 @@ onMounted(async () => {
         :monthly-rent="room?.monthly_rent"
         :payment-cycle="room?.payment_cycle"
         :lease-start="room?.lease_start"
+        :rent-payments="payments"
         :loading="paymentSubmitting"
         @submit="handleSubmitPayment"
         @cancel="paymentDialogVisible = false"

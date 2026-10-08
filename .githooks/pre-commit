@@ -22,7 +22,7 @@ CHANGED_TS=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.ts$|\.
 if [ -n "$CHANGED_PY" ] || [ -n "$CHANGED_TS" ]; then
     echo "🧪 Running pytest (核心业务逻辑测试)..."
     cd backend
-    ./venv/bin/python3 -m pytest tests/test_e2e_core_flows.py tests/test_payment_cycle_logic.py tests/test_bugfixes_20260731.py tests/test_payment_anchored_cycle_20261002.py tests/test_end_lease_utilities_20260823.py tests/test_turso_malformed_selfheal_20260823.py tests/test_dup_reading_prevention_20260907.py tests/test_utility_bills_api_20260908.py tests/test_checkout_tenant_status_20260908.py tests/test_utility_readings_date_filter.py tests/test_checkin_first_payment_20260923.py tests/test_database_no_silent_fallback_20260923.py -x -q --tb=short
+    ./venv/bin/python3 -m pytest tests/test_e2e_core_flows.py tests/test_payment_cycle_logic.py tests/test_bugfixes_20260731.py tests/test_payment_anchored_cycle_20261002.py tests/test_end_lease_utilities_20260823.py tests/test_turso_malformed_selfheal_20260823.py tests/test_dup_reading_prevention_20260907.py tests/test_utility_bills_api_20260908.py tests/test_checkout_tenant_status_20260908.py tests/test_utility_readings_date_filter.py tests/test_checkin_first_payment_20260923.py tests/test_database_no_silent_fallback_20260923.py tests/test_utility_profit_period_20261003.py tests/test_coverage_period_20261006.py -x -q --tb=short
     PYTEST_EXIT=$?
 
     if [ $PYTEST_EXIT -ne 0 ]; then

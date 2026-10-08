@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { paymentApi } from '@/api/payment'
 import type { MergedReading } from '@/composables/useMergedReadings'
-import { shouldIncludeRent } from '@/utils/paymentCycle'
+import { shouldIncludeRent, getCoveragePeriod } from '@/utils/paymentCycle'
 
 export function usePaymentData(deps: {
   formatAmount: (value: number, currency?: string) => string
@@ -45,35 +45,13 @@ export function usePaymentData(deps: {
       rent_already_paid = true
     }
 
-    // 计算覆盖周期
-    let periodStart = ''
-    let periodEnd = ''
-    const leaseStart = row.lease_start
-    if (leaseStart) {
-      const anchor = new Date(leaseStart)
-      const dueDay = anchor.getDate()
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const buildDue = (y: number, m: number, d: number) => {
-        const dim = new Date(y, m + 1, 0).getDate()
-        const dt = new Date(y, m, Math.min(d, dim))
-        dt.setHours(0, 0, 0, 0)
-        return dt
-      }
-      const addMonths = (base: Date, months: number) => {
-        const d = new Date(base)
-        d.setDate(1)
-        d.setMonth(d.getMonth() + months)
-        return buildDue(d.getFullYear(), d.getMonth(), dueDay)
-      }
-      let cursor = buildDue(anchor.getFullYear(), anchor.getMonth(), dueDay)
-      while (cursor <= today) {
-        cursor = addMonths(cursor, cycle)
-      }
-      const pStart = addMonths(cursor, -cycle)
-      periodStart = pStart.toISOString().split('T')[0]
-      periodEnd = new Date(cursor.getTime() - 86400000).toISOString().split('T')[0]
-    }
+    // 计算覆盖周期：下一个未付期（预收口径）。
+    // 修复前 bug：取"今天所在期"且不看付款记录——租客已预付到 10-09
+    // 时弹窗仍显示 09-10~10-09（已收过的期）。现改为 v5 起租日网格
+    // 推"最后已付期+1"，与 shouldIncludeRent/到期列表同一口径。
+    const coverage = payments ? getCoveragePeriod(row, payments.value) : null
+    const periodStart = coverage?.start || ''
+    const periodEnd = coverage?.end || ''
 
     paymentForm.value = {
       room_id: row.room_id,

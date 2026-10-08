@@ -1026,6 +1026,9 @@ watch(lookbackMonths, () => {
         <!-- 月度明细 -->
         <div v-if="utilityProfit.monthly_breakdown.length > 0" class="monthly-breakdown">
           <h3>月度明细</h3>
+          <div style="font-size: 12px; color: #909399; margin-bottom: 8px;">
+            账期规则：每月1-5号收的算上个月账期；每个房间按最近一次抄表收款计算
+          </div>
           <el-tabs v-model="utilityMonthTab" type="border-card">
             <el-tab-pane v-for="monthGroup in utilityBreakdownByMonth" :key="monthGroup.key" :label="monthGroup.label" :name="monthGroup.key">
               <!-- 桌面端：表格 -->

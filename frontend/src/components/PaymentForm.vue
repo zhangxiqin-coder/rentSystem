@@ -3,6 +3,7 @@ import { ref, watch, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { Payment, CreatePaymentRequest, UpdatePaymentRequest } from '@/types'
+import { getCoveragePeriod } from '@/utils/paymentCycle'
 
 interface Props {
   payment?: Payment
@@ -10,6 +11,8 @@ interface Props {
   monthlyRent?: number
   paymentCycle?: number
   leaseStart?: string
+  /** 本房间全部付款记录（推算覆盖周期用，网格需要完整付款史） */
+  rentPayments?: Payment[]
   loading?: boolean
 }
 
@@ -72,33 +75,22 @@ const autoFillRent = () => {
 
 const autoFillPeriod = () => {
   if (!props.leaseStart) return
-  const cycle = Math.max(1, Number(props.paymentCycle || 1))
-  const anchor = new Date(props.leaseStart)
-  const dueDay = anchor.getDate()
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const buildDue = (y: number, m: number, d: number) => {
-    const dim = new Date(y, m + 1, 0).getDate()
-    const date = new Date(y, m, Math.min(d, dim))
-    date.setHours(0, 0, 0, 0)
-    return date
+  // 覆盖周期 = 下一个未付期（预收口径，v5 起租日网格）。
+  // 修复前 bug：从起租日推网格停在"今天所在期"且不看付款记录——
+  // 租客已预付到 10-09 时仍显示 09-10~10-09（已收过的期）。
+  // 另修 toISOString() UTC 偏移隐患（东八区 0-8 点会得到昨天）。
+  const coverage = getCoveragePeriod(
+    {
+      room_id: props.roomId,
+      payment_cycle: props.paymentCycle,
+      lease_start: props.leaseStart,
+    },
+    (props.rentPayments || []).filter(p => p && p.payment_date)
+  )
+  if (coverage) {
+    formData.value.period_start = coverage.start
+    formData.value.period_end = coverage.end
   }
-
-  const addMonths = (base: Date, months: number) => {
-    const d = new Date(base)
-    d.setDate(1)
-    d.setMonth(d.getMonth() + months)
-    return buildDue(d.getFullYear(), d.getMonth(), dueDay)
-  }
-
-  let cursor = buildDue(anchor.getFullYear(), anchor.getMonth(), dueDay)
-  while (cursor <= today) {
-    cursor = addMonths(cursor, cycle)
-  }
-  const periodStart = addMonths(cursor, -cycle)
-  formData.value.period_start = periodStart.toISOString().split('T')[0]
-  formData.value.period_end = new Date(cursor.getTime() - 86400000).toISOString().split('T')[0]
 }
 
 // Watch for payment prop changes to populate form
@@ -132,13 +124,13 @@ watch(
 )
 
 watch(
-  [() => props.monthlyRent, () => props.paymentCycle, () => props.leaseStart],
+  [() => props.monthlyRent, () => props.paymentCycle, () => props.leaseStart, () => props.rentPayments],
   () => {
     if (!props.payment && is房租Type.value) {
       autoFillRent()
     }
   },
-  { immediate: true },
+  { immediate: true, deep: true },
 )
 
 const handleSubmit = async () => {

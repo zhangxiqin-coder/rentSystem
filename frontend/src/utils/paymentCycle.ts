@@ -179,6 +179,39 @@ export function getNextGridDue(
 }
 
 /**
+ * 房租覆盖周期（预收下一期口径，2026-10-06）。
+ *
+ * 本次收的房租覆盖"下一个未付期"：在起租日网格上取
+ * getNextGridDue（最后已付期+1 的期初）为 period_start，
+ * 期末 = 期初 + cycle 月 - 1 天。
+ *
+ * 修复前 bug：弹窗取"今天所在期"（完全不看付款记录）——
+ * 租客已预付到 10-09 时仍显示 09-10~10-09（已收过的期）。
+ * 正确示例（102-4，2026-10-06）：9-08 已付至 10-09，
+ * 本次收的覆盖 2026-10-10 ~ 2026-11-09。
+ *
+ * 无 lease_start 返回 null；从未收租返回首期（lease_start 起）。
+ */
+export function getCoveragePeriod(
+  room: RoomLike,
+  payments: PaymentLike[]
+): { start: string; end: string } | null {
+  if (!room.lease_start) return null
+  const cycle = Math.max(1, Number(room.payment_cycle || 1))
+
+  const due = getNextGridDue(room, payments)
+  if (!due) return null
+
+  const start = due
+  const nextStart = addMonths(start, cycle)
+  const end = new Date(nextStart.getTime() - 86400000)
+
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return { start: fmt(start), end: fmt(end) }
+}
+
+/**
  * 月度收租判定（v5 网格，PaymentsView 收租概况用）。
  *
  * 对目标月 [year, month]（month 为 0-based）判定该房间：

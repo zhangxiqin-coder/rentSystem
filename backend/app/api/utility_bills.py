@@ -1,7 +1,7 @@
 """水电账单API路由"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import extract, or_
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from typing import List, Dict, Any
 from datetime import datetime
@@ -152,12 +152,31 @@ def get_utility_bills(
     return bills
 
 
+def _bill_period(payment_date) -> tuple:
+    """水电收益的账期归属：每月1-5号收的算上个月。
+
+    供电局按自然月出账，但抄表/收款日不固定（有时31号收、有时1号收），
+    同一期账可能落在两个日历月。规则：day<=5 归上个月，day>5 归当月，
+    这样同一期账始终落在同一个账期里，跟供电局账单月对齐。
+    """
+    d = payment_date
+    if d.day <= 5:
+        if d.month == 1:
+            return (d.year - 1, 12)
+        return (d.year, d.month - 1)
+    return (d.year, d.month)
+
+
 @router.get("/profit", response_model=UtilityBillProfitStats)
 def get_profit_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取水电收益统计（按当前用户拥有的系列过滤）"""
+    """获取水电收益统计（按当前用户拥有的系列过滤）
+
+    归月规则：收款日在1-5号 → 算上个月账期；其余算当月。
+    每个房间每类型每个账期只取最近一次收款（以关联的抄表记录为准）。
+    """
     # 数据隔离：只统计当前用户拥有的系列
     user_series = _get_user_series_set(db, current_user.id)
     if not user_series:
@@ -168,61 +187,68 @@ def get_profit_stats(
             "monthly_breakdown": []
         }
 
-    # 获取所有账单，按年月倒序（只取当前用户的系列）
-    bills = db.query(UtilityBill).filter(
-        UtilityBill.series.in_(user_series)
-    ).order_by(
-        UtilityBill.year.desc(),
-        UtilityBill.month.desc()
+    # 一次性拉出用户所有房间的水电收款（含房间系列信息）
+    user_rooms = db.query(Room).filter(Room.owner_id == current_user.id).all()
+    room_series = {r.id: r.series for r in user_rooms}
+
+    payments = db.query(Payment).filter(
+        Payment.room_id.in_(room_series.keys()),
+        Payment.payment_type == PaymentType.UTILITY
     ).all()
-    
-    # 按系列+年月分组
+
     from collections import defaultdict
     from decimal import Decimal
-    grouped = defaultdict(lambda: {"water_cost": Decimal("0"), "electric_cost": Decimal("0"), "bills": []})
-    
-    for bill in bills:
-        key = (bill.series, bill.year, bill.month)
-        if bill.utility_type == "water":
-            grouped[key]["water_cost"] = bill.cost
+
+    # (series, period_year, period_month, room_id, utility_type) -> 最新一次
+    latest = {}
+    for p in payments:
+        series = room_series.get(p.room_id)
+        if not series or series not in user_series:
+            continue
+        desc = (p.description or "")
+        if "水" in desc or "water" in desc.lower():
+            utype = "water"
+        elif "电" in desc or "electric" in desc.lower():
+            utype = "electricity"
         else:
-            grouped[key]["electric_cost"] = bill.cost
-        grouped[key]["bills"].append(bill)
-    
+            continue
+        period = _bill_period(p.payment_date)
+        key = (series, period[0], period[1], p.room_id, utype)
+        prev = latest.get(key)
+        # 同账期同房间同类型多次收款：保留 payment_date 最新的一条
+        if prev is None or (p.payment_date, p.id) > (prev.payment_date, prev.id):
+            latest[key] = p
+
+    # 按系列+账期汇总收款
+    collected = defaultdict(lambda: {"water": Decimal("0"), "electricity": Decimal("0")})
+    for (series, y, m, room_id, utype), p in latest.items():
+        collected[(series, y, m)][utype] += p.amount or Decimal("0")
+
+    # 支出账单按账期对齐（支出无“1-5号”问题，直接用账单年月）
+    bills = db.query(UtilityBill).filter(
+        UtilityBill.series.in_(user_series)
+    ).all()
+
     total_water_profit = Decimal("0")
     total_electric_profit = Decimal("0")
     monthly_breakdown = []
-    
-    for (series, year, month), data in grouped.items():
-        # 获取该系列的所有房间（双保险：也加 owner_id 过滤）
-        rooms = db.query(Room).filter(
-            Room.series == series,
-            Room.owner_id == current_user.id
-        ).all()
-        room_ids = [r.id for r in rooms]
 
-        # 获取该月该系列从租客收取的水电费
-        # 以实际收款日(payment_date)为准，而非抄表日(reading_date)
-        # 这样7/31抄表8/1收钱→算8月收入
-        utility_payments = db.query(Payment).filter(
-            Payment.room_id.in_(room_ids),
-            Payment.payment_type == PaymentType.UTILITY,
-            extract('year', Payment.payment_date) == year,
-            extract('month', Payment.payment_date) == month
-        ).all()
+    all_keys = set(collected.keys()) | {(b.series, b.year, b.month) for b in bills}
+    for (series, year, month) in sorted(all_keys, reverse=True):
+        data = collected.get((series, year, month), {"water": Decimal("0"), "electricity": Decimal("0")})
 
-        water_collected = Decimal("0")
-        electric_collected = Decimal("0")
-        for p in utility_payments:
-            desc = (p.description or "").lower()
-            if "水" in (p.description or "") or "water" in desc:
-                water_collected += p.amount or Decimal("0")
-            elif "电" in (p.description or "") or "electric" in desc:
-                electric_collected += p.amount or Decimal("0")
-        
-        water_cost = data["water_cost"]
-        electric_cost = data["electric_cost"]
-        
+        water_cost = Decimal("0")
+        electric_cost = Decimal("0")
+        for b in bills:
+            if b.series == series and b.year == year and b.month == month:
+                if b.utility_type == "water":
+                    water_cost = b.cost
+                else:
+                    electric_cost = b.cost
+
+        water_collected = data["water"]
+        electric_collected = data["electricity"]
+
         # 收益 = 从租客收取的 - 交给供电局的 = 净收益
         # 支出为0（还没录入供电局账单）时，收益暂不算
         if water_cost > 0:
@@ -233,10 +259,10 @@ def get_profit_stats(
             electric_profit = electric_collected - electric_cost
         else:
             electric_profit = Decimal("0")
-        
+
         total_water_profit += water_profit
         total_electric_profit += electric_profit
-        
+
         monthly_breakdown.append({
             "series": series,
             "year": year,
@@ -249,7 +275,7 @@ def get_profit_stats(
             "electric_profit": float(electric_profit),
             "total_profit": float(water_profit + electric_profit)
         })
-    
+
     return {
         "total_water_profit": float(total_water_profit),
         "total_electric_profit": float(total_electric_profit),
@@ -264,24 +290,60 @@ def get_utility_bill(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取单个水电账单（含收益）"""
+    """获取单个水电账单（含收益）
+
+    收款按账期归属（1-5号算上个月），每房间每类型取最近一次，
+    与 /profit 口径一致。
+    """
     bill = db.query(UtilityBill).filter(UtilityBill.id == bill_id).first()
     if not bill:
         raise HTTPException(status_code=404, detail="账单不存在")
-    
-    # 获取该月从租客收取的水电费 - 以实际收款日(payment_date)为准
-    utility_payments = db.query(Payment).filter(
-        Payment.payment_type == PaymentType.UTILITY,
-        extract('year', Payment.payment_date) == bill.year,
-        extract('month', Payment.payment_date) == bill.month
-    ).all()
 
-    water_collected = sum(p.amount for p in utility_payments if "水" in (p.description or "") or "water" in (p.description or "").lower()) if utility_payments else 0
-    electric_collected = sum(p.amount for p in utility_payments if "电" in (p.description or "") or "electric" in (p.description or "").lower()) if utility_payments else 0
-    
-    water_profit = water_collected - bill.water_cost
-    electric_profit = electric_collected - bill.electric_cost
-    
+    # 数据隔离：只能查看自己系列下的账单
+    user_series = _get_user_series_set(db, current_user.id)
+    if bill.series not in user_series:
+        raise HTTPException(status_code=403, detail="无权操作此账单：该账单的系列不属于当前用户")
+
+    # 该系列所有房间
+    room_ids = [r.id for r in db.query(Room.id).filter(
+        Room.series == bill.series,
+        Room.owner_id == current_user.id
+    ).all()]
+
+    # 该账期的水电收款（账期归属 + 每房间每类型取最新）
+    from decimal import Decimal
+    utility_payments = db.query(Payment).filter(
+        Payment.room_id.in_(room_ids),
+        Payment.payment_type == PaymentType.UTILITY
+    ).all() if room_ids else []
+
+    latest = {}
+    for p in utility_payments:
+        if _bill_period(p.payment_date) != (bill.year, bill.month):
+            continue
+        desc = (p.description or "")
+        if "水" in desc or "water" in desc.lower():
+            utype = "water"
+        elif "电" in desc or "electric" in desc.lower():
+            utype = "electricity"
+        else:
+            continue
+        key = (p.room_id, utype)
+        prev = latest.get(key)
+        if prev is None or (p.payment_date, p.id) > (prev.payment_date, prev.id):
+            latest[key] = p
+
+    water_collected = sum((p.amount for p in latest.values() if "水" in (p.description or "") or "water" in (p.description or "").lower()), Decimal("0"))
+    electric_collected = sum((p.amount for p in latest.values() if "电" in (p.description or "") or "electric" in (p.description or "").lower()), Decimal("0"))
+
+    bill_cost = bill.cost or Decimal("0")
+    if bill.utility_type == "water":
+        water_profit = water_collected - bill_cost
+        electric_profit = Decimal("0")
+    else:
+        water_profit = Decimal("0")
+        electric_profit = electric_collected - bill_cost
+
     return {
         **UtilityBillResponse.model_validate(bill).model_dump(),
         "water_collected": water_collected,
@@ -326,41 +388,46 @@ def get_series_utility_detail(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取指定系列、指定年月所有房间的水电收租明细"""
+    """获取指定系列、指定账期所有房间的水电收租明细。
+
+    账期规则与 /profit 一致：reading_date 在1-5号 → 算上个月账期。
+    每个房间每类型只取账期内最近一次抄表（多次录入以最新为准）。
+    """
     # 获取该系列的所有房间
     rooms = db.query(Room).filter(
         Room.series == series,
         Room.owner_id == current_user.id
     ).all()
-    
+
     if not rooms:
         raise HTTPException(status_code=404, detail="该系列没有房间")
-    
+
     room_ids = [r.id for r in rooms]
-    
-    # 获取该年月的所有水电记录
-    readings = db.query(UtilityReading, Room).join(
-        Room, UtilityReading.room_id == Room.id
-    ).filter(
-        Room.id.in_(room_ids),
-        extract('year', UtilityReading.reading_date) == year,
-        extract('month', UtilityReading.reading_date) == month
+
+    # 拉该系列全部抄表记录，在Python侧按账期过滤（1-5号归上月）
+    readings = db.query(UtilityReading).filter(
+        UtilityReading.room_id.in_(room_ids)
     ).all()
-    
-    # 按房间分组
+
+    # 按房间分组：每类型保留账期内 reading_date 最大的一条
+    per_room = {rid: {} for rid in room_ids}
+    for reading in readings:
+        py, pm = _bill_period(reading.reading_date)
+        if (py, pm) != (year, month):
+            continue
+        rid = reading.room_id
+        utype = reading.utility_type
+        if utype not in ("water", "electricity"):
+            continue
+        current = per_room[rid].get(utype)
+        if current is None or reading.reading_date > current.reading_date:
+            per_room[rid][utype] = reading
+
     result = []
     for room in rooms:
-        room_readings = [r for r, rm in readings if rm.id == room.id]
-        
-        water_reading = None
-        electric_reading = None
-        
-        for reading in room_readings:
-            if reading.utility_type == 'water':
-                water_reading = reading
-            elif reading.utility_type == 'electricity':
-                electric_reading = reading
-        
+        water_reading = per_room[room.id].get("water")
+        electric_reading = per_room[room.id].get("electricity")
+
         result.append({
             'room_id': room.id,
             'room_number': room.room_number,
@@ -379,10 +446,10 @@ def get_series_utility_detail(
                 (float(electric_reading.amount) if electric_reading else 0)
             )
         })
-    
+
     # 按房间号排序
     result.sort(key=lambda x: x['room_number'])
-    
+
     return result
 
 
