@@ -22,6 +22,7 @@ interface RoomLike {
   room_id?: number
   payment_cycle?: number | null
   lease_start?: string | null
+  status?: string | null
 }
 
 interface PaymentLike {
@@ -107,6 +108,11 @@ export function shouldIncludeRent(
 
   // 兼容 MergedReading（无 id 只有 room_id）
   const roomId = (room as any).id ?? (room as any).room_id
+
+  // 转租空窗期/空置房间（2026-10-28 302-1 案例）：老租客已退、新租约
+  // 未来才生效，此刻无在租租客，水电结算只含水电，不含房租。
+  // status 未携带（旧调用方/MergedReading 缺字段）时保持原行为。
+  if (room.status && room.status !== 'occupied') return false
 
   if (!room.lease_start) return true // 无租约开始日，默认包含
 

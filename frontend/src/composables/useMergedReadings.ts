@@ -9,6 +9,7 @@ export interface MergedReading {
   monthly_rent?: number
   payment_cycle?: number
   lease_start?: string
+  status?: string  // 房间状态：空置/转租空窗期时 shouldIncludeRent 判"不含房租"
   total_amount: number
   notes: string
   is_paid?: boolean
@@ -39,6 +40,7 @@ export function mergeReadings(
         // ⚠️ 必须拷贝：弹窗预填走 shouldIncludeRent(row)，缺 lease_start 会
         // 走"无租约开始日→默认包含房租"分支静默放行（2026-09-30 102-2 二次事故）
         lease_start: room?.lease_start,
+        status: room?.status,
         total_amount: 0,
         notes: '',
       })
@@ -55,10 +57,9 @@ export function mergeReadings(
   Array.from(map.values()).forEach(merged => {
     const cycle = Math.max(1, merged.payment_cycle || 1)
 
-    // 季度付等长周期房间：判断是否应收房租
-    // 使用统一的 shouldIncludeRent 逻辑（基于到期日，非简单时间窗口）
+    // 是否应收房租（v5：月付与季付同判定；空置/转租空窗期不含房租）
     let includeRent = true
-    if (cycle > 1 && allPayments && allPayments.length > 0) {
+    if (allPayments && allPayments.length > 0) {
       const room = roomMap.get(merged.room_id)
       includeRent = shouldIncludeRent(room || merged, allPayments)
     }

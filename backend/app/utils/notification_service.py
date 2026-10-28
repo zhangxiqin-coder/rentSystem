@@ -56,8 +56,11 @@ def _has_paid_for_target_cycle(db: Session, room: Room, cycle: int) -> bool:
 
     today = date.today()
 
-    if room.lease_start > today:
-        return False  # 租约尚未开始
+    # 空置/转租空窗期房间（2026-10-28 302-1 案例）：老租客已退、新租约
+    # 未来才生效，此刻没有应收房租，水电通知只含水电。
+    room_status = getattr(room, "status", None)
+    if room_status and room_status != 'occupied':
+        return False
 
     # 本租约期内有效 rent 实付（换租隔离：起租日前>14天的旧款不算）
     earliest = room.lease_start - timedelta(days=lease_grid.EARLY_PAY_DAYS)

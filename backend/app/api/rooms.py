@@ -102,50 +102,30 @@ def get_expiring_rooms(
     current_user: User = Depends(get_current_user)
 ):
     """
-    获取即将需要收租的房间（v5 起租日网格：lease_start 按周期推网格，付款不改期界）
+    获取即将需要收租的房间。
+
+    ⚠️ 唯一实现在 business.get_rent_payment_status（与水电页
+    /stats/rent-payment-status 同源），本端点只是薄包装——2026-10-28 事故：
+    两套独立实现改一处漏一处（转租空窗期 302-1），此后收租判定只允许一份。
+    前端页面实际都走 /stats/rent-payment-status，本端点保留向后兼容。
     """
     today = date.today()
-    end_date = today + timedelta(days=days)
 
-    # 获取所有在租房间
-    rooms = db.query(Room).filter(Room.status == "occupied").all()
+    owner_id = None
+    if current_user.role == "landlord":
+        owner_id = current_user.id
 
-    # 用户权限过滤
-    filtered_rooms = []
-    for room in rooms:
-        # 检查用户是否有权限查看这个房间
-        if current_user.role in ("admin", "super_landlord"):
-            filtered_rooms.append(room)
-        elif current_user.role == "landlord" and room.owner_id == current_user.id:
-            filtered_rooms.append(room)
+    from app.service.business import get_rent_payment_status
+    result = get_rent_payment_status(db=db, owner_id=owner_id, expiring_days=days)
 
-    # 计算每个房间的下次收租日期（v5 起租日网格引擎，2026-10-02）
-    # 应收日从 lease_start 按周期推网格，付款不改期界
+    # 精简结果 → 补全房间字段（保持本端点历史返回结构不变）
     expiring_rooms = []
-    for room in filtered_rooms:
-        if not room.lease_start or not room.monthly_rent:
+    for item in result["expiring_rooms"]:
+        room = db.query(Room).filter(Room.id == item["room_id"]).first()
+        if not room:
             continue
-        if room.lease_start > today:
-            continue  # 租约未开始
-
-        # 本租约期内 rent 实付日（换租隔离）
-        earliest = room.lease_start - timedelta(days=lease_grid.EARLY_PAY_DAYS)
-        rows = db.query(Payment.payment_date).filter(
-            Payment.room_id == room.id,
-            Payment.payment_type == "rent",
-            Payment.status != "cancelled",
-            Payment.payment_date >= earliest,
-        ).all()
-        pay_dates = [r[0] for r in rows if r[0]]
-
-        next_payment = lease_grid.next_due_date(
-            room.lease_start, room.payment_cycle or 1, pay_dates, today,
-        )
-
-        if next_payment is None or not (today <= next_payment <= end_date):
-            continue
-
-        room_dict = {
+        next_payment = today + timedelta(days=item["days_until_payment"])
+        expiring_rooms.append({
             "id": room.id,
             "room_number": room.room_number,
             "building": room.building,
@@ -157,21 +137,17 @@ def get_expiring_rooms(
             "water_rate": str(room.water_rate) if room.water_rate else None,
             "electricity_rate": str(room.electricity_rate) if room.electricity_rate else None,
             "status": room.status,
-            "tenant_name": room.tenant_name,
+            "tenant_name": item.get("tenant_name") or room.tenant_name,
             "tenant_phone": room.tenant_phone,
-            "lease_start": str(room.lease_start),
-            "lease_end": str(room.lease_end),
+            "lease_start": str(room.lease_start) if room.lease_start else None,
+            "lease_end": str(room.lease_end) if room.lease_end else None,
             "last_payment_date": str(room.last_payment_date) if room.last_payment_date else None,
             "description": room.description,
             "created_at": room.created_at.isoformat() if room.created_at else None,
             "updated_at": room.updated_at.isoformat() if room.updated_at else None,
             "next_payment_date": str(next_payment),
-            "days_until_payment": (next_payment - today).days,
-        }
-        expiring_rooms.append(room_dict)
-
-    # 按下次收租日期排序
-    expiring_rooms.sort(key=lambda r: r["next_payment_date"])
+            "days_until_payment": item["days_until_payment"],
+        })
 
     return expiring_rooms
 

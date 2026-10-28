@@ -12,7 +12,7 @@ from app.models import User, LeaseRecord, Room, Tenant, RoomOccupant
 from app.schemas import (
     LeaseRecordCreate, LeaseRecordUpdate, LeaseRecordResponse,
     EndLeaseRequest, EndLeaseResponse, FinalReadingContextResponse,
-    FinalReadingItem
+    FinalReadingItem, TransferRequest, TransferResponse
 )
 
 router = APIRouter(prefix="/lease-records", tags=["lease_records"])
@@ -460,6 +460,189 @@ def end_lease(
     return EndLeaseResponse(
         message="，".join(parts),
         lease_record=record,
+        **settlement
+    )
+
+
+@router.post("/{record_id}/transfer", response_model=TransferResponse)
+def transfer_lease(
+    record_id: int,
+    data: TransferRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    转租：老租客退租结算 + 新租客入住，单事务完成。
+
+    流程：
+    1. 验证老租约存在、生效中、覆盖今天
+    2. 老租客水电结算（可选读数 → 复用 _create_final_utility_settlement，
+       退租读数自动写入房间初始读数 = 新租客起点）
+    3. 老租约置 is_active=False、清本房间居住人、老租客按条件置 inactive（退租三件套）
+    4. 匹配或新建新租客（同名同电话优先匹配）
+    5. 创建新租约（初始读数=退租读数，实现水电无缝衔接）
+    6. 新租客首期房租（复用 create_first_rent_payment，幂等可关闭）
+    7. 房间换绑新租客（_sync_room_from_leases 自动完成）
+    """
+    from datetime import date
+
+    record = db.query(LeaseRecord).filter(
+        LeaseRecord.id == record_id,
+        LeaseRecord.owner_id == current_user.id
+    ).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="租赁记录不存在")
+
+    today = date.today()
+    if record.lease_start > today:
+        raise HTTPException(status_code=400, detail="该租赁记录尚未生效，不能转租，请直接删除后重新入住")
+    if not (record.lease_start <= today <= record.lease_end and record.is_active):
+        raise HTTPException(status_code=400, detail="该租赁记录已结束，不能转租")
+
+    room = db.query(Room).filter(Room.id == record.room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="房间不存在")
+
+    # ===== 第一段：老租客水电结算（在租约标记结束前做）=====
+    settlement = {
+        "water_utility_id": None, "electricity_utility_id": None,
+        "water_payment_id": None, "electricity_payment_id": None,
+        "water_amount": None, "electricity_amount": None,
+    }
+    if data.final_water_reading is not None or data.final_electricity_reading is not None:
+        try:
+            settlement = _create_final_utility_settlement(
+                db, room, current_user,
+                data.final_water_reading, data.final_electricity_reading,
+                data.utility_paid, data.utility_payment_method
+            )
+        except ValueError as e:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=str(e))
+
+    # ===== 第二段：老租约退租三件套 =====
+    record.is_active = False
+    db.flush()
+
+    # 清本房间所有活跃居住人（主租客+同住人一并搬离）
+    db.query(RoomOccupant).filter(
+        RoomOccupant.room_id == room.id,
+        RoomOccupant.is_active == True
+    ).update({"is_active": False})
+
+    # 老租客：无其他活跃租约且无其他房间活跃居住记录时置 inactive
+    old_tenant = db.query(Tenant).filter(Tenant.id == record.tenant_id).first()
+    if old_tenant and old_tenant.status == 'active':
+        other_active_lease = db.query(LeaseRecord.id).filter(
+            LeaseRecord.tenant_id == old_tenant.id,
+            LeaseRecord.id != record.id,
+            LeaseRecord.lease_start <= today,
+            LeaseRecord.lease_end >= today,
+            LeaseRecord.is_active == True
+        ).first()
+        other_active_occupant = db.query(RoomOccupant.id).filter(
+            RoomOccupant.tenant_id == old_tenant.id,
+            RoomOccupant.room_id != room.id,
+            RoomOccupant.is_active == True
+        ).first()
+        if not other_active_lease and not other_active_occupant:
+            old_tenant.status = 'inactive'
+
+    # ===== 第三段：新租客入住 =====
+    new_name = data.new_tenant_name.strip()
+    new_phone = (data.new_tenant_phone or "").strip()
+    if new_phone == "13800000000":
+        new_phone = ""  # 占位符一律视为未填，防止覆盖库里真实电话
+
+    # 匹配已有租客：owner 名下同名优先复用（不重复建档），电话/身份证按新录入补齐
+    new_tenant = db.query(Tenant).filter(
+        Tenant.name == new_name,
+        Tenant.owner_id == current_user.id
+    ).first()
+    if new_tenant:
+        # 电话：填了才覆盖（换号场景），留空保留库里原号
+        if new_phone and new_tenant.phone != new_phone:
+            new_tenant.phone = new_phone
+        # 身份证：终身唯一，只补空不覆盖
+        if data.new_tenant_id_card and not new_tenant.id_card:
+            new_tenant.id_card = data.new_tenant_id_card
+    else:
+        new_tenant = Tenant(
+            name=new_name,
+            phone=new_phone or "13800000000",  # phone 非空约束兜底
+            id_card=data.new_tenant_id_card,
+            status="active",
+            owner_id=current_user.id
+        )
+        db.add(new_tenant)
+        db.flush()  # 拿 new_tenant.id
+
+    # 水电衔接：新租约初始读数 = 老租客退租读数（结算时已写入 room.initial_*），
+    # 新租客没另填初始读数的字段就天然衔接；这里显式取房间当前值落进租约
+    effective_rent = data.monthly_rent if data.monthly_rent is not None else room.monthly_rent
+    effective_deposit = data.deposit_amount if data.deposit_amount is not None else None
+    effective_cycle = data.payment_cycle if data.payment_cycle is not None else (room.payment_cycle or 1)
+    if data.payment_cycle is not None:
+        room.payment_cycle = data.payment_cycle
+
+    new_lease = LeaseRecord(
+        tenant_id=new_tenant.id,
+        room_id=room.id,
+        lease_start=data.lease_start,
+        lease_end=data.lease_end,
+        monthly_rent=effective_rent,
+        deposit_amount=effective_deposit,
+        is_active=True,
+        owner_id=record.owner_id,
+        notes=data.notes,
+        initial_electricity_reading=room.initial_electricity_reading or 0,
+        initial_water_reading=room.initial_water_reading or 0,
+    )
+    db.add(new_lease)
+    db.flush()
+
+    # 新租客首期房租（幂等，可关闭）
+    first_payment = None
+    first_amount = None
+    if data.first_payment_made:
+        from app.service.business import create_first_rent_payment
+        first_payment, _status = create_first_rent_payment(
+            db,
+            room,
+            payment_date=data.lease_start,
+            amount=data.first_payment_amount,
+            monthly_rent=effective_rent,
+            payment_cycle=effective_cycle,
+            owner_id=record.owner_id,
+        )
+        if first_payment is not None:
+            first_amount = first_payment.amount
+
+    # 房间换绑新租客（按生效租约重算房间状态）
+    _sync_room_from_leases(db, room)
+
+    db.commit()
+    db.refresh(new_lease)
+    db.refresh(new_tenant)
+
+    parts = [f"转租成功：{old_tenant.name if old_tenant else '老租客'} → {new_tenant.name}"]
+    if settlement["water_amount"] is not None:
+        parts.append(f"老租客水费 ¥{settlement['water_amount']}（{'已收款' if settlement['water_payment_id'] else '未收款'}）")
+    if settlement["electricity_amount"] is not None:
+        parts.append(f"老租客电费 ¥{settlement['electricity_amount']}（{'已收款' if settlement['electricity_payment_id'] else '未收款'}）")
+    if first_amount is not None:
+        parts.append(f"新租客首期房租 ¥{first_amount}")
+
+    return TransferResponse(
+        message="，".join(parts),
+        room_id=room.id,
+        room_number=room.room_number,
+        old_lease_id=record.id,
+        old_tenant_id=record.tenant_id,
+        new_lease_id=new_lease.id,
+        new_tenant_id=new_tenant.id,
+        first_payment_id=first_payment.id if first_payment is not None else None,
+        first_payment_amount=first_amount,
         **settlement
     )
 

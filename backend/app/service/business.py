@@ -1032,6 +1032,42 @@ def get_rent_payment_status(
     # 按到期天数排序
     expiring_rooms.sort(key=lambda r: r['days_until_payment'])
 
+    # ===== 转租空窗期房间（2026-10-28 302-1 案例）=====
+    # 老租客已退、新租约未来几天才生效：房间 status=available 不在上面
+    # 的 occupied 循环里，但新租客首次交租日=新租约起租日，临近时该提醒。
+    from sqlalchemy import or_
+    gap_query = db.query(LeaseRecord).filter(
+        LeaseRecord.is_active == True,
+        LeaseRecord.lease_start > today,
+        LeaseRecord.lease_start <= today + timedelta(days=expiring_days),
+    )
+    if owner_id:
+        gap_query = gap_query.join(Room, Room.id == LeaseRecord.room_id).filter(
+            or_(Room.owner_id == owner_id, Room.owner_id.is_(None))
+        )
+    gap_leases = gap_query.order_by(LeaseRecord.lease_start.asc()).all()
+
+    seen_gap_ids = set()
+    for lease in gap_leases:
+        if lease.room_id in seen_gap_ids:
+            continue
+        seen_gap_ids.add(lease.room_id)
+        room = db.query(Room).filter(Room.id == lease.room_id).first()
+        if not room or room.status == 'occupied':
+            continue  # 已被上面循环覆盖
+        tenant = db.query(Tenant).filter(Tenant.id == lease.tenant_id).first()
+        expiring_rooms.append({
+            'room_id': room.id,
+            'room_number': room.room_number,
+            'tenant_name': tenant.name if tenant else None,
+            'days_until_payment': (lease.lease_start - today).days,
+            'monthly_rent': float(lease.monthly_rent or room.monthly_rent or 0),
+            'payment_cycle': room.payment_cycle or 1,
+        })
+
+    if seen_gap_ids:
+        expiring_rooms.sort(key=lambda r: r['days_until_payment'])
+
     return {
         'overdue_rooms': overdue_rooms,
         'expiring_rooms': expiring_rooms,

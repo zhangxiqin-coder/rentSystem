@@ -145,10 +145,10 @@ export function useUtilityReadings(deps: {
         const room = roomMap.get(reading.room_id)
         const cycle = Math.max(1, Number(room?.payment_cycle || 1))
 
-        // 季度付等长周期房间：判断是否应收房租
-        // 使用统一的 shouldIncludeRent 逻辑（基于到期日，非简单时间窗口）
+        // 是否应收房租（v5：月付与季付同判定；空置/转租空窗期不含房租）
+        // 使用统一的 shouldIncludeRent 逻辑（基于起租日网格，非简单时间窗口）
         let includeRent = true
-        if (cycle > 1) {
+        if (room) {
           includeRent = shouldIncludeRent(room, payments.value)
         }
 
@@ -160,6 +160,7 @@ export function useUtilityReadings(deps: {
           // ⚠️ 必须拷贝：弹窗预填走 shouldIncludeRent(row)，缺 lease_start 会
           // 走"无租约开始日→默认包含房租"分支静默放行（2026-09-30 102-2 二次事故）
           lease_start: room?.lease_start,
+          status: room?.status,
           total_amount: includeRent ? Number(room?.monthly_rent || 0) * cycle : 0,
           notes: reading.notes || ''
         })

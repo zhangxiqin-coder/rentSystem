@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowDown, Edit, EditPen, Delete, Plus, House, Document, Refresh, CircleClose, Hide, View } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowDown, Edit, EditPen, Delete, Plus, House, Document, Refresh, CircleClose, Hide, View, Sort } from '@element-plus/icons-vue'
 import { tenantsApi } from '@/api/tenants'
 import { leaseRecordsApi } from '@/api/leaseRecords'
 import { roomApi } from '@/api/room'
@@ -301,6 +301,175 @@ const confirmEndLease = async () => {
   }
 }
 
+// ===== 转租对话框（老租客退租结算 + 新租客入住，一步完成）=====
+const transferDialogVisible = ref(false)
+const transferSubmitting = ref(false)
+const transferForm = ref({
+  record_id: 0,
+  room_number: '',
+  old_tenant_name: '',
+  // 老租客退租结算
+  final_water_reading: undefined as number | undefined,
+  final_electricity_reading: undefined as number | undefined,
+  utility_paid: true,
+  utility_payment_method: '微信支付',
+  // 新租客信息
+  new_tenant_name: '',
+  new_tenant_phone: '',
+  new_tenant_id_card: '',
+  lease_start: new Date().toISOString().split('T')[0],
+  lease_end: '',
+  monthly_rent: 0,
+  deposit_amount: 0,
+  payment_cycle: undefined as number | undefined,
+  first_payment_made: true,
+  first_payment_amount: null as number | null,
+  notes: ''
+})
+const transferContext = ref<{
+  water: { previous_reading: number | null; rate: number | null }
+  electricity: { previous_reading: number | null; rate: number | null }
+} | null>(null)
+
+// 转租水费预览
+const transferWaterPreview = computed(() => {
+  const ctx = transferContext.value
+  if (!ctx || transferForm.value.final_water_reading == null) return null
+  const prev = Number(ctx.water.previous_reading ?? 0)
+  const rate = Number(ctx.water.rate ?? 0)
+  const usage = transferForm.value.final_water_reading - prev
+  if (usage < 0) return { error: '读数不能小于上次读数' }
+  return { usage, amount: usage * rate }
+})
+
+// 转租电费预览
+const transferElecPreview = computed(() => {
+  const ctx = transferContext.value
+  if (!ctx || transferForm.value.final_electricity_reading == null) return null
+  const prev = Number(ctx.electricity.previous_reading ?? 0)
+  const rate = Number(ctx.electricity.rate ?? 0)
+  const usage = transferForm.value.final_electricity_reading - prev
+  if (usage < 0) return { error: '读数不能小于上次读数' }
+  return { usage, amount: usage * rate }
+})
+
+// 新租客首期房租预览（月租 × 付款周期）
+const transferFirstPaymentPreview = computed(() => {
+  const rent = Number(transferForm.value.monthly_rent) || 0
+  const cycle = Number(transferForm.value.payment_cycle) || 1
+  return rent * cycle
+})
+
+// 打开转租对话框（拉取水电上下文 + 预填）
+const handleTransfer = async (record: LeaseRecord) => {
+  transferForm.value = {
+    record_id: record.id,
+    room_number: record.room?.room_number || '',
+    old_tenant_name: record.tenant?.name || tenant.value?.name || '',
+    final_water_reading: undefined,
+    final_electricity_reading: undefined,
+    utility_paid: true,
+    utility_payment_method: '微信支付',
+    new_tenant_name: '',
+    new_tenant_phone: '',
+    new_tenant_id_card: '',
+    lease_start: new Date().toISOString().split('T')[0],
+    lease_end: (() => {
+      const d = new Date()
+      d.setFullYear(d.getFullYear() + 1)
+      d.setDate(d.getDate() - 1)
+      return d.toISOString().split('T')[0]
+    })(),
+    monthly_rent: Number(record.monthly_rent) || 0,
+    deposit_amount: 0,
+    payment_cycle: undefined,
+    first_payment_made: true,
+    first_payment_amount: null,
+    notes: ''
+  }
+  transferContext.value = null
+  transferDialogVisible.value = true
+  try {
+    transferContext.value = await leaseRecordsApi.getFinalReadingContext(record.id)
+  } catch (error) {
+    console.error('获取转租水电上下文失败:', error)
+  }
+}
+
+// 确认转租
+const confirmTransfer = async () => {
+  const form = transferForm.value
+  if (!form.new_tenant_name.trim()) {
+    ElMessage.warning('请填写新租客姓名')
+    return
+  }
+  if (!form.lease_start || !form.lease_end) {
+    ElMessage.warning('请设置新租约租期')
+    return
+  }
+  if (form.monthly_rent <= 0) {
+    ElMessage.warning('请填写新租客月租金')
+    return
+  }
+  if (transferWaterPreview.value?.error) {
+    ElMessage.warning(`水费：${transferWaterPreview.value.error}`)
+    return
+  }
+  if (transferElecPreview.value?.error) {
+    ElMessage.warning(`电费：${transferElecPreview.value.error}`)
+    return
+  }
+
+  const hasUtility = form.final_water_reading != null || form.final_electricity_reading != null
+  const utilityPart = hasUtility
+    ? `，按读数结算老租客水电${form.utility_paid ? '（已收款）' : '（未收款）'}`
+    : ''
+  const tip = `老租客 ${form.old_tenant_name} 退租结算${utilityPart}，新租客 ${form.new_tenant_name} 入住 ${form.room_number}。退租读数自动作为新租客初始读数。`
+
+  try {
+    await ElMessageBox.confirm(tip, '转租确认', {
+      confirmButtonText: '确定转租',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+
+  transferSubmitting.value = true
+  try {
+    const payload: Record<string, unknown> = {
+      new_tenant_name: form.new_tenant_name.trim(),
+      new_tenant_phone: form.new_tenant_phone.trim(),  // 留空传空串，由后端兜底；不能传占位符，否则会覆盖库里已有电话
+      lease_start: form.lease_start,
+      lease_end: form.lease_end,
+      monthly_rent: form.monthly_rent,
+      first_payment_made: form.first_payment_made,
+      utility_paid: form.utility_paid,
+      utility_payment_method: form.utility_payment_method
+    }
+    if (form.new_tenant_id_card.trim()) payload.new_tenant_id_card = form.new_tenant_id_card.trim()
+    if (form.final_water_reading != null) payload.final_water_reading = form.final_water_reading
+    if (form.final_electricity_reading != null) payload.final_electricity_reading = form.final_electricity_reading
+    if (form.deposit_amount > 0) payload.deposit_amount = form.deposit_amount
+    if (form.payment_cycle != null) payload.payment_cycle = form.payment_cycle
+    if (form.first_payment_made && Number(form.first_payment_amount) > 0) {
+      payload.first_payment_amount = Number(form.first_payment_amount)
+    }
+    if (form.notes.trim()) payload.notes = form.notes.trim()
+
+    const result = await leaseRecordsApi.transfer(form.record_id, payload as any)
+    ElMessage.success(result?.message || '转租成功')
+    transferDialogVisible.value = false
+    await fetchLeaseRecords()
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.detail || '转租失败')
+    console.error(error)
+  } finally {
+    transferSubmitting.value = false
+  }
+}
+
 // 删除租赁记录
 const handleDeleteRecord = async (record: LeaseRecord) => {
   try {
@@ -565,6 +734,12 @@ onMounted(() => {
                       @click.native="handleEndLease(row)"
                     >
                       <el-icon><CircleClose /></el-icon>退租
+                    </el-dropdown-item>
+                    <el-dropdown-item
+                      v-if="row.status_display === 'active'"
+                      @click.native="handleTransfer(row)"
+                    >
+                      <el-icon><Sort /></el-icon>转租
                     </el-dropdown-item>
                     <el-dropdown-item
                       v-if="row.status_display === 'expired'"
@@ -888,6 +1063,160 @@ onMounted(() => {
       <template #footer>
         <el-button @click="endLeaseDialogVisible = false">取消</el-button>
         <el-button type="danger" :loading="endLeaseSubmitting" @click="confirmEndLease">确认退租</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 转租对话框：老租客退租结算 + 新租客入住，一步完成 -->
+    <el-dialog
+      v-model="transferDialogVisible"
+      title="转租"
+      width="560px"
+      :close-on-click-modal="false"
+    >
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+      >
+        一步完成：老租客 {{ transferForm.old_tenant_name }} 退租结算 + 新租客入住。退租读数自动作为新租客的初始水电读数，水电无缝衔接。
+      </el-alert>
+      <el-form :model="transferForm" label-width="120px">
+        <el-divider content-position="left">老租客退租结算（选填）</el-divider>
+        <el-form-item label="房间">
+          <span>{{ transferForm.room_number }}</span>
+        </el-form-item>
+        <el-form-item label="当前水表读数">
+          <el-input-number
+            v-model="transferForm.final_water_reading"
+            :min="0"
+            :precision="2"
+            :step="1"
+            placeholder="退租时水表读数"
+            style="width: 100%"
+          />
+          <div v-if="transferContext" class="reading-hint">
+            上次：{{ transferContext.water.previous_reading ?? '无记录' }}
+            <template v-if="transferWaterPreview && !transferWaterPreview.error">
+              ｜用量 {{ transferWaterPreview.usage }} 吨 ｜水费 ¥{{ transferWaterPreview.amount.toFixed(2) }}
+            </template>
+            <span v-else-if="transferWaterPreview?.error" class="error-text">{{ transferWaterPreview.error }}</span>
+          </div>
+        </el-form-item>
+        <el-form-item label="当前电表读数">
+          <el-input-number
+            v-model="transferForm.final_electricity_reading"
+            :min="0"
+            :precision="2"
+            :step="10"
+            placeholder="退租时电表读数"
+            style="width: 100%"
+          />
+          <div v-if="transferContext" class="reading-hint">
+            上次：{{ transferContext.electricity.previous_reading ?? '无记录' }}
+            <template v-if="transferElecPreview && !transferElecPreview.error">
+              ｜用量 {{ transferElecPreview.usage }} 度 ｜电费 ¥{{ transferElecPreview.amount.toFixed(2) }}
+            </template>
+            <span v-else-if="transferElecPreview?.error" class="error-text">{{ transferElecPreview.error }}</span>
+          </div>
+        </el-form-item>
+        <el-form-item v-if="transferForm.final_water_reading != null || transferForm.final_electricity_reading != null" label="水电费">
+          <el-radio-group v-model="transferForm.utility_paid">
+            <el-radio :value="true">已收款</el-radio>
+            <el-radio :value="false">未收款</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="(transferForm.final_water_reading != null || transferForm.final_electricity_reading != null) && transferForm.utility_paid" label="收款方式">
+          <el-select v-model="transferForm.utility_payment_method" style="width: 100%">
+            <el-option label="微信支付" value="微信支付" />
+            <el-option label="支付宝" value="支付宝" />
+            <el-option label="现金" value="现金" />
+            <el-option label="银行转账" value="银行转账" />
+          </el-select>
+        </el-form-item>
+
+        <el-divider content-position="left">新租客入住</el-divider>
+        <el-form-item label="姓名" required>
+          <el-input v-model="transferForm.new_tenant_name" placeholder="新租客姓名" />
+        </el-form-item>
+        <el-form-item label="电话">
+          <el-input v-model="transferForm.new_tenant_phone" placeholder="新租客电话" />
+        </el-form-item>
+        <el-form-item label="身份证号">
+          <el-input v-model="transferForm.new_tenant_id_card" placeholder="选填" />
+        </el-form-item>
+        <el-form-item label="租期开始" required>
+          <el-date-picker
+            v-model="transferForm.lease_start"
+            type="date"
+            placeholder="选择开始日期"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="租期结束" required>
+          <el-date-picker
+            v-model="transferForm.lease_end"
+            type="date"
+            placeholder="选择结束日期"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="月租金" required>
+          <el-input-number
+            v-model="transferForm.monthly_rent"
+            :min="0"
+            :precision="2"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="押金">
+          <el-input-number
+            v-model="transferForm.deposit_amount"
+            :min="0"
+            :precision="2"
+            :step="100"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="付款周期（月）">
+          <el-input-number
+            v-model="transferForm.payment_cycle"
+            :min="1"
+            :max="12"
+            placeholder="默认房间当前周期"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="入住收款">
+          <el-switch v-model="transferForm.first_payment_made" />
+        </el-form-item>
+        <el-form-item v-if="transferForm.first_payment_made" label="收款金额">
+          <el-input-number
+            v-model="transferForm.first_payment_amount"
+            :min="0"
+            :precision="2"
+            :step="100"
+            :placeholder="`默认 ${transferFirstPaymentPreview}`"
+            style="width: 100%"
+          />
+          <div style="font-size: 12px; color: #909399; line-height: 1.5; margin-top: 4px;">
+            不填默认 {{ transferFirstPaymentPreview }} 元（月租×付款周期），入住当天自动记一笔房租收款
+          </div>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input
+            v-model="transferForm.notes"
+            type="textarea"
+            :rows="2"
+            placeholder="选填"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="transferDialogVisible = false">取消</el-button>
+        <el-button type="danger" :loading="transferSubmitting" @click="confirmTransfer">确认转租</el-button>
       </template>
     </el-dialog>
   </div>

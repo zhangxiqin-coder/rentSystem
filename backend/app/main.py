@@ -154,10 +154,13 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         json.dumps(raw_errors)  # 测试能否直接序列化
         safe_errors = raw_errors
     except (TypeError, ValueError):
-        # 逐字段清洗：把 Decimal 转成 float/str
+        # 逐字段清洗：把 Decimal 转 float，异常对象转字符串（pydantic v2 会把
+        # model_validator 抛的 ValueError 原样放进 ctx，json.dumps 会炸）
         def _sanitize(obj):
             if isinstance(obj, Decimal):
                 return float(obj)
+            elif isinstance(obj, Exception):
+                return str(obj)
             elif isinstance(obj, dict):
                 return {k: _sanitize(v) for k, v in obj.items()}
             elif isinstance(obj, (list, tuple)):

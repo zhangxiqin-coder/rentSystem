@@ -36,11 +36,11 @@ export function usePaymentData(deps: {
     const electricity_amount = Number(row.electricity_reading?.amount || 0)
     const cycle = Math.max(1, Number(row.payment_cycle || 1))
 
-    // 季付/半年付：本周期房租已收过则房租=0，只收水电
-    // （2026-09-30 102-2 事故：8-01已交4650，9-27标记已收弹窗又预填了房租）
+    // 季付/半年付/月付：本周期房租已收过则房租=0，只收水电；
+    // 空置/转租空窗期房间（status≠occupied）不含房租（2026-10-28 302-1 案例）
     let rent_amount = Number(row.monthly_rent || 0) * cycle
     let rent_already_paid = false
-    if (cycle > 1 && payments && !shouldIncludeRent(row, payments.value)) {
+    if (payments && !shouldIncludeRent(row, payments.value)) {
       rent_amount = 0
       rent_already_paid = true
     }

@@ -10,6 +10,7 @@ import { statisticsApi } from '@/api/statistics'
 import { useAuthStore } from '@/stores/auth'
 import { useOverdueConfig } from '@/composables/useOverdueConfig'
 import { usePrivacyMode } from '@/composables/usePrivacyMode'
+import { getNextLunarNewYear } from '@/utils/lunarNewYear'
 import type { Tenant } from '@/types'
 
 const router = useRouter()
@@ -20,6 +21,16 @@ const activeTab = ref('active')  // active: 入住, unassigned: 未入住, inact
 const searchKeyword = ref('')
 const { leaseExpiryWarningDays } = useOverdueConfig()
 const { privacyMode, togglePrivacyMode, maskName, maskPhone } = usePrivacyMode()
+
+// 下一次农历春节
+const nextCny = getNextLunarNewYear()
+const cnyText = computed(() => {
+  if (!nextCny) return ''
+  const d = new Date(nextCny.date + 'T00:00:00')
+  const dateStr = d.toLocaleDateString('zh-CN')
+  if (nextCny.daysLeft === 0) return `${dateStr} 今天过年`
+  return `${dateStr}（${nextCny.daysLeft}天后）`
+})
 
 // 合同到期提醒接口（从后端LeaseRecord获取）
 interface LeaseExpiryWarning {
@@ -194,6 +205,9 @@ const sortedTenants = computed(() => {
   <div class="tenants-page">
     <div class="page-header">
       <h2>租客管理</h2>
+      <div v-if="nextCny" class="cny-badge" :title="`农历新年（正月初一）`">
+        🧧 下一次农历过年：{{ cnyText }}
+      </div>
       <div class="header-actions">
         <el-button
           :type="privacyMode ? 'warning' : 'default'"
@@ -376,6 +390,28 @@ const sortedTenants = computed(() => {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+/* 农历春节徽标 */
+.cny-badge {
+  margin-left: 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #d03050;
+  background: #fdf1f3;
+  border: 1px solid #f5c6d0;
+  border-radius: 16px;
+  padding: 4px 12px;
+  white-space: nowrap;
+}
+
+/* 手机端隐藏徽标文字，避免挤压 */
+@media (max-width: 768px) {
+  .cny-badge {
+    margin-left: 8px;
+    font-size: 12px;
+    padding: 3px 10px;
+  }
 }
 
 .search-bar {

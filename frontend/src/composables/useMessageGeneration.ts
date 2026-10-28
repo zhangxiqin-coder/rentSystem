@@ -84,12 +84,11 @@ export function useMessageGeneration(deps: UseMessageGenerationDeps) {
       }
     })
 
-    // 判断是否包含房租（季付/半年付房间）
-    // 使用与收租到期列表一致的逻辑：计算下次到期日，检查是否有payment覆盖
+    // 判断是否包含房租（v5：月付与季付同判定；空置/转租空窗期不含房租）
     const cycle = Math.max(1, Number(room.payment_cycle || 1))
 
     let includeRent = true
-    if (cycle > 1) {
+    if (cycle > 0) {
       try {
         const resp = await paymentApi.getPayments({
           room_id: roomId,

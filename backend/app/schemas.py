@@ -757,6 +757,57 @@ class FinalReadingContextResponse(BaseModel):
     electricity: FinalReadingItem
 
 
+# ==================== 转租 Schemas ====================
+
+class TransferRequest(BaseModel):
+    """转租请求 schema：老租客退租结算 + 新租客入住，单事务完成"""
+    # —— 老租客退租结算（可选） ——
+    final_water_reading: Optional[Decimal] = Field(None, ge=0, description="老租客退租水表读数（可选）")
+    final_electricity_reading: Optional[Decimal] = Field(None, ge=0, description="老租客退租电表读数（可选）")
+    utility_paid: bool = Field(True, description="老租客水电费是否已收（True生成已收款缴费单，False只记欠费）")
+    utility_payment_method: str = Field("微信支付", description="老租客水电收款方式")
+    # —— 新租客入住 ——
+    new_tenant_name: str = Field(..., min_length=1, max_length=100, description="新租客姓名")
+    new_tenant_phone: str = Field(..., max_length=20, description="新租客电话")
+    new_tenant_id_card: Optional[str] = Field(None, max_length=18, description="新租客身份证（可选）")
+    lease_start: date = Field(..., description="新租约开始日期")
+    lease_end: date = Field(..., description="新租约结束日期")
+    monthly_rent: Optional[Decimal] = Field(None, gt=0, description="月租金（不传=房间当前租金）")
+    deposit_amount: Optional[Decimal] = Field(None, ge=0, description="新租客押金")
+    payment_cycle: Optional[int] = Field(None, gt=0, le=12, description="付款周期（月，不传=房间当前周期）")
+    first_payment_made: bool = Field(True, description="新租客入住时是否已收首期房租（默认已收）")
+    first_payment_amount: Optional[Decimal] = Field(None, gt=0, description="首期收款金额（不传=月租×付款周期）")
+    notes: Optional[str] = Field(None, max_length=1000, description="新租约备注")
+
+    @model_validator(mode='after')
+    def validate_lease_dates(self):
+        """新租约结束日期必须大于开始日期"""
+        if self.lease_end <= self.lease_start:
+            raise ValueError("新租约结束日期必须大于开始日期")
+        return self
+
+
+class TransferResponse(BaseModel):
+    """转租响应 schema"""
+    message: str
+    room_id: int
+    room_number: str
+    old_lease_id: int
+    old_tenant_id: int
+    new_lease_id: int
+    new_tenant_id: int
+    # 老租客水电结算摘要（未录入读数时为 None）
+    water_utility_id: Optional[int] = None
+    electricity_utility_id: Optional[int] = None
+    water_payment_id: Optional[int] = None
+    electricity_payment_id: Optional[int] = None
+    water_amount: Optional[Decimal] = None
+    electricity_amount: Optional[Decimal] = None
+    # 新租客首期房租
+    first_payment_id: Optional[int] = None
+    first_payment_amount: Optional[Decimal] = None
+
+
 # ==================== 个人资产 ====================
 
 class AssetPlatformCreate(BaseModel):

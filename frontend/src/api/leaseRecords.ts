@@ -52,6 +52,28 @@ export const leaseRecordsApi = {
     return response.data
   },
 
+  // 转租（老租客退租结算 + 新租客入住，单事务完成）
+  transfer: async (id: number, data: {
+    final_water_reading?: number
+    final_electricity_reading?: number
+    utility_paid?: boolean
+    utility_payment_method?: string
+    new_tenant_name: string
+    new_tenant_phone: string
+    new_tenant_id_card?: string
+    lease_start: string
+    lease_end: string
+    monthly_rent?: number
+    deposit_amount?: number
+    payment_cycle?: number
+    first_payment_made?: boolean
+    first_payment_amount?: number
+    notes?: string
+  }) => {
+    const response = await request.post<any>(`/api/v1/lease-records/${id}/transfer`, data)
+    return response.data
+  },
+
   // 恢复租赁（恢复入住操作）
   restore: async (id: number) => {
     const response = await request.post<ApiResponse<LeaseRecord>>(`/api/v1/lease-records/${id}/restore`)
