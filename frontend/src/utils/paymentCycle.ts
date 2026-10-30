@@ -141,11 +141,17 @@ export function shouldIncludeRent(
 
   const lastIdx = lastFilledIndex(leaseStart, cycle, payDates)
 
-  // 应收日 = 最后已付期+1 的期初；已付 = 应收日在未来
+  // 应收日 = 最后已付期+1 的期初；已付 = 应收日超出提前收租窗口。
+  // ⚠️ 应收日在未来但 ≤14 天内（EARLY_PAY_DAYS）也算该收——租客惯常
+  // 提前 2-5 天预付（102-2 案例：11-02 到期，10-28 录水电时催租消息
+  // 必须含下季度房租；旧逻辑判"已付"把房租行吃掉了）。
   const grid = [leaseStart]
   for (let i = 0; i < lastIdx + 1; i++) grid.push(addMonths(grid[i], cycle))
   const nextDue = grid[lastIdx + 1]
-  return today >= nextDue
+  const daysUntil = Math.floor((nextDue.getTime() - today.getTime()) / 86400000)
+  // 含房租 = 应收日已到（daysUntil<=0）或进入提前收租窗口（<=14天）。
+  // ⚠️ 方向别写反：窗口内（含已逾期）→ true；窗口外（还远）→ false。
+  return daysUntil <= EARLY_PAY_DAYS
 }
 
 /**

@@ -193,13 +193,31 @@ class TestBackendImplementations:
         # 无任何付款 → 首期未付
         assert _has_paid_for_target_cycle(room, [], PROD_CUTOFF, 7) is False
 
+    def _expect_with_window(self, lease_start, cycle, pays):
+        """2026-10-28 提前收租窗口语义：窗口内→False(含房租)，窗口外→True。动态推导，日期免疫。"""
+        from app.utils import lease_grid
+        nd = lease_grid.next_due_date(lease_start, cycle, pays, date.today())
+        days = (nd - date.today()).days if nd else 999
+        return not (0 <= days <= lease_grid.EARLY_PAY_DAYS)
+
     def test_business_impl_monthly_302_4(self):
-        """business.py 月付判定（v5 新增：月付参与）"""
+        """business.py 月付判定（v5 新增：月付参与）
+
+        语义演进（2026-10-28 提前收租窗口）：已付但 next_due 进入
+        EARLY_PAY_DAYS 窗口 → False（含下期房租）；窗口外 → True。
+        期望值动态推导，日期免疫。
+        """
         from app.service.business import _has_paid_for_target_cycle
+        from app.utils import lease_grid
 
         room = self._make_room(LEASE_302_4, cycle=1, room_id=27)
         pays = [self._make_payment(27, d) for d in PAYS_302_4]
-        assert _has_paid_for_target_cycle(room, pays, PROD_CUTOFF, 7) is True
+        nd = lease_grid.next_due_date(LEASE_302_4, 1, PAYS_302_4, date.today())
+        days = (nd - date.today()).days
+        expect = not (0 <= days <= lease_grid.EARLY_PAY_DAYS)
+        assert _has_paid_for_target_cycle(room, pays, PROD_CUTOFF, 7) == expect, (
+            f"302-4 月付：next_due={nd} 差{days}天（窗口内→False含房租）"
+        )
 
     def test_notification_impl_2501a_today(self):
         """notification_service.py 版本（微信消息路径）今天判定已付"""
@@ -221,7 +239,9 @@ class TestBackendImplementations:
                         return [(NEW_TENANT_PAYMENT,), (OLD_TENANT_PAYMENT,)]
                 return _Q()
 
-        assert ns_has_paid(_DB(), room, 3) is True
+        pays_2501a = [NEW_TENANT_PAYMENT, OLD_TENANT_PAYMENT]
+        expect = self._expect_with_window(LEASE_95, 3, pays_2501a)
+        assert ns_has_paid(_DB(), room, 3) == expect, "2501-A：期望值随提前收租窗口动态推导"
 
     def test_notification_impl_monthly_paid(self):
         """notification_service.py 月付判定（302-4 场景）"""
@@ -243,7 +263,8 @@ class TestBackendImplementations:
                         return [(d,) for d in PAYS_302_4]
                 return _Q()
 
-        assert ns_has_paid(_DB(), room, 1) is True
+        expect_m = self._expect_with_window(LEASE_302_4, 1, PAYS_302_4)
+        assert ns_has_paid(_DB(), room, 1) == expect_m, "302-4 月付：期望值随窗口动态推导"
 
 
 if __name__ == "__main__":

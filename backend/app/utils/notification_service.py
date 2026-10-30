@@ -72,7 +72,20 @@ def _has_paid_for_target_cycle(db: Session, room: Room, cycle: int) -> bool:
     ).all()
     pay_dates = [r[0] for r in rows if r[0]]
 
-    return lease_grid.is_paid_through(room.lease_start, cycle, pay_dates, today)
+    paid_through = lease_grid.is_paid_through(
+        room.lease_start, cycle, pay_dates, today,
+    )
+    if not paid_through:
+        return False  # 已欠租 → 该催，含房租
+
+    # 已付但应收日临近：进入提前收租窗口（≤EARLY_PAY_DAYS 天）也该催。
+    # 租客惯常提前 2-5 天预付（102-2 案例：11-02 到期、10-28 录水电时
+    # 催租消息必须含下季度房租；旧逻辑判"已付"把房租行吃掉了）。
+    nd = lease_grid.next_due_date(room.lease_start, cycle, pay_dates, today)
+    if nd is not None and 0 <= (nd - today).days <= lease_grid.EARLY_PAY_DAYS:
+        return False  # 即将到期 → 该催，含房租
+
+    return True
 
 
 async def send_rent_notification_if_complete(

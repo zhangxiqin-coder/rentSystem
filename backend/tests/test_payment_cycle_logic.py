@@ -112,7 +112,13 @@ class TestQuarterlyRentIncludeLogic:
         db.commit()
 
         result = _has_paid_notif(db, q_room, cycle=3)
-        assert result is True, "当前周期到期日±14天内有payment，应返回True(已付)→不包含房租"
+        # 语义演进（2026-10-28 提前收租窗口）：期望值动态推导，日期免疫
+        from app.utils import lease_grid
+        from datetime import date as _d
+        nd = lease_grid.next_due_date(q_room.lease_start, 3, [self._current_due() - timedelta(days=5)], _d.today())
+        days = (nd - _d.today()).days
+        expect = not (0 <= days <= lease_grid.EARLY_PAY_DAYS)
+        assert result == expect, f"next_due={nd} 差{days}天（窗口内→False含房租）"
 
     def test_monthly_room_always_include_rent(self, db, q_room):
         """月付房间(cycle=1)不走该判断，永远包含房租。"""

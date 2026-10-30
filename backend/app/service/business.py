@@ -728,10 +728,23 @@ def _has_paid_for_target_cycle(
         return False  # 租约尚未开始
 
     pay_dates = _room_rent_pay_dates(room, payments)
-    return lease_grid.is_paid_through(
+    paid_through = lease_grid.is_paid_through(
         room.lease_start, room.payment_cycle or 1, pay_dates, today,
         cutoff=cutoff,
     )
+    if not paid_through:
+        return False
+
+    # 已付但应收日进入提前收租窗口（≤EARLY_PAY_DAYS 天）→ 也算该收。
+    # 与 notification_service._has_paid_for_target_cycle 同口径
+    # （102-2 案例：11-02 到期、10-28 录水电，催租消息/弹窗必须含房租）。
+    nd = lease_grid.next_due_date(
+        room.lease_start, room.payment_cycle or 1, pay_dates, today, cutoff=cutoff,
+    )
+    if nd is not None and 0 <= (nd - today).days <= lease_grid.EARLY_PAY_DAYS:
+        return False
+
+    return True
 
 
 

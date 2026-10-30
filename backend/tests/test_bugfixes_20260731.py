@@ -134,21 +134,34 @@ class TestBug1QuarterlyRentNotificationIntegration:
         db.commit()
 
         has_paid = _has_paid_for_target_cycle(db, quarterly_room, cycle=3)
-        assert has_paid is True, "付款在当前周期到期日±14天窗口内，应判定已付"
+
+        # 语义演进（2026-10-28 提前收租窗口裁决，102-2 案例）：
+        # 旧断言：付了下期 → True → 不含房租。
+        # 新口径：已付但 next_due 进入 14 天窗口 → False（该催，含下期房租）。
+        # 期望值从引擎动态推导（日期免疫），不再硬编码。
+        from app.utils import lease_grid
+        from datetime import date as _d
+        pays = [current_due - timedelta(days=3)]
+        nd = lease_grid.next_due_date(quarterly_room.lease_start, 3, pays, _d.today())
+        days = (nd - _d.today()).days
+        expect_paid = not (0 <= days <= lease_grid.EARLY_PAY_DAYS)
+        assert has_paid == expect_paid, (
+            f"next_due={nd} 差{days}天；窗口内(≤{lease_grid.EARLY_PAY_DAYS})应"
+            f"含房租(has_paid=False)，窗口外应不含(has_paid=True)"
+        )
 
         include_rent = not has_paid
-        assert include_rent is False
-
-        msg = generate_rent_notification(
-            room_number=quarterly_room.room_number,
-            tenant_name=quarterly_room.tenant_name,
-            monthly_rent=float(quarterly_room.monthly_rent),
-            payment_cycle=3,
-            water_amount=35.0,
-            electricity_amount=260.0,
-            include_rent=include_rent,
-        )
-        assert "房租" not in msg, "已付周期，消息不应包含房租"
+        if expect_paid:  # 窗口外才验证消息不含房租
+            msg = generate_rent_notification(
+                room_number=quarterly_room.room_number,
+                tenant_name=quarterly_room.tenant_name,
+                monthly_rent=float(quarterly_room.monthly_rent),
+                payment_cycle=3,
+                water_amount=35.0,
+                electricity_amount=260.0,
+                include_rent=include_rent,
+            )
+            assert "房租" not in msg, "已付且在窗口外，消息不应包含房租"
 
     def test_e2e_boundary_14_days_exact(self, db, quarterly_room):
         """
@@ -172,7 +185,14 @@ class TestBug1QuarterlyRentNotificationIntegration:
         db.commit()
 
         has_paid = _has_paid_for_target_cycle(db, quarterly_room, cycle=3)
-        assert has_paid is True, "恰好14天前付款，在窗口边界，应判定已付"
+        # 语义演进（2026-10-28 提前收租窗口）：期望值动态推导，日期免疫。
+        from app.utils import lease_grid
+        from datetime import date as _d
+        pays = [current_due - timedelta(days=14)]
+        nd = lease_grid.next_due_date(quarterly_room.lease_start, 3, pays, _d.today())
+        days = (nd - _d.today()).days
+        expect_paid = not (0 <= days <= lease_grid.EARLY_PAY_DAYS)
+        assert has_paid == expect_paid, f"next_due={nd} 差{days}天（窗口内应含房租）"
 
     def test_e2e_boundary_15_days_outside(self, db, quarterly_room):
         """
@@ -199,7 +219,14 @@ class TestBug1QuarterlyRentNotificationIntegration:
         db.commit()
 
         has_paid = _has_paid_for_target_cycle(db, quarterly_room, cycle=3)
-        assert has_paid is True, "下期到期前15天付款=提前交租，应覆盖当前应收周期"
+        # 语义演进（2026-10-28 提前收租窗口）：期望值动态推导，日期免疫。
+        from app.utils import lease_grid
+        from datetime import date as _d
+        pays = [next_due - timedelta(days=15)]
+        nd = lease_grid.next_due_date(quarterly_room.lease_start, 3, pays, _d.today())
+        days = (nd - _d.today()).days
+        expect_paid = not (0 <= days <= lease_grid.EARLY_PAY_DAYS)
+        assert has_paid == expect_paid, f"next_due={nd} 差{days}天（窗口内应含房租）"
 
 
 # ════════════════════════════════════════════════════

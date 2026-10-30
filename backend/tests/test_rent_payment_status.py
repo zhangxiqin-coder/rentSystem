@@ -294,11 +294,16 @@ class TestPaymentDueContext:
         assert _has_paid_this_month(
             room_a, [pay_a], lambda r, p: 25, 7) is True
 
-        # 场景2：仅月初付了本期 → True（本期[1号,下月1号)已付；
-        # 下期未付由 next_due=下月1号 + days 窗口表达）
+        # 场景2：仅月初付了本期 → 动态推导（2026-10-28 提前收租窗口）：
+        # next_due=下月1号，若进入 14 天窗口 → False（该催下期，含房租=102-2 案例）；
+        # 窗口外 → True（本期已付即 True；下期未付由 days 窗口表达）
         room_b, pay_b = _mk("302b", month_start + timedelta(days=2))
+        from app.utils import lease_grid as _lg
+        _nd = _lg.next_due_date(room_b.lease_start, 1, [month_start + timedelta(days=2)], today)
+        _days = (_nd - today).days
+        _expect_b = not (0 <= _days <= _lg.EARLY_PAY_DAYS)
         assert _has_paid_this_month(
-            room_b, [pay_b], lambda r, p: 25, 7) is True
+            room_b, [pay_b], lambda r, p: 25, 7) is _expect_b
 
         # 场景3：无任何付款 → False（首期未付，应收=lease_start）
         room_c = Room(room_number="302c", monthly_rent=Decimal("1000"),
